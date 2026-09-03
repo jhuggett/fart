@@ -1,0 +1,46 @@
+# A format release: tag format-vX.Y.Z and the spec, schema and corpus go
+# out as a GitHub release, with @fastart/core to npm when a token exists.
+name: format release
+
+on:
+  push:
+    tags: ["format-v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test -w @fastart/core
+      - run: npm run build -w @fastart/core
+      - name: bundle the spec
+        run: |
+          mkdir -p out
+          cp spec/FORMAT.md spec/fart.schema.json out/
+          (cd spec && zip -qr ../out/examples.zip examples)
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Fast Art Format ${{ github.ref_name }}
+          body: |
+            The spec (`FORMAT.md`), the JSON Schema (`fart.schema.json`) and the
+            conformance corpus (`examples.zip`) for this version of the format.
+          files: |
+            out/FORMAT.md
+            out/fart.schema.json
+            out/examples.zip
+      - name: publish @fastart/core
+        if: env.NPM_TOKEN != ''
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish -w @fastart/core --access public --provenance

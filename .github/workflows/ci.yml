@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main, grow-up]
+  pull_request:
+
+jobs:
+  core:
+    name: format, corpus, core library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check -w @fastart/core
+      - run: npm test -w @fastart/core
+      - run: npm run build -w @fastart/core
+      - name: the corpus, through the CLI
+        run: node packages/core/dist/cli.js validate spec/examples || true
+      - name: only the invalid half may fail
+        run: |
+          node packages/core/dist/cli.js validate spec/examples/valid
+          if node packages/core/dist/cli.js validate spec/examples/invalid > /dev/null; then
+            echo "invalid examples were accepted"; exit 1
+          fi
+
+  odin-loader:
+    name: reference Odin loader
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: laytanl/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: latest
+      - run: odin test loaders/odin/test
+
+  studio-frontend:
+    name: studio frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check -w @fastart/studio
+      - run: npm run build -w @fastart/studio
+
+  studio-shell:
+    name: studio shell (Go)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: studio/go.mod
+          cache-dependency-path: studio/go.sum
+      - run: npm ci
+      - run: npm run build -w @fastart/studio
+      - run: go vet ./... && go build -o /dev/null .
+        working-directory: studio

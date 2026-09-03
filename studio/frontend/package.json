@@ -1,0 +1,25 @@
+{
+  "name": "@fastart/studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:dev": "vite build --minify false --mode development",
+    "build": "vite build --mode production",
+    "check": "tsc -p tsconfig.json",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fastart/core": "1.0.0",
+    "@preact/signals": "^2.0.0",
+    "@wailsio/runtime": "latest",
+    "marked": "^15.0.0",
+    "preact": "^10.26.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.0.5"
+  }
+}

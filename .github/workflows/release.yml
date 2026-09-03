@@ -1,0 +1,119 @@
+# A studio release: tag studio-vX.Y.Z and three platforms build, package,
+# and land on one GitHub release. macOS is signed and notarized when the
+# secrets exist (MACOS_CERT_P12 base64, MACOS_CERT_PASSWORD, APPLE_ID,
+# APPLE_TEAM_ID, APPLE_APP_PASSWORD); without them the bundle is ad-hoc
+# signed and Gatekeeper will grumble on first launch.
+name: studio release
+
+on:
+  push:
+    tags: ["studio-v*"]
+
+permissions:
+  contents: write
+
+env:
+  WAILS_VERSION: v3.0.0-beta.16
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: studio/go.mod
+          cache-dependency-path: studio/go.sum
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - run: npm ci
+      - run: wails3 task darwin:package:universal
+        working-directory: studio
+      - name: sign and notarize
+        if: env.MACOS_CERT_P12 != ''
+        working-directory: studio
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          xcrun notarytool store-credentials fastart --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          wails3 tool sign -input bin/studio.app -certificate cert.p12 -password "$MACOS_CERT_PASSWORD" -notarize -keychain-profile fastart
+          rm -f cert.p12
+      - name: zip
+        working-directory: studio
+        run: ditto -c -k --keepParent bin/studio.app "fastart-studio-${{ github.ref_name }}-macos-universal.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: studio/fastart-studio-*.zip
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: studio/go.mod
+          cache-dependency-path: studio/go.sum
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - run: npm ci
+      - run: wails3 task windows:build
+        working-directory: studio
+      - name: zip
+        working-directory: studio
+        shell: pwsh
+        run: Compress-Archive -Path bin/studio.exe -DestinationPath "fastart-studio-${{ github.ref_name }}-windows-amd64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: studio/fastart-studio-*.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: studio/go.mod
+          cache-dependency-path: studio/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - run: npm ci
+      - run: wails3 task linux:build
+        working-directory: studio
+      - name: tar
+        working-directory: studio
+        run: tar -C bin -czf "fastart-studio-${{ github.ref_name }}-linux-amd64.tar.gz" studio
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: studio/fastart-studio-*.tar.gz
+
+  release:
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: fastart studio ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*

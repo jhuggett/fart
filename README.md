@@ -1,115 +1,71 @@
 # fastart -- the Fast Art Format
 
 JSON-backed vector art for games: shapes, recolorable palette tokens,
-re-posable parts, states. The `.fart` file is the contract; see
-`spec/FORMAT.md`. This repo holds the spec, the standalone editor
-(`editor/`), and a reference Odin loader (`loaders/odin/`).
+re-posable parts, states. The `.fart` file is the contract; the rest of
+this repo exists to write it, read it, and check it.
 
-Scope, forever: the editor edits Fast Art Format files. It knows nothing
-about any game or engine.
+It is called `.fart` on purpose. The format does not take itself
+seriously so that you don't have to: it is plain JSON, small enough to
+read, write and diff by hand (or by a language model), and it drops into
+any engine that can parse JSON. Prototype with it. Ship with it if you
+like.
 
-    ./build.sh               # builds ./fastart and ./fastart.app
-    ./fastart                # the current directory is the project
-    ./fastart some/dir       # that one is
-    ./fastart thing.fart     # edit (created if missing)
+    spec/            the format: FORMAT.md, fart.schema.json, the conformance corpus
+    packages/core    @fastart/core: the format as a TypeScript library + `fart` CLI
+    loaders/odin     the reference Odin loader (and its corpus test)
+    studio/          fastart studio: the editor as a desktop app (Wails 3 + web)
+    editor/          the classic raylib editor, still here, still works
 
-## Using it
+## The format
 
-A folder is a project, the way an IDE opens one. `./build.sh` leaves a
-double-clickable `fastart.app` beside the `fastart` binary (drag it to
-Applications if you like). Launched from the Finder it shows the welcome
-screen: recent projects, and "Open Folder..." (Cmd+O) for a new one --
-or drop a folder or a `.fart` file onto the window. Double-clicking a
-`.fart` in the Finder opens it here too, with its folder as the project.
-From a terminal, `fastart` opens the current directory, `fastart some/dir`
-that one, and `fastart thing.fart` a file inside the current directory's
-project.
+Read `spec/FORMAT.md`. Structure is checked by `spec/fart.schema.json`;
+everything a schema cannot see (tokens resolve, states name real parts,
+tris index the points) is checked by the validator in `packages/core`:
 
-An open project is the browser: every `.fart` below the folder, as live
-thumbnails, nested folders and all. Click one to edit; "new file" creates
-one (a name like `enemies/bat` makes the folder); "Browse" (or Cmd+O)
-returns. "Open..." switches projects, "Projects" goes back to the welcome
-screen, and Cmd+Shift+O opens a folder from anywhere. Recent projects
-live in `~/Library/Application Support/fastart/recent.txt`.
+    npm install
+    npx fart validate path/to/art          # every .fart below, refs resolved
+    npx fart bake enemies/bat.fart         # write tris into each poly
 
-The editor is mouse-first:
+`spec/examples/manifest.json` is the conformance corpus: files that must
+load, files that must be refused, and the error code each refusal
+carries. Every loader runs it (`npm test`, `odin test loaders/odin/test`).
 
-- **Toolbar**: select / circle / line / poly (keys 1-4), save, undo,
-  browse.
-- **Canvas**: left-click uses the tool; right-drag pans; wheel zooms.
-  With select, hovering outlines what a click would pick; a selected
-  shape shows drag handles -- circle radius, line endpoints, every
-  polygon vertex -- and dragging its body moves it. X deletes.
-  A rect keeps itself rectangular when you drag a corner (its neighbors
-  follow); hold Alt while dragging to break it into a free quad.
-  Shift-click adds to or removes from the selection; dragging on empty
-  ground sweeps a rubber band over many shapes at once. A crowd moves,
-  deletes, paints, re-parts, and raises/lowers together -- it drifts
-  through the stack keeping its internal order (handles are single-shape).
-- **Palette (left)**: click a token to make it current -- and to paint it
-  onto the selected shape, if there is one. Sliders below edit the
-  current token's RGBA live. Tokens arriving from shared palettes are
-  listed read-only (edit them by opening the palette file itself).
-- **Selected shape (left, below)**: kind, token, width slider for lines,
-  raise/lower through the part's stacking order (also `]` and `[`),
-  delete, and "to part" to move it into the current part.
-- **Parts (right)**: click to choose the current part (new shapes land
-  there). Parts are the layers: they draw top to bottom, so a lower row
-  paints over the ones above -- the ^ / v buttons on the current row
-  reorder them, and its x deletes it (shapes go with it; states drop the
-  name). The current token and state rows carry the same x. "set pivot" /
-  "add anchor" arm a crosshair -- the next canvas click places it. When a
-  state is selected, each part row grows a checkbox: membership.
-- **States (right, below) are pose mode**: click a state and the canvas
-  shows it with its transforms applied -- and switches from editing
-  geometry to posing parts. Drag a part to place it (its offset is where
-  the part's pivot lands), pull the lever off the pivot to turn it, and
-  the POSE card gives turn/size sliders and a reset. Geometry is locked
-  until you go back to "all parts."
-- **Scaling**: a selection grows a bounding box whose corner grips scale
-  it about the opposite corner -- works on one shape or a whole crowd.
-- **The collision lens** (toolbar button, or C): the art dims and you
-  edit the doc's `collision` list with the same tools -- shapes a game
-  may treat as solid. A line is a capsule (girth slider when selected);
-  they never draw in-game. Esc deselects, X deletes, C flips back.
-- Double-click a part, state, or token row to rename it -- references
-  follow (states track a renamed part, shapes track a renamed token).
-- Cmd+C / Cmd+V copy and paste the selection; Cmd+X cuts; Cmd+D
-  duplicates in place. Pasted shapes land in the part they were copied
-  from (matched by name -- so pasting works across files), or the current
-  part when no name matches, nudged a little each paste. The paste
-  becomes the selection, ready to drag.
-- Esc deselects / cancels; Cmd+Z undoes; Cmd+Shift+Z (or Cmd+Y) redoes.
-  A new change abandons the redo branch, as usual.
+The format is versioned separately from the tools: `format-vX.Y.Z` tags
+release the spec, schema and corpus; `version` inside a file is the
+major, and readers refuse majors they don't know.
 
-## Serve mode (the iPad workflow)
+## The studio
 
-The native binary embeds a wasm build of this same editor. Hit **Serve**
-in the browse screen (or launch `fastart --serve`) and it serves that
-editor plus a small file API on the LAN (port 4747), showing the URL and
-a QR code -- scan it and the editor opens in the tablet's browser, on
-the open project. Draw with the pencil; one finger draws, two fingers
-pan and pinch. Lists everywhere -- the browse shelf and both side
-panels -- scroll with a drag (or the wheel on a desktop); a tap, not a
-press, is what activates rows and buttons, so scrolling never
-mis-clicks. Every change streams back and lands on disk, so a game
-hot-reloading that directory shows each stroke in about half a second.
-No cloud, no app store: your machine serves, your tablet draws.
+`studio/` is the editor as a real application: a folder is a project,
+recent projects on a welcome screen, drag-and-drop, double-click a
+`.fart` in the Finder, docs inside the app, and a **Serve** button that
+puts the same editor on your network for a tablet (one finger draws, two
+pan and pinch). The interface is the web (Preact + a canvas) in a thin Go
+shell (Wails 3); the same frontend runs from the shell's LAN server.
 
-Caveat: closing the tab mid-experiment can't run the leave-rollback (no
-one is left to run it) -- same as a crash, the `<name>.fart~` checkpoint
-beside the file is the recovery. Browsing between files on the tablet
-reverts normally.
+    npm install
+    cd studio && wails3 task package            # bin/studio.app (macOS)
+    cd studio && wails3 dev                     # live-reload development
+    ./bin/studio --serve path/to/art            # headless: just the LAN server
 
-`./build.sh` builds web, then native (the native binary embeds the web
-build), then wraps `fastart.app` around it (`build_app.sh`, macOS);
-`build_web.sh` alone refreshes just the web editor.
-- **Saving is a checkpoint, not a copy.** The file on disk always mirrors
-  what you see (written a beat after every change, so a game hot-reloading
-  the file shows your experiment live). Save (Cmd+S) marks the checkpoint;
-  leaving the file any other way -- browse, opening another file, quitting
-  -- rolls the disk back to the last checkpoint. The amber dot by the
-  filename means "uncommitted: this rolls back unless you Save."
-  The checkpoint also lives beside the file as `<name>.fart~` (rewritten
-  at every open and save), so even a crash that skips the rollback can't
-  lose the last saved state -- copy the `~` file back if it ever happens.
+It needs Go, Node, and the Wails CLI (`go install
+github.com/wailsapp/wails/v3/cmd/wails3@latest`). Releases are cut by
+tagging `studio-vX.Y.Z`; see `.github/workflows/release.yml`.
+
+How to use it is in the app (Docs) and in `studio/frontend/src/docs/guide.md`.
+
+## The classic editor
+
+`editor/` is the original Odin + raylib editor, single binary, embedded
+wasm build for the tablet. `./build.sh` builds `./fastart` and
+`fastart.app`; `./fastart some/dir` opens a project. Its README is in
+`editor/README.md`. It stays until the studio has everything it had, and
+it is a fine second opinion on any file.
+
+## Using .fart in a game
+
+The reference loaders show the shape of it: `loaders/odin/fastart.odin`
+(types, palette resolution, ear clipping, ~200 lines) and
+`packages/core` for anything that speaks JavaScript. Rendering is fifty
+lines in whatever you draw with: for each part in `drawList`, for each
+shape, `colorOf(tokens, shape.color)` and `posePoint(p, part, statePart)`.

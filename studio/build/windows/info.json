@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "fastart",
+			"FileDescription": "the Fast Art Format editor",
+			"LegalCopyright": "(c) 2026 Joel Huggett",
+			"ProductName": "fastart studio",
+			"Comments": "It is called .fart on purpose."
+		}
+	}
+}
