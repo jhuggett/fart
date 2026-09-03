@@ -6,3 +6,5 @@ cd "$(dirname "$0")"
 SDK="-extra-linker-flags:-isysroot $(xcrun --show-sdk-path)"
 odin build editor -debug -out:fastart "$SDK"
 echo "built ./fastart"
+# and the double-clickable app around it (macOS)
+[ "$(uname)" = Darwin ] && ./build_app.sh

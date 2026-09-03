@@ -1,5 +1,6 @@
 # build output (./build.sh regenerates all of these)
 /fastart
+/fastart.app/
 /web_out/
 *.dSYM/
 .DS_Store

@@ -3,7 +3,9 @@ package main
 // fastart: the Fast Art Format editor. It edits .fart files; that is all it
 // does, and all it will ever do.
 //
-//   fastart                   browse every .fart under the current dir
+//   fastart                   the current dir is the project (welcome
+//                             screen when launched from the Finder)
+//   fastart some/dir          open that dir as the project
 //   fastart thing.fart        edit one file (created if missing)
 //
 // Mouse-first: toolbar for tools, panels for palette/parts/states, drag
@@ -32,6 +34,7 @@ Tool :: enum {
 }
 
 Mode :: enum {
+	Welcome, // no project open: recents and a folder dialog
 	Browse,
 	Edit,
 }
@@ -1042,6 +1045,7 @@ open_file :: proc(path: string) {
 	ed.pending = .None
 	ed.dirty = false
 	ed.mode = .Edit
+	title_refresh()
 }
 
 // ------------------------------------------------------------- ui kit
@@ -1523,12 +1527,6 @@ ed_init :: proc() {
 	fonts_init()
 
 	args := plat_args()
-	when !WEB {
-		if len(args) >= 1 && args[0] == "--serve" {
-			serve_start()
-			args = args[1:]
-		}
-	}
 	if len(args) >= 2 && args[0] == "--qr" {
 		qr_selftest(args[1])
 		args = args[2:]
@@ -1537,11 +1535,25 @@ ed_init :: proc() {
 		g_shot = args[1]
 		args = args[2:]
 	}
-	if len(args) >= 1 {
-		open_file(args[0])
-	} else {
+	when WEB {
+		// the page mirrors one directory: that is the project
 		ed.mode = .Browse
 		browse_refresh()
+	} else {
+		serve := false
+		if len(args) >= 1 && args[0] == "--serve" {
+			serve = true
+			args = args[1:]
+		}
+		recents_load()
+		// the Finder may already have handed us a document (app_darwin.odin)
+		opened := open_queue_drain()
+		if !opened && len(args) >= 1 do opened = project_open_path(args[0])
+		if !opened {
+			if root, ok := plat_default_root(); ok do project_open(root)
+			else do go_welcome()
+		}
+		if serve do serve_start()
 	}
 }
 
@@ -1599,7 +1611,29 @@ ed_frame :: proc() -> bool {
 			ed.marquee = false
 		} else do ed.touch2 = false
 		cmd := rl.IsKeyDown(.LEFT_SUPER) || rl.IsKeyDown(.RIGHT_SUPER) || rl.IsKeyDown(.LEFT_CONTROL)
+		shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 		W, H := scr()
+
+		when !WEB {
+			// the OS handing us things: a drop on the window, a Finder open
+			if rl.IsFileDropped() {
+				files := rl.LoadDroppedFiles()
+				for i in 0 ..< files.count do append(&g_open_queue, strings.clone(string(files.paths[i])))
+				rl.UnloadDroppedFiles(files)
+			}
+			open_queue_drain()
+			// Cmd+O opens a folder (in the editor it goes to the shelf, as
+			// ever; Cmd+Shift+O opens a folder from anywhere)
+			if cmd && rl.IsKeyPressed(.O) && !ed.prompt_on && (shift || ed.mode != .Edit) do project_pick()
+		}
+
+		// ------------------------------------------------ welcome
+		if ed.mode == .Welcome {
+			welcome_frame(W, H)
+			free_all(context.temp_allocator)
+			if shot_tick() do return false
+			return true
+		}
 
 		// ------------------------------------------------ browse mode
 		if ed.mode == .Browse {
@@ -1609,17 +1643,35 @@ ed_frame :: proc() -> bool {
 			rl.DrawRectangleRec({0, 0, W, TB_H}, UI_PANEL)
 			hairline(0, TB_H - 1, W)
 			txt("fastart", 16, (TB_H - FS_BIG) / 2 - 1, FS_BIG, UI_ACCENT)
-			sub := fmt.ctprintf("%d file%s under this directory", len(ed.found), len(ed.found) == 1 ? "" : "s")
-			txt(sub, 16 + txt_w("fastart", FS_BIG) + 16, (TB_H - FS_BODY) / 2, FS_BODY, UI_DIM)
-			if ui_button({W - 104, (TB_H - 28) / 2, 92, 28}, "new file", ghost = true) do start_prompt("file")
+			tx := 16 + txt_w("fastart", FS_BIG) + 16
+			files := fmt.ctprintf("%d file%s", len(ed.found), len(ed.found) == 1 ? "" : "s")
+			if name := project_name(); name != "" {
+				// the project: its name, then where it lives and what it holds
+				cn := fmt.ctprintf("%s", name)
+				txt(cn, tx, (TB_H - FS_BODY) / 2 - 1, FS_BODY, UI_TEXT)
+				tx += txt_w(cn, FS_BODY) + 12
+				txt(fmt.ctprintf("%s  -  %s", pretty_path(g_root), files), tx, (TB_H - FS_BODY) / 2, FS_BODY, UI_DIM)
+			} else {
+				txt(fmt.ctprintf("%s under this directory", files), tx, (TB_H - FS_BODY) / 2, FS_BODY, UI_DIM)
+			}
+			// the right-hand group flows leftward from the edge
+			bx, by := W - 12, f32(TB_H - 28) / 2
+			bx -= 92
+			if ui_button({bx, by, 92, 28}, "new file", ghost = true) do start_prompt("file")
 			when !WEB {
 				// hand the editor to another screen (the iPad workflow)
 				if g_srv.on {
 					su := fmt.ctprintf("%s", g_srv.url)
-					txt(su, W - 116 - txt_w(su, FS_BODY), (TB_H - FS_BODY) / 2, FS_BODY, UI_ACCENT)
+					bx -= 12 + txt_w(su, FS_BODY)
+					txt(su, bx, (TB_H - FS_BODY) / 2, FS_BODY, UI_ACCENT)
 				} else if !g_srv.failed {
-					if ui_button({W - 196, (TB_H - 28) / 2, 80, 28}, "Serve", ghost = true) do serve_start()
+					bx -= 88
+					if ui_button({bx, by, 80, 28}, "Serve", ghost = true) do serve_start()
 				}
+				bx -= 88
+				if ui_button({bx, by, 80, 28}, "Open...", ghost = true) do project_pick()
+				bx -= 88
+				if ui_button({bx, by, 80, 28}, "Projects", ghost = true) do go_welcome()
 			}
 			// a drag scrolls the shelf; only a tap (short, unmoved) opens
 			if g_click && g_mouse.y > TB_H && !ed.prompt_on {
@@ -1719,10 +1771,8 @@ ed_frame :: proc() -> bool {
 				else do do_undo()
 			}
 			if cmd && rl.IsKeyPressed(.Y) do do_redo()
-			if cmd && rl.IsKeyPressed(.O) {
-				leave_revert()
-				ed.mode = .Browse
-				browse_refresh()
+			if cmd && rl.IsKeyPressed(.O) && !shift {
+				go_browse()
 				return true
 			}
 			if !cmd && (rl.IsKeyPressed(.X) || rl.IsKeyPressed(.DELETE) || rl.IsKeyPressed(.BACKSPACE)) {
@@ -1802,7 +1852,6 @@ ed_frame :: proc() -> bool {
 			} else {
 				switch ed.tool {
 				case .Select:
-					shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 					sel_handles(&g_handles)
 					if g_click {
 						ed.handle = 0
@@ -2172,11 +2221,7 @@ ed_frame :: proc() -> bool {
 			x += 76
 			if ui_button({x, (TOP - 28) / 2, 68, 28}, "Redo", ghost = true) do do_redo()
 			x += 76
-			if ui_button({x, (TOP - 28) / 2, 80, 28}, "Browse", ghost = true) {
-				leave_revert()
-				ed.mode = .Browse
-				browse_refresh()
-			}
+			if ui_button({x, (TOP - 28) / 2, 80, 28}, "Browse", ghost = true) do go_browse()
 			x += 88
 			if ui_button({x, (TOP - 28) / 2, 92, 28}, "Collision", ed.collide, ghost = !ed.collide) {
 				ed.collide = !ed.collide

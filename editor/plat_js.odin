@@ -53,3 +53,29 @@ plat_list :: proc(out: ^[dynamic]string) {
 plat_window_fit :: proc() {
 	// the canvas is the window; the page tells us its size via web_resize
 }
+
+// Projects are the serving machine's business: the page mirrors one
+// directory, and that is the project. No dialogs, no recents.
+plat_abs :: proc(path: string) -> string {
+	return path
+}
+
+plat_is_dir :: proc(path: string) -> bool {
+	return false
+}
+
+plat_home :: proc() -> string {
+	return ""
+}
+
+plat_default_root :: proc() -> (string, bool) {
+	return "", false
+}
+
+plat_recents_path :: proc() -> string {
+	return ""
+}
+
+plat_pick_folder :: proc() -> (string, bool) {
+	return "", false
+}

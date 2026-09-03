@@ -8,14 +8,29 @@ re-posable parts, states. The `.fart` file is the contract; see
 Scope, forever: the editor edits Fast Art Format files. It knows nothing
 about any game or engine.
 
-    ./build.sh               # builds ./fastart
+    ./build.sh               # builds ./fastart and ./fastart.app
+    ./fastart                # the current directory is the project
+    ./fastart some/dir       # that one is
     ./fastart thing.fart     # edit (created if missing)
 
 ## Using it
 
-`fastart` in a project directory opens the browser: every `.fart` below,
-as live thumbnails. Click one to edit; "new file" creates one; the
-"browse" button (or Cmd+O) returns.
+A folder is a project, the way an IDE opens one. `./build.sh` leaves a
+double-clickable `fastart.app` beside the `fastart` binary (drag it to
+Applications if you like). Launched from the Finder it shows the welcome
+screen: recent projects, and "Open Folder..." (Cmd+O) for a new one --
+or drop a folder or a `.fart` file onto the window. Double-clicking a
+`.fart` in the Finder opens it here too, with its folder as the project.
+From a terminal, `fastart` opens the current directory, `fastart some/dir`
+that one, and `fastart thing.fart` a file inside the current directory's
+project.
+
+An open project is the browser: every `.fart` below the folder, as live
+thumbnails, nested folders and all. Click one to edit; "new file" creates
+one (a name like `enemies/bat` makes the folder); "Browse" (or Cmd+O)
+returns. "Open..." switches projects, "Projects" goes back to the welcome
+screen, and Cmd+Shift+O opens a folder from anywhere. Recent projects
+live in `~/Library/Application Support/fastart/recent.txt`.
 
 The editor is mouse-first:
 
@@ -73,7 +88,7 @@ The native binary embeds a wasm build of this same editor. Hit **Serve**
 in the browse screen (or launch `fastart --serve`) and it serves that
 editor plus a small file API on the LAN (port 4747), showing the URL and
 a QR code -- scan it and the editor opens in the tablet's browser, on
-the same directory. Draw with the pencil; one finger draws, two fingers
+the open project. Draw with the pencil; one finger draws, two fingers
 pan and pinch. Lists everywhere -- the browse shelf and both side
 panels -- scroll with a drag (or the wheel on a desktop); a tap, not a
 press, is what activates rows and buttons, so scrolling never
@@ -86,8 +101,9 @@ one is left to run it) -- same as a crash, the `<name>.fart~` checkpoint
 beside the file is the recovery. Browsing between files on the tablet
 reverts normally.
 
-`./build.sh` builds web then native (the native binary embeds the web
-build); `build_web.sh` alone refreshes just the web editor.
+`./build.sh` builds web, then native (the native binary embeds the web
+build), then wraps `fastart.app` around it (`build_app.sh`, macOS);
+`build_web.sh` alone refreshes just the web editor.
 - **Saving is a checkpoint, not a copy.** The file on disk always mirrors
   what you see (written a beat after every change, so a game hot-reloading
   the file shows your experiment live). Save (Cmd+S) marks the checkpoint;
