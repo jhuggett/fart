@@ -7,14 +7,13 @@
 #   make serve DIR=path/to/art      the LAN server only, no window
 #   make test       every check: core, corpus, Odin loader, studio
 #   make validate DIR=path/to/art   fart validate
-#   make classic    the raylib editor (./fastart, fastart.app)
 
 SHELL := /bin/sh
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate classic clean
+.PHONY: help setup dev app run serve test validate clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -51,11 +50,8 @@ test: node_modules
 validate: node_modules
 	node packages/core/src/cli.ts validate $(DIR)
 
-classic:
-	./build.sh
-
 clean:
-	rm -rf studio/bin studio/frontend/dist packages/core/dist fastart fastart.app web_out
+	rm -rf studio/bin studio/frontend/dist packages/core/dist
 
 node_modules: package.json package-lock.json
 	npm install

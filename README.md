@@ -14,7 +14,6 @@ like.
     packages/core    @fastart/core: the format as a TypeScript library + `fart` CLI
     loaders/odin     the reference Odin loader (and its corpus test)
     studio/          fastart studio: the editor as a desktop app (Wails 3 + web)
-    editor/          the classic raylib editor, still here, still works
 
 ## The format
 
@@ -55,13 +54,8 @@ tagging `studio-vX.Y.Z`; see `.github/workflows/release.yml`.
 
 How to use it is in the app (Docs) and in `studio/frontend/src/docs/guide.md`.
 
-## The classic editor
-
-`editor/` is the original Odin + raylib editor, single binary, embedded
-wasm build for the tablet. `./build.sh` builds `./fastart` and
-`fastart.app`; `./fastart some/dir` opens a project. Its README is in
-`editor/README.md`. It stays until the studio has everything it had, and
-it is a fine second opinion on any file.
+The original Odin + raylib editor lives on at the `classic-v0.1.0` tag,
+for the curious.
 
 ## Using .fart in a game
 
