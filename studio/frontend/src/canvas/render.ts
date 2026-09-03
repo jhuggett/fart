@@ -8,12 +8,14 @@ import { view } from "./view.ts";
 import { drawDoc, fillShape, outlineShape, tracePoly, ident, type Map2 } from "./draw.ts";
 import { ix, handlesOf, scaleGrips, poseLever } from "./interact.ts";
 import { ed, curPart, curState, curTokName, selShapes, selShape, shapeAt, colShape, poseOfCur } from "../state/editor.ts";
-
-const ACCENT = "#ffc85c";
-const HOVER = "rgba(255,255,255,0.45)";
-const TEAL = "#6cc7c0";
+import { canvasColors } from "../state/theme.ts";
 
 export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr: number) {
+	const C = canvasColors();
+	const ACCENT = C.accent;
+	const HOVER = C.hover;
+	const TEAL = C.ok;
+	const LW = C.line;
 	const [px, py] = view.pan.value;
 	const zoom = view.zoom.value;
 	const world = () => ctx.setTransform(zoom * dpr, 0, 0, zoom * dpr, (W / 2 - px * zoom) * dpr, (H / 2 - py * zoom) * dpr);
@@ -21,9 +23,9 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	const toS = (p: Vec2): Vec2 => [(p[0] - px) * zoom + W / 2, (p[1] - py) * zoom + H / 2];
 
 	screen();
-	ctx.fillStyle = "#121213";
+	ctx.fillStyle = C.bg;
 	ctx.fillRect(0, 0, W, H);
-	drawGrid(ctx, W, H, px, py, zoom);
+	drawGrid(ctx, W, H, px, py, zoom, C.grid, C.gridStrong);
 
 	const doc = ed.doc.value;
 	const tokens = ed.tokens.value;
@@ -40,10 +42,10 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 			ctx.globalAlpha = i === sel ? 0.5 : 0.3;
 			fillShape(ctx, sh, TEAL);
 			ctx.globalAlpha = 1;
-			outlineShape(ctx, sh, i === sel ? ACCENT : "rgba(108,199,192,0.8)", i === sel ? 1.5 : 1, zoom);
+			outlineShape(ctx, sh, i === sel ? ACCENT : TEAL, (i === sel ? 1.5 : 1) * LW, zoom);
 		});
 		const cs = colShape();
-		if (cs) drawHandles(ctx, handlesOf(cs).map(toS), screen, world);
+		if (cs) drawHandles(ctx, handlesOf(cs).map(toS), screen, world, C.handleFill, ACCENT, LW);
 	} else if (st) {
 		// pose mode: outline the current part where it lands, and its lever
 		const part = curPart();
@@ -51,7 +53,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		if (part && sp) {
 			const map: Map2 = (p) => posePoint(p, part, sp);
 			const scale = poseOf(sp, part).scale;
-			for (const sh of part.shapes ?? []) outlineShape(ctx, sh, ACCENT, 1, zoom, map, scale);
+			for (const sh of part.shapes ?? []) outlineShape(ctx, sh, ACCENT, LW, zoom, map, scale);
 			const off = sp.offset ?? part.pivot ?? [0, 0];
 			const lever = poseLever();
 			screen();
@@ -60,7 +62,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 			if (lever) {
 				const l = toS(lever);
 				ctx.strokeStyle = ACCENT;
-				ctx.lineWidth = 1.5;
+				ctx.lineWidth = 1.5 * LW;
 				ctx.beginPath();
 				ctx.moveTo(o[0], o[1]);
 				ctx.lineTo(l[0], l[1]);
@@ -76,23 +78,23 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		// geometry mode: hover, selection, handles, the box
 		const hov = ed.hover.value;
 		const hs = shapeAt(hov);
-		if (hs && !ed.sel.value.some((r) => r.p === hov!.p && r.s === hov!.s)) outlineShape(ctx, hs, HOVER, 1, zoom);
-		for (const sh of selShapes()) outlineShape(ctx, sh, ACCENT, 1.5, zoom);
+		if (hs && !ed.sel.value.some((r) => r.p === hov!.p && r.s === hov!.s)) outlineShape(ctx, hs, HOVER, LW, zoom);
+		for (const sh of selShapes()) outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom);
 		const prim = selShape();
-		if (prim) drawHandles(ctx, handlesOf(prim).map(toS), screen, world);
+		if (prim) drawHandles(ctx, handlesOf(prim).map(toS), screen, world, C.handleFill, ACCENT, LW);
 		const grips = scaleGrips();
 		if (grips.length && ed.sel.value.length) {
 			screen();
 			const a = toS(grips[0].at);
 			const c = toS(grips[2].at);
-			ctx.strokeStyle = "rgba(255,200,92,0.35)";
-			ctx.lineWidth = 1;
+			ctx.strokeStyle = C.accentSoft;
+			ctx.lineWidth = LW;
 			ctx.setLineDash([4, 4]);
 			ctx.strokeRect(a[0], a[1], c[0] - a[0], c[1] - a[1]);
 			ctx.setLineDash([]);
 			for (const g of grips) {
 				const s = toS(g.at);
-				ctx.fillStyle = "#1d1d1f";
+				ctx.fillStyle = C.handleFill;
 				ctx.strokeStyle = ACCENT;
 				ctx.beginPath();
 				ctx.rect(s[0] - 4, s[1] - 4, 8, 8);
@@ -105,11 +107,11 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		const part = curPart();
 		if (part) {
 			screen();
-			crosshair(ctx, toS(part.pivot ?? [0, 0]), "rgba(255,200,92,0.7)");
+			crosshair(ctx, toS(part.pivot ?? [0, 0]), C.accentSoft);
 			for (const a of part.anchors ?? []) {
 				const s = toS(a.at);
-				diamond(ctx, s, "rgba(108,199,192,0.9)");
-				ctx.fillStyle = "rgba(108,199,192,0.9)";
+				diamond(ctx, s, TEAL);
+				ctx.fillStyle = TEAL;
 				ctx.font = "11px system-ui, sans-serif";
 				ctx.fillText(a.name, s[0] + 8, s[1] - 6);
 			}
@@ -123,9 +125,9 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		screen();
 		const a = toS(ix.mqA);
 		const b = toS(cur);
-		ctx.fillStyle = "rgba(255,200,92,0.06)";
-		ctx.strokeStyle = "rgba(255,200,92,0.5)";
-		ctx.lineWidth = 1;
+		ctx.fillStyle = C.marquee;
+		ctx.strokeStyle = C.accentSoft;
+		ctx.lineWidth = LW;
 		ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
 		ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
 		world();
@@ -157,7 +159,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		}
 		screen();
 		ctx.strokeStyle = css;
-		ctx.lineWidth = 1.5;
+		ctx.lineWidth = 1.5 * LW;
 		ctx.beginPath();
 		pts.forEach((q, i) => {
 			const s = toS(q);
@@ -184,12 +186,12 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	screen();
 }
 
-function drawHandles(ctx: CanvasRenderingContext2D, pts: Vec2[], screen: () => void, world: () => void) {
+function drawHandles(ctx: CanvasRenderingContext2D, pts: Vec2[], screen: () => void, world: () => void, fill: string, stroke: string, lw: number) {
 	screen();
 	for (const s of pts) {
-		ctx.fillStyle = "#1d1d1f";
-		ctx.strokeStyle = ACCENT;
-		ctx.lineWidth = 1.5;
+		ctx.fillStyle = fill;
+		ctx.strokeStyle = stroke;
+		ctx.lineWidth = 1.5 * lw;
 		ctx.beginPath();
 		ctx.arc(s[0], s[1], 4.5, 0, Math.PI * 2);
 		ctx.fill();
@@ -223,7 +225,7 @@ function diamond(ctx: CanvasRenderingContext2D, s: Vec2, css: string) {
 	ctx.fill();
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: number, py: number, zoom: number) {
+function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: number, py: number, zoom: number, minor: string, major: string) {
 	// a step that stays between 24 and 120 pixels
 	let step = 1;
 	while (step * zoom < 24) step *= step === 1 ? 5 : 2;
@@ -233,7 +235,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: numbe
 	const x1 = px + W / 2 / zoom;
 	const y1 = py + H / 2 / zoom;
 	ctx.lineWidth = 1;
-	ctx.strokeStyle = "rgba(255,255,255,0.045)";
+	ctx.strokeStyle = minor;
 	ctx.beginPath();
 	for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) {
 		const sx = Math.round((x - px) * zoom + W / 2) + 0.5;
@@ -247,7 +249,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: numbe
 	}
 	ctx.stroke();
 	// the axes
-	ctx.strokeStyle = "rgba(255,255,255,0.12)";
+	ctx.strokeStyle = major;
 	ctx.beginPath();
 	const ax = Math.round(-px * zoom + W / 2) + 0.5;
 	const ay = Math.round(-py * zoom + H / 2) + 0.5;

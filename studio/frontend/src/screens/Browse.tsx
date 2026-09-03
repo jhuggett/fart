@@ -4,12 +4,15 @@ import { shell } from "../shell/shell.ts";
 import { ask } from "../state/prompt.ts";
 import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
+import { theme } from "../state/theme.ts";
+import { ThemeButton } from "../ui/ThemeMenu.tsx";
 
 function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	const ref = useRef<HTMLCanvasElement>(null);
+	const rev = theme.rev.value;
 	useEffect(() => {
 		if (ref.current && thumb) drawThumb(ref.current, thumb.doc, thumb.tokens);
-	}, [thumb]);
+	}, [thumb, rev]);
 	const dir = dirname(rel);
 	return (
 		<div class="file" onClick={() => void openDoc(rel)}>
@@ -59,6 +62,7 @@ export function Browse() {
 				<button class="btn ghost" onClick={() => void ask("Name the new file").then((n) => { if (n) void newFile(n); })}>
 					new file
 				</button>
+				<ThemeButton />
 				<button class="btn ghost" onClick={goDocs}>
 					Docs
 				</button>

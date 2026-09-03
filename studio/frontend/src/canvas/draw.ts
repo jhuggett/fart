@@ -2,6 +2,7 @@
 // of the format, and this is roughly that plus outlines. Everything takes
 // a `map` so the same code draws rest space and a posed state.
 
+import { canvasColors } from "../state/theme.ts";
 import {
 	colorOf,
 	cssColor,
@@ -151,10 +152,11 @@ export function drawThumb(canvas: HTMLCanvasElement, doc: Doc, tokens: readonly 
 		return;
 	}
 	ctx.font = "11px system-ui, sans-serif";
+	const C = canvasColors();
 	if (doc.parts?.length) {
-		ctx.fillStyle = "#636361";
+		ctx.fillStyle = C.text3;
 		ctx.fillText("awaiting art:", 10, 18);
-		ctx.fillStyle = "#8d8d8b";
+		ctx.fillStyle = C.text2;
 		let y = 34;
 		for (const p of doc.parts) {
 			if (y > h - 6) break;

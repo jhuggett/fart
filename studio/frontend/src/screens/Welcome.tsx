@@ -1,6 +1,7 @@
 import { project, pickFolder, openProject, forgetRecent, goDocs } from "../state/project.ts";
 import { shell } from "../shell/shell.ts";
 import { basename, pretty } from "../state/paths.ts";
+import { ThemeButton } from "../ui/ThemeMenu.tsx";
 
 export function Welcome() {
 	const recents = project.recents.value;
@@ -10,6 +11,7 @@ export function Welcome() {
 				<span class="brand">fastart</span>
 				<span class="sub">the Fast Art Format editor</span>
 				<div class="spacer" />
+				<ThemeButton label />
 				<button class="btn ghost" onClick={goDocs}>
 					Docs
 				</button>
@@ -29,7 +31,7 @@ export function Welcome() {
 						From a terminal: <code class="kbd">studio &lt;folder&gt;</code> or <code class="kbd">studio thing.fart</code>
 					</p>
 					<p style="margin-top:22px">
-						New here? The <a style="color:var(--accent);cursor:pointer" onClick={goDocs}>docs</a> live inside the app: the guide, and the format itself.
+						New here? The <a onClick={goDocs}>docs</a> live inside the app: the guide, and the format itself.
 					</p>
 				</div>
 				<div class="recent">

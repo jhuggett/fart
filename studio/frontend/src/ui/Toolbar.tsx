@@ -2,6 +2,7 @@ import { signal } from "@preact/signals";
 import { ed, curState, save, undo, redo, type Tool } from "../state/editor.ts";
 import { project, goBrowse, goDocs } from "../state/project.ts";
 import { basename } from "../state/paths.ts";
+import { ThemeButton } from "./ThemeMenu.tsx";
 
 const addOpen = signal(false);
 export const showIssues = signal(false);
@@ -85,6 +86,7 @@ export function Toolbar() {
 			<button class="btn ghost" onClick={goDocs}>
 				Docs
 			</button>
+			<ThemeButton />
 			<div class="spacer" />
 			{issues.length > 0 && (
 				<button class={`btn small ${showIssues.value ? "active" : "ghost"}`} onClick={() => (showIssues.value = !showIssues.value)}>

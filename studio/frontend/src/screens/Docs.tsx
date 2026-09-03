@@ -5,6 +5,7 @@ import { useMemo } from "preact/hooks";
 import { signal } from "@preact/signals";
 import { marked } from "marked";
 import { leaveDocs } from "../state/project.ts";
+import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import guide from "../docs/guide.md?raw";
 import spec from "../../../../spec/FORMAT.md?raw";
 
@@ -23,6 +24,7 @@ export function Docs() {
 				<span class="brand">fastart</span>
 				<span class="sub">docs</span>
 				<div class="spacer" />
+				<ThemeButton label />
 				<button class="btn ghost" onClick={leaveDocs}>
 					Back
 				</button>

@@ -79,6 +79,14 @@ The Collision button (or C) dims the art and edits the document's
 A line is a capsule (a girth slider when selected); they never draw
 in-game. Esc deselects, X deletes, C flips back.
 
+## Themes
+
+The ◐ button in any top bar picks a theme: Graphite (the default),
+Midnight, Moss, Plum, Paper (light), and High contrast, or **System** to
+follow the OS between Graphite and Paper. The canvas grid, selection and
+handles follow the panels. The choice is remembered per device, so a
+tablet can wear a different one than the desk.
+
 ## Clipboard and keys
 
 Cmd+C / Cmd+V copy and paste the selection; Cmd+X cuts; Cmd+D duplicates

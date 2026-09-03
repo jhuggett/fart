@@ -11,6 +11,7 @@ import { view, toWorld, zoomAt } from "./view.ts";
 import { render } from "./render.ts";
 import { onDown, onMove, onUp, cancelGesture, ix } from "./interact.ts";
 import { ed } from "../state/editor.ts";
+import { theme } from "../state/theme.ts";
 
 export function Canvas() {
 	const ref = useRef<HTMLCanvasElement>(null);
@@ -55,6 +56,7 @@ export function Canvas() {
 			void ed.tool.value;
 			void view.pan.value;
 			void view.zoom.value;
+			void theme.rev.value;
 			request();
 		});
 
