@@ -54,6 +54,8 @@ export interface Anchor {
 
 export interface Part {
 	name: string;
+	/** Since 1.1: the part this one is posed relative to. */
+	parent?: string;
 	/** Absent means [0, 0]. */
 	pivot?: Vec2;
 	shapes?: Shape[];
@@ -80,6 +82,41 @@ export interface State {
 	[extra: string]: unknown;
 }
 
+export type Ease = "linear" | "in" | "out" | "in-out" | "step";
+
+/** One moment in a clip: a time, and a pose named or inline. */
+export interface ClipKey {
+	/** Seconds. */
+	t: number;
+	state?: string;
+	parts?: StatePart[];
+	/** How time approaches this key from the previous one. Absent means linear. */
+	ease?: Ease;
+	[extra: string]: unknown;
+}
+
+/** Since 1.1: states in time. */
+export interface Clip {
+	name: string;
+	/** Time wraps at the last key. Absent means false. */
+	loop?: boolean;
+	/** In non-decreasing t, at least one. */
+	keys: ClipKey[];
+	[extra: string]: unknown;
+}
+
+/** Since 1.1: an inverse-kinematics chain a runtime may solve live. */
+export interface Constraint {
+	name: string;
+	/** Parts root-first, each parented to the previous. */
+	chain: string[];
+	/** "part/anchor" on the chain's last part. */
+	end: string;
+	/** Preferred elbow direction where a solution is ambiguous. */
+	bend?: 1 | -1;
+	[extra: string]: unknown;
+}
+
 export interface Doc {
 	version: 1;
 	name?: string;
@@ -87,6 +124,8 @@ export interface Doc {
 	palette?: Token[];
 	parts?: Part[];
 	states?: State[];
+	clips?: Clip[];
+	constraints?: Constraint[];
 	collision?: Shape[];
 	meta?: Record<string, unknown>;
 	[extra: string]: unknown;
@@ -94,6 +133,8 @@ export interface Doc {
 
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
+/** The minor: what this library knows past the major. */
+export const FORMAT_MINOR = 1;
 
 /** What an unresolvable token renders as: loud, on purpose. */
 export const MAGENTA: Rgba = [255, 0, 255, 255];

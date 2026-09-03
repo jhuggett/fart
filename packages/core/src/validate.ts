@@ -18,7 +18,15 @@ export type ErrorCode =
 	| "dup.part"
 	| "dup.state"
 	| "dup.token"
-	| "path";
+	| "dup.clip"
+	| "dup.constraint"
+	| "path"
+	| "ref.parent"
+	| "cycle"
+	| "clip"
+	| "ref.state"
+	| "chain"
+	| "ref.anchor";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -46,9 +54,13 @@ export interface ValidateOptions {
 
 const KINDS = ["circle", "line", "poly"];
 const RESERVED_KINDS = ["ring", "path"];
-const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "collision", "meta"];
-const RESERVED_TOP = ["clips", "constraints", "space"];
-const KNOWN_PART = ["name", "pivot", "shapes", "anchors", "meta"];
+const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta"];
+const RESERVED_TOP = ["space"];
+const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta"];
+const KNOWN_CLIP = ["name", "loop", "keys"];
+const KNOWN_KEY = ["t", "state", "parts", "ease"];
+const EASES = ["linear", "in", "out", "in-out", "step"];
+const KNOWN_CONSTRAINT = ["name", "chain", "end", "bend"];
 const RESERVED_PART = ["children"];
 const KNOWN_SHAPE: Record<string, string[]> = {
 	circle: ["kind", "color", "at", "r"],
@@ -193,6 +205,7 @@ function checkToken(ctx: Ctx, t: unknown, path: string): string | null {
 function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 	if (!ctx.object(p, path)) return null;
 	const named = ctx.name(p.name, `${path}/name`);
+	if ("parent" in p) ctx.name(p.parent, `${path}/parent`);
 	if ("pivot" in p) ctx.vec2(p.pivot, `${path}/pivot`);
 	if ("shapes" in p && ctx.array(p.shapes, `${path}/shapes`)) {
 		p.shapes.forEach((sh, i) => checkShape(ctx, sh, `${path}/shapes/${i}`, true));
@@ -211,25 +224,92 @@ function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 	return named ? (p.name as string) : null;
 }
 
+function checkStateParts(ctx: Ctx, parts: unknown[], path: string, partNames: Set<string>) {
+	parts.forEach((sp, i) => {
+		const spp = `${path}/${i}`;
+		if (!ctx.object(sp, spp)) return;
+		if (ctx.name(sp.part, `${spp}/part`) && !partNames.has(sp.part)) {
+			ctx.err("ref.part", `${spp}/part`, `no part named "${sp.part}"`);
+		}
+		if ("offset" in sp) ctx.vec2(sp.offset, `${spp}/offset`);
+		if ("rotate" in sp) ctx.number(sp.rotate, `${spp}/rotate`);
+		if ("scale" in sp) ctx.number(sp.scale, `${spp}/scale`, 0);
+		ctx.unknown(sp, KNOWN_STATE_PART, [], spp);
+	});
+}
+
 function checkState(ctx: Ctx, s: unknown, path: string, partNames: Set<string>): string | null {
 	if (!ctx.object(s, path)) return null;
 	const named = ctx.name(s.name, `${path}/name`);
 	if (!("parts" in s)) ctx.err("schema", `${path}/parts`, "a state lists its parts (an empty list is fine)");
-	else if (ctx.array(s.parts, `${path}/parts`)) {
-		s.parts.forEach((sp, i) => {
-			const spp = `${path}/parts/${i}`;
-			if (!ctx.object(sp, spp)) return;
-			if (ctx.name(sp.part, `${spp}/part`) && !partNames.has(sp.part)) {
-				ctx.err("ref.part", `${spp}/part`, `no part named "${sp.part}"`);
-			}
-			if ("offset" in sp) ctx.vec2(sp.offset, `${spp}/offset`);
-			if ("rotate" in sp) ctx.number(sp.rotate, `${spp}/rotate`);
-			if ("scale" in sp) ctx.number(sp.scale, `${spp}/scale`, 0);
-			ctx.unknown(sp, KNOWN_STATE_PART, [], spp);
-		});
-	}
+	else if (ctx.array(s.parts, `${path}/parts`)) checkStateParts(ctx, s.parts, `${path}/parts`, partNames);
 	ctx.unknown(s, KNOWN_STATE, [], path);
 	return named ? (s.name as string) : null;
+}
+
+function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, stateNames: Set<string>): string | null {
+	if (!ctx.object(c, path)) return null;
+	const named = ctx.name(c.name, `${path}/name`);
+	if ("loop" in c && typeof c.loop !== "boolean") ctx.err("schema", `${path}/loop`, "expected true or false");
+	if (!("keys" in c)) ctx.err("schema", `${path}/keys`, "a clip has keys");
+	else if (ctx.array(c.keys, `${path}/keys`)) {
+		if (c.keys.length === 0) ctx.err("schema", `${path}/keys`, "a clip needs at least one key");
+		let last = -Infinity;
+		c.keys.forEach((k, i) => {
+			const kp = `${path}/keys/${i}`;
+			if (!ctx.object(k, kp)) return;
+			if (ctx.number(k.t, `${kp}/t`, 0)) {
+				if ((k.t as number) < last) ctx.err("clip", `${kp}/t`, "keys must be in non-decreasing t");
+				last = Math.max(last, k.t as number);
+			}
+			const hasState = "state" in k;
+			const hasParts = "parts" in k;
+			if (hasState === hasParts) ctx.err("schema", kp, "a key names a state or carries parts, exactly one of the two");
+			if (hasState && ctx.name(k.state, `${kp}/state`) && !stateNames.has(k.state)) {
+				ctx.err("ref.state", `${kp}/state`, `no state named "${k.state}"`);
+			}
+			if (hasParts && ctx.array(k.parts, `${kp}/parts`)) checkStateParts(ctx, k.parts, `${kp}/parts`, partNames);
+			if ("ease" in k && !EASES.includes(k.ease as string)) ctx.err("schema", `${kp}/ease`, `ease must be one of ${EASES.join(", ")}`);
+			ctx.unknown(k, KNOWN_KEY, [], kp);
+		});
+	}
+	ctx.unknown(c, KNOWN_CLIP, [], path);
+	return named ? (c.name as string) : null;
+}
+
+function checkConstraint(ctx: Ctx, c: unknown, path: string, parts: Map<string, Obj>): string | null {
+	if (!ctx.object(c, path)) return null;
+	const named = ctx.name(c.name, `${path}/name`);
+	let chain: string[] = [];
+	if (!("chain" in c)) ctx.err("schema", `${path}/chain`, "a constraint has a chain");
+	else if (ctx.array(c.chain, `${path}/chain`)) {
+		if (c.chain.length === 0) ctx.err("schema", `${path}/chain`, "a chain needs at least one part");
+		const ok = c.chain.every((n, i) => ctx.name(n, `${path}/chain/${i}`));
+		if (ok) chain = c.chain as string[];
+	}
+	chain.forEach((n, i) => {
+		const part = parts.get(n);
+		if (!part) {
+			ctx.err("ref.part", `${path}/chain/${i}`, `no part named "${n}"`);
+			return;
+		}
+		if (i > 0 && part.parent !== chain[i - 1]) {
+			ctx.err("chain", `${path}/chain/${i}`, `"${n}" is not parented to "${chain[i - 1]}"`);
+		}
+	});
+	if (!("end" in c)) ctx.err("schema", `${path}/end`, "a constraint has an end: part/anchor");
+	else if (typeof c.end !== "string" || !/^[^/]+\/[^/]+$/.test(c.end)) ctx.err("schema", `${path}/end`, "end is part/anchor");
+	else if (chain.length) {
+		const [pn, an] = c.end.split("/");
+		const lastPart = parts.get(chain[chain.length - 1]);
+		const anchors = Array.isArray(lastPart?.anchors) ? (lastPart!.anchors as Obj[]) : [];
+		if (pn !== chain[chain.length - 1] || !anchors.some((a) => isObj(a) && a.name === an)) {
+			ctx.err("ref.anchor", `${path}/end`, `"${c.end}" is not an anchor on the chain's last part`);
+		}
+	}
+	if ("bend" in c && c.bend !== 1 && c.bend !== -1) ctx.err("schema", `${path}/bend`, "bend is 1 or -1");
+	ctx.unknown(c, KNOWN_CONSTRAINT, [], path);
+	return named ? (c.name as string) : null;
 }
 
 function checkDuplicates(ctx: Ctx, names: (string | null)[], code: ErrorCode, path: string, what: string) {
@@ -301,15 +381,51 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 	}
 
 	const partNames: (string | null)[] = [];
+	const partObjs = new Map<string, Obj>();
 	if ("parts" in doc && ctx.array(doc.parts, "/parts")) {
-		doc.parts.forEach((p, i) => partNames.push(checkPart(ctx, p, `/parts/${i}`)));
+		doc.parts.forEach((p, i) => {
+			const n = checkPart(ctx, p, `/parts/${i}`);
+			partNames.push(n);
+			if (n !== null && !partObjs.has(n)) partObjs.set(n, p as Obj);
+		});
 		checkDuplicates(ctx, partNames, "dup.part", "/parts", "parts");
+		// parents: they exist, and they do not loop
+		doc.parts.forEach((p, i) => {
+			if (!isObj(p) || !isName(p.parent)) return;
+			if (!partObjs.has(p.parent)) {
+				ctx.err("ref.parent", `/parts/${i}/parent`, `no part named "${p.parent}"`);
+				return;
+			}
+			const seen = new Set<string>([p.name as string]);
+			let cur: string | undefined = p.parent;
+			while (cur !== undefined) {
+				if (seen.has(cur)) {
+					ctx.err("cycle", `/parts/${i}/parent`, `parents loop through "${cur}"`);
+					break;
+				}
+				seen.add(cur);
+				const next: unknown = partObjs.get(cur)?.parent;
+				cur = isName(next) ? next : undefined;
+			}
+		});
 	}
 	const partSet = new Set(partNames.filter((n): n is string => n !== null));
 
+	const stateNames: (string | null)[] = [];
 	if ("states" in doc && ctx.array(doc.states, "/states")) {
-		const stateNames = doc.states.map((s, i) => checkState(ctx, s, `/states/${i}`, partSet));
+		doc.states.forEach((s, i) => stateNames.push(checkState(ctx, s, `/states/${i}`, partSet)));
 		checkDuplicates(ctx, stateNames, "dup.state", "/states", "states");
+	}
+	const stateSet = new Set(stateNames.filter((n): n is string => n !== null));
+
+	if ("clips" in doc && ctx.array(doc.clips, "/clips")) {
+		const names = doc.clips.map((c, i) => checkClip(ctx, c, `/clips/${i}`, partSet, stateSet));
+		checkDuplicates(ctx, names, "dup.clip", "/clips", "clips");
+	}
+
+	if ("constraints" in doc && ctx.array(doc.constraints, "/constraints")) {
+		const names = doc.constraints.map((c, i) => checkConstraint(ctx, c, `/constraints/${i}`, partObjs));
+		checkDuplicates(ctx, names, "dup.constraint", "/constraints", "constraints");
 	}
 
 	if ("collision" in doc && ctx.array(doc.collision, "/collision")) {

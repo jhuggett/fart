@@ -7,7 +7,24 @@
 // chosen you pose parts instead: drag to place, pull the lever to turn.
 // The collision lens edits doc.collision with the same tools.
 
-import { dist, shapeBounds, shapeDistance, unposePoint, type Shape, type Vec2, type Doc } from "@fastart/core";
+import {
+	dist,
+	shapeBounds,
+	shapeDistance,
+	worldTransforms,
+	xfApply,
+	xfInvert,
+	xfAngle,
+	xfScale,
+	pivotOf,
+	chainEndWorld,
+	XF_ID,
+	type Constraint,
+	type Shape,
+	type Vec2,
+	type Doc,
+	type Xf,
+} from "@fastart/core";
 import { view } from "./view.ts";
 import { ask } from "../state/prompt.ts";
 import {
@@ -34,6 +51,11 @@ import {
 	addAnchor,
 	poseOfCur,
 	colShape,
+	curClip,
+	constraints,
+	ikTo,
+	frame,
+	doc,
 	type Ref,
 } from "../state/editor.ts";
 
@@ -59,6 +81,7 @@ export const ix = {
 	poseGrab: [0, 0] as Vec2,
 	poseRot0: 0,
 	poseAng0: 0,
+	ik: null as Constraint | null,
 	cursor: null as Vec2 | null, // world position, for previews
 	down: false,
 };
@@ -208,18 +231,33 @@ function addShape(sh: Shape) {
 	selOnly({ p: pi, s: parts()[pi].shapes!.length - 1 });
 }
 
+/** World transforms of the pose on screen (a state, or a clip frame). */
+export function frameW(): Map<string, Xf> {
+	return worldTransforms(doc(), frame());
+}
+
+/** Where a part's pivot sits on screen, parents applied. */
+export function worldPivot(name: string, W = frameW()): Vec2 | null {
+	const part = parts().find((p) => p.name === name);
+	if (!part) return null;
+	return xfApply(W.get(name) ?? XF_ID, pivotOf(part));
+}
+
 /** The current-state pose of the part under a point, or -1. */
 function posePick(at: Vec2): number {
 	const st = curState();
 	if (!st) return -1;
+	const W = frameW();
 	let best = -1;
 	let bd = 10 / z() + 2;
 	st.parts.forEach((sp, i) => {
 		const part = parts().find((p) => p.name === sp.part);
 		if (!part) return;
-		const l = unposePoint(at, part, sp);
+		const xf = W.get(part.name) ?? XF_ID;
+		const l = xfApply(xfInvert(xf), at);
+		const s = xfScale(xf) || 1;
 		for (const sh of part.shapes ?? []) {
-			const d = shapeDistance(sh, l);
+			const d = shapeDistance(sh, l) * s;
 			if (d <= bd) {
 				bd = d;
 				best = i;
@@ -229,14 +267,29 @@ function posePick(at: Vec2): number {
 	return best;
 }
 
+/** The turn lever: from the current part's world pivot, along its world angle. */
 export function poseLever(): Vec2 | null {
 	const sp = poseOfCur();
 	const part = curPart();
 	if (!sp || !part) return null;
-	const off = sp.offset ?? part.pivot ?? [0, 0];
-	const rot = sp.rotate ?? 0;
+	const W = frameW();
+	const xf = W.get(part.name) ?? XF_ID;
+	const o = xfApply(xf, pivotOf(part));
+	const ang = xfAngle(xf);
 	const l = 40 / z();
-	return [off[0] + Math.cos(rot) * l, off[1] + Math.sin(rot) * l];
+	return [o[0] + Math.cos(ang) * l, o[1] + Math.sin(ang) * l];
+}
+
+/** Every chain's reach point in the world, for grabbing. */
+export function chainGrabs(): { c: Constraint; at: Vec2 }[] {
+	const fr = frame();
+	if (!fr) return [];
+	const out: { c: Constraint; at: Vec2 }[] = [];
+	for (const c of constraints()) {
+		const at = chainEndWorld(doc(), fr, c);
+		if (at) out.push({ c, at });
+	}
+	return out;
 }
 
 // ------------------------------------------------------------- events
@@ -256,6 +309,9 @@ export function onDown(wm: Vec2, mods: Mods) {
 	}
 
 	if (ed.collide.value) return collideDown(wm);
+
+	// a clip previewing: nothing to grab; keys point at states, pose those
+	if (curClip()) return;
 
 	// a state chosen: geometry is locked, every tool poses
 	if (curState()) return poseDown(wm);
@@ -316,13 +372,24 @@ function selectDown(wm: Vec2, mods: Mods) {
 
 function poseDown(wm: Vec2) {
 	const st = curState()!;
+	// a chain's reach point first: dragging it solves the chain
+	for (const g of chainGrabs()) {
+		if (dist(g.at, wm) * z() < 10) {
+			ix.ik = g.c;
+			const last = g.c.chain[g.c.chain.length - 1];
+			const k = parts().findIndex((p) => p.name === last);
+			if (k >= 0) ed.curPart.value = k;
+			return;
+		}
+	}
 	const lever = poseLever();
 	const sp = poseOfCur();
-	if (lever && sp && dist(lever, wm) * z() < 10) {
+	const part = curPart();
+	if (lever && sp && part && dist(lever, wm) * z() < 10) {
 		ix.poseRot = true;
 		ix.poseRot0 = sp.rotate ?? 0;
-		const off = sp.offset ?? curPart()!.pivot ?? [0, 0];
-		ix.poseAng0 = Math.atan2(wm[1] - off[1], wm[0] - off[0]);
+		const o = worldPivot(part.name) ?? [0, 0];
+		ix.poseAng0 = Math.atan2(wm[1] - o[1], wm[0] - o[0]);
 		return;
 	}
 	const pi = posePick(wm);
@@ -331,9 +398,8 @@ function poseDown(wm: Vec2) {
 		const k = parts().findIndex((p) => p.name === name);
 		if (k >= 0) ed.curPart.value = k;
 		ix.poseDrag = true;
-		const part = parts()[k];
-		const off = st.parts[pi].offset ?? part?.pivot ?? [0, 0];
-		ix.poseGrab = [wm[0] - off[0], wm[1] - off[1]];
+		const o = worldPivot(name) ?? [0, 0];
+		ix.poseGrab = [wm[0] - o[0], wm[1] - o[1]];
 	}
 }
 
@@ -416,20 +482,30 @@ export function onMove(wm: Vec2, mods: Mods) {
 			}, "drag");
 			ix.dragOff = wm;
 		}
+	} else if (ix.ik) {
+		ikTo(ix.ik, wm);
 	} else if (ix.poseRot) {
 		const sp = poseOfCur();
-		if (sp) {
-			const off = sp.offset ?? curPart()!.pivot ?? [0, 0];
-			const a = Math.atan2(wm[1] - off[1], wm[0] - off[0]);
+		const part = curPart();
+		if (sp && part) {
+			// a turn about the pivot on screen is the same turn in the part's own frame
+			const o = worldPivot(part.name) ?? [0, 0];
+			const a = Math.atan2(wm[1] - o[1], wm[0] - o[0]);
 			mutate(() => {
 				sp.rotate = ix.poseRot0 + (a - ix.poseAng0);
 			}, "pose");
 		}
 	} else if (ix.poseDrag) {
 		const sp = poseOfCur();
-		if (sp) {
+		const part = curPart();
+		if (sp && part) {
+			// the pivot lands under the cursor, measured in the parent's frame
+			const W = frameW();
+			const parentXf = part.parent ? (W.get(part.parent) ?? XF_ID) : XF_ID;
+			const want: Vec2 = [wm[0] - ix.poseGrab[0], wm[1] - ix.poseGrab[1]];
+			const local = xfApply(xfInvert(parentXf), want);
 			mutate(() => {
-				sp.offset = [wm[0] - ix.poseGrab[0], wm[1] - ix.poseGrab[1]];
+				sp.offset = local;
 			}, "pose");
 		}
 	} else {
@@ -469,6 +545,7 @@ export function onUp(wm: Vec2, mods: Mods) {
 	ix.scaling = false;
 	ix.poseDrag = false;
 	ix.poseRot = false;
+	ix.ik = null;
 	endGesture();
 	ed.rev.value++;
 	void mods;
@@ -484,6 +561,7 @@ export function cancelGesture() {
 	ix.drawing = false;
 	ix.poseDrag = false;
 	ix.poseRot = false;
+	ix.ik = null;
 	endGesture();
 	ed.rev.value++;
 }

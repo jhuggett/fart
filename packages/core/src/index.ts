@@ -8,3 +8,5 @@ export * from "./validate.ts";
 export * from "./parse.ts";
 export * from "./palette.ts";
 export * from "./geometry.ts";
+export * from "./clips.ts";
+export * from "./ik.ts";

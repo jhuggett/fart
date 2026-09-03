@@ -8,10 +8,10 @@ import {
 	cssColor,
 	docBounds,
 	drawList,
-	poseOf,
-	posePoint,
+	xfApply,
 	type Doc,
 	type Shape,
+	type StatePart,
 	type Token,
 	type Vec2,
 } from "@fastart/core";
@@ -104,19 +104,18 @@ export function outlineShape(
 }
 
 export interface DrawOptions {
-	/** Pose the parts as this state; absent draws every part at rest. */
-	state?: string;
+	/** A state name or a pose list (a clip frame); absent draws every part at rest. */
+	pose?: string | readonly StatePart[];
 	alpha?: number;
 }
 
 /** The whole picture, in world units (set the transform first). */
 export function drawDoc(ctx: CanvasRenderingContext2D, doc: Doc, tokens: readonly Token[], opts: DrawOptions = {}) {
 	ctx.globalAlpha = opts.alpha ?? 1;
-	for (const { part, sp } of drawList(doc, opts.state)) {
-		const pose = poseOf(sp, part);
-		const map: Map2 = (p) => posePoint(p, part, sp);
+	for (const { part, xf, scale } of drawList(doc, opts.pose)) {
+		const map: Map2 = (p) => xfApply(xf, p);
 		for (const sh of part.shapes ?? []) {
-			fillShape(ctx, sh, cssColor(colorOf(tokens, sh.color ?? "")), map, pose.scale);
+			fillShape(ctx, sh, cssColor(colorOf(tokens, sh.color ?? "")), map, scale);
 		}
 	}
 	ctx.globalAlpha = 1;
@@ -147,7 +146,7 @@ export function drawThumb(canvas: HTMLCanvasElement, doc: Doc, tokens: readonly 
 		const s = Math.min((w - 16) / bw, (h - 16) / bh);
 		const mid: Vec2 = [(b.lo[0] + b.hi[0]) / 2, (b.lo[1] + b.hi[1]) / 2];
 		ctx.setTransform(s * dpr, 0, 0, s * dpr, (w / 2 - mid[0] * s) * dpr, (h / 2 - mid[1] * s) * dpr);
-		drawDoc(ctx, doc, tokens, { state: doc.states?.[0]?.name });
+		drawDoc(ctx, doc, tokens, { pose: doc.states?.[0]?.name });
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		return;
 	}

@@ -532,6 +532,27 @@ code,
 	padding: 1px 5px;
 }
 
+.select {
+	height: 22px;
+	background: var(--btn);
+	border: 1px solid var(--edge);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: var(--fs-small);
+	padding: 0 4px;
+	max-width: 140px;
+}
+.num {
+	width: 58px;
+	height: 22px;
+	background: var(--inset);
+	border: 1px solid var(--edge);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: var(--fs-small);
+	padding: 0 6px;
+}
+
 /* ---------------------------------------------------------- editor */
 .editor {
 	flex: 1;
@@ -552,10 +573,79 @@ code,
 .panel.right {
 	border-left: 1px solid var(--edge);
 }
+.canvas-col {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
 .canvas-wrap {
 	position: relative;
+	flex: 1;
 	min-width: 0;
+	min-height: 0;
 	background: var(--bg);
+}
+.timeline {
+	flex: none;
+	height: 60px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	background: var(--panel);
+	border-top: 1px solid var(--edge);
+}
+.timeline .time {
+	font-size: var(--fs-small);
+	color: var(--text-2);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	min-width: 84px;
+}
+.track {
+	flex: 1;
+	height: 38px;
+	position: relative;
+	background: var(--inset);
+	border: 1px solid var(--edge);
+	border-radius: 8px;
+	cursor: pointer;
+	touch-action: none;
+}
+.track .tick {
+	position: absolute;
+	top: 2px;
+	font-size: 9px;
+	color: var(--text-3);
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+.track .key {
+	position: absolute;
+	top: 50%;
+	width: 12px;
+	height: 12px;
+	margin-top: 2px;
+	transform: translate(-50%, -50%) rotate(45deg);
+	background: var(--raised);
+	border: 1.5px solid var(--accent);
+	border-radius: 2px;
+	cursor: grab;
+	touch-action: none;
+}
+.track .key.active {
+	background: var(--accent);
+}
+.track .playhead {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--accent);
+	transform: translateX(-1px);
+	pointer-events: none;
+	opacity: 0.8;
 }
 .canvas-wrap canvas {
 	position: absolute;

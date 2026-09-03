@@ -1,4 +1,4 @@
-import { ed, states, curPart, curState, poseOfCur, addState, deleteState, renameState, setPose, resetPose, toggleMembership } from "../state/editor.ts";
+import { ed, states, curPart, curState, poseOfCur, addState, deleteState, renameState, setPose, resetPose, toggleMembership, selectClip } from "../state/editor.ts";
 import { ask } from "../state/prompt.ts";
 import { Slider } from "./Slider.tsx";
 
@@ -17,8 +17,9 @@ export function StatesPanel() {
 				States <span class="hint">the preview</span>
 			</div>
 			<div
-				class={`row ${cur < 0 ? "active" : ""}`}
+				class={`row ${cur < 0 && ed.curClip.value < 0 ? "active" : ""}`}
 				onClick={() => {
+					selectClip(-1);
 					ed.curState.value = -1;
 					ed.sel.value = [];
 				}}
@@ -29,6 +30,7 @@ export function StatesPanel() {
 				<div
 					class={`row ${k === cur ? "active" : ""}`}
 					onClick={() => {
+						selectClip(-1);
 						ed.curState.value = k;
 						ed.sel.value = [];
 					}}

@@ -1,6 +1,6 @@
 {
   "name": "@fastart/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fast Art Format (.fart): types, parsing, validation, palettes, posing, triangulation. Zero dependencies.",
   "license": "MIT",
   "type": "module",

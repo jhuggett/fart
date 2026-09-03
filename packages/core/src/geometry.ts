@@ -5,6 +5,88 @@
 
 import type { Doc, Part, Shape, State, StatePart, Vec2 } from "./types.ts";
 
+// ------------------------------------------------------------- transforms
+// Since 1.1 a part may have a parent; poses compose. An affine map in the
+// canvas convention: x' = a x + c y + e, y' = b x + d y + f.
+
+export type Xf = [number, number, number, number, number, number];
+export const XF_ID: Xf = [1, 0, 0, 1, 0, 0];
+
+/** A then B? No: (A ∘ B)(p) = A(B(p)). */
+export function xfMul(A: Xf, B: Xf): Xf {
+	return [
+		A[0] * B[0] + A[2] * B[1],
+		A[1] * B[0] + A[3] * B[1],
+		A[0] * B[2] + A[2] * B[3],
+		A[1] * B[2] + A[3] * B[3],
+		A[0] * B[4] + A[2] * B[5] + A[4],
+		A[1] * B[4] + A[3] * B[5] + A[5],
+	];
+}
+
+export function xfApply(T: Xf, p: Vec2): Vec2 {
+	return [T[0] * p[0] + T[2] * p[1] + T[4], T[1] * p[0] + T[3] * p[1] + T[5]];
+}
+
+export function xfInvert(T: Xf): Xf {
+	const det = T[0] * T[3] - T[1] * T[2] || 1e-12;
+	const a = T[3] / det;
+	const b = -T[1] / det;
+	const c = -T[2] / det;
+	const d = T[0] / det;
+	return [a, b, c, d, -(a * T[4] + c * T[5]), -(b * T[4] + d * T[5])];
+}
+
+/** The uniform scale a transform applies. */
+export function xfScale(T: Xf): number {
+	return Math.hypot(T[0], T[1]);
+}
+
+/** The rotation a transform applies, in radians. */
+export function xfAngle(T: Xf): number {
+	return Math.atan2(T[1], T[0]);
+}
+
+/** A part's own pose: translate(offset) · rotate · scale · translate(-pivot). */
+export function localXf(part: Part, sp: StatePart | undefined): Xf {
+	const pv = pivotOf(part);
+	if (!sp) return [1, 0, 0, 1, 0, 0];
+	const { offset, rotate, scale } = poseOf(sp, part);
+	const c = Math.cos(rotate) * scale;
+	const s = Math.sin(rotate) * scale;
+	return [c, s, -s, c, offset[0] - (c * pv[0] - s * pv[1]), offset[1] - (s * pv[0] + c * pv[1])];
+}
+
+/**
+ * Every part's world transform under a pose list (a state's parts, or a
+ * sampled clip frame): W(part) = W(parent) · L(part). Parts the list leaves
+ * out contribute identity. A loop in the parents is cut at the loop.
+ */
+export function worldTransforms(doc: Doc, poses?: readonly StatePart[]): Map<string, Xf> {
+	const parts = doc.parts ?? [];
+	const byName = new Map(parts.map((p) => [p.name, p]));
+	const poseOfName = new Map((poses ?? []).map((sp) => [sp.part, sp]));
+	const out = new Map<string, Xf>();
+	const visiting = new Set<string>();
+	const world = (name: string): Xf => {
+		const done = out.get(name);
+		if (done) return done;
+		const part = byName.get(name);
+		if (!part) return XF_ID;
+		const local = localXf(part, poseOfName.get(name));
+		let W = local;
+		if (part.parent && byName.has(part.parent) && !visiting.has(name)) {
+			visiting.add(name);
+			W = xfMul(world(part.parent), local);
+			visiting.delete(name);
+		}
+		out.set(name, W);
+		return W;
+	};
+	for (const p of parts) world(p.name);
+	return out;
+}
+
 export function pivotOf(part: Part): Vec2 {
 	return part.pivot ?? [0, 0];
 }
@@ -24,7 +106,7 @@ export function poseOf(sp: StatePart, part: Part): Pose {
 	};
 }
 
-/** Rest space to posed space: scale and turn about the pivot, land it on offset. */
+/** Rest space to posed space in the part's own frame (parents not applied). */
 export function posePoint(p: Vec2, part: Part, sp: StatePart): Vec2 {
 	const { offset, rotate, scale } = poseOf(sp, part);
 	const pv = pivotOf(part);
@@ -54,18 +136,35 @@ export function stateOf(doc: Doc, name: string): State | undefined {
 	return doc.states?.find((s) => s.name === name);
 }
 
+export interface DrawEntry {
+	part: Part;
+	sp: StatePart;
+	/** rest space to the world, parents included */
+	xf: Xf;
+	/** the uniform scale xf applies, for stroke widths and radii */
+	scale: number;
+}
+
 /**
- * What to draw, in order, for a state (or all parts in file order when the
- * state is unknown or absent). Each entry pairs a part with its pose.
+ * What to draw, in order, for a state name, a pose list (a sampled clip
+ * frame), or nothing (every part at rest in file order). Each entry has
+ * the part, its own pose entry, and the world transform to draw it with.
  */
-export function drawList(doc: Doc, stateName?: string): { part: Part; sp: StatePart }[] {
+export function drawList(doc: Doc, pose?: string | readonly StatePart[]): DrawEntry[] {
 	const parts = doc.parts ?? [];
-	const state = stateName === undefined ? undefined : stateOf(doc, stateName);
-	if (!state) return parts.map((part) => ({ part, sp: { part: part.name } }));
-	const out: { part: Part; sp: StatePart }[] = [];
-	for (const sp of state.parts) {
+	let poses: readonly StatePart[] | undefined;
+	if (typeof pose === "string") poses = stateOf(doc, pose)?.parts;
+	else poses = pose;
+	if (!poses) {
+		return parts.map((part) => ({ part, sp: { part: part.name }, xf: XF_ID, scale: 1 }));
+	}
+	const W = worldTransforms(doc, poses);
+	const out: DrawEntry[] = [];
+	for (const sp of poses) {
 		const part = partOf(doc, sp.part);
-		if (part) out.push({ part, sp });
+		if (!part) continue;
+		const xf = W.get(part.name) ?? XF_ID;
+		out.push({ part, sp, xf, scale: xfScale(xf) });
 	}
 	return out;
 }

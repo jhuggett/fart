@@ -1,6 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { project, goBrowse, pickFolder, leaveDocs, goDocs } from "./state/project.ts";
-import { ed, save, undo, redo, deleteSel, copySel, pasteClip, cutSel, dupSel, selOrder, type Tool } from "./state/editor.ts";
+import { ed, save, undo, redo, deleteSel, copySel, pasteClip, cutSel, dupSel, selOrder, curClip, type Tool } from "./state/editor.ts";
 import { escape, polyEnter } from "./canvas/interact.ts";
 import { prompt } from "./state/prompt.ts";
 import { shell } from "./shell/shell.ts";
@@ -63,6 +63,11 @@ function onKey(e: KeyboardEvent) {
 	}
 	if (TOOL_KEYS[k]) {
 		ed.tool.value = TOOL_KEYS[k];
+		return;
+	}
+	if (curClip() && k === " ") {
+		e.preventDefault();
+		ed.playing.value = !ed.playing.value;
 		return;
 	}
 	switch (k) {

@@ -8,6 +8,8 @@ import {
 	swapParts,
 	deleteAnchor,
 	toggleMembership,
+	parentCandidates,
+	setParent,
 } from "../state/editor.ts";
 import { ask } from "../state/prompt.ts";
 
@@ -79,6 +81,17 @@ export function PartsPanel() {
 					Add anchor
 				</button>
 			</div>
+			{part && ps.length > 1 && (
+				<div class="line" style="display:flex;align-items:center;gap:8px;margin-top:8px">
+					<span class="chip" style="margin:0">parent</span>
+					<select class="select" style="flex:1" value={part.parent ?? ""} onChange={(e) => setParent(cur, (e.target as HTMLSelectElement).value || undefined)}>
+						<option value="">none</option>
+						{parentCandidates(cur).map((n) => (
+							<option value={n}>{n}</option>
+						))}
+					</select>
+				</div>
+			)}
 			{part && (part.anchors?.length ?? 0) > 0 && (
 				<>
 					<div class="hdr">Anchors</div>

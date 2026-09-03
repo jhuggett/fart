@@ -1,4 +1,4 @@
-# Fast Art Format (.fart) — v1
+# Fast Art Format (.fart) — v1.1
 
 JSON-backed vector art for games. The format is the contract: any editor
 that writes it and any engine that reads it agree through this document
@@ -89,12 +89,44 @@ Order within a part = paint order.
 }
 ```
 
-- Flat: parts contain shapes only (`children` is reserved, deliberately
-  unused — sub-articulation belongs to runtimes).
+- Parts contain shapes only; a part never contains parts. Since 1.1 a
+  part may name a `parent` instead (below), which is the articulation.
 - `pivot` is in document space: the point the runtime rotates about and
   places.
 - `anchors`: named document-space points runtimes may query (grips,
   muzzles, flames, hinges).
+
+### Parents (1.1)
+
+```json
+{"name": "fore_l", "parent": "upper_l", "pivot": [6, 2], "shapes": [ ... ]}
+```
+
+A part with a `parent` is posed **in its parent's frame**: its own pose
+(offset, rotate, scale) places it as if the parent were at rest, and the
+parent's pose then carries it along. Writing a part's pose as the affine
+map
+
+    L(part) = translate(offset) · rotate(rotate) · scale(scale) · translate(-pivot)
+
+the world transform is `W(part) = W(parent) · L(part)`, and `W = L` for a
+part without a parent. Consequences:
+
+- At rest (every pose identity) the file draws exactly as authored, parents
+  or not. Parents only matter once something moves.
+- A child's `offset` is where its pivot lands **in the parent's rest
+  space**; absent, it is the pivot itself, as ever. Move the torso and the
+  arm comes along without the arm's state entry changing at all.
+- Paint order is untouched: a state's list (or file order) still decides
+  who paints over whom. Parents are about motion, not layering.
+- A parent that a state leaves out contributes identity: the child draws as
+  if its parent were at rest.
+- The parent must exist; chains of parents must not loop.
+
+A reader that predates 1.1 ignores `parent` and poses every part on its
+own, so a file that leans on parents looks right at rest and wrong in
+motion there. That is the one place a minor version changes a picture,
+and it is the point of the version.
 
 ## States
 
@@ -125,6 +157,63 @@ drawing serves many poses:
 - A state's `parts` list may be empty (nothing drawn), and every entry
   must name a part the document has.
 - A runtime asked for an unknown state should draw all parts in file order.
+
+## Clips (1.1)
+
+Animation is states in time. A clip is a named list of keys, each at a
+time in seconds, each naming a state (or carrying an inline part list
+shaped exactly like a state's `parts`):
+
+```json
+"clips": [
+  {"name": "open", "loop": false, "keys": [
+    {"t": 0.0, "state": "closed"},
+    {"t": 0.4, "state": "open", "ease": "out"}
+  ]}
+]
+```
+
+- `keys` are in non-decreasing `t`, at least one of them. Each key has
+  exactly one of `state` (a name the document has) or `parts`.
+- Between two keys, a runtime interpolates each part's pose: `offset` and
+  `scale` linearly, `rotate` the short way round. The fraction is eased by
+  the **incoming** key's `ease`: `linear` (the default), `in`, `out`,
+  `in-out`, or `step` (hold the outgoing key until the incoming one).
+- Which parts are drawn, and in what order, comes from the outgoing key
+  until time reaches the incoming key: membership and paint order switch
+  at keys, they do not tween. A part in the outgoing key but not the
+  incoming one holds its pose.
+- Before the first key the first key holds; after the last, the last.
+  With `loop`, time wraps at the last key's `t` (a loop that should ease
+  back to its start ends with a key equal to its first).
+- Sampling a clip at a time yields a part list shaped like a state's:
+  draw it the way you draw a state. Nothing else in the format changes;
+  a clip is a state factory.
+
+## Constraints (1.1)
+
+Inverse kinematics, declared so a runtime may solve it live (feet on a
+slope, a hand on a ledge). An editor also uses chains as a posing tool,
+and the result of that is ordinary states; games only need this section
+when they solve at runtime.
+
+```json
+"constraints": [
+  {"name": "arm_l", "chain": ["upper_l", "fore_l"], "end": "fore_l/hand", "bend": 1}
+]
+```
+
+- `chain` lists parts root-first; each part after the first has the
+  previous as its `parent`. The joints are the parts' pivots; the last
+  bone runs from the last pivot to `end`.
+- `end` is `part/anchor`: an anchor on the chain's last part.
+- `bend` (optional, `1` or `-1`) is the preferred elbow direction where a
+  solution is ambiguous.
+- Solving means: given a target point in document space and a state,
+  adjust the chain parts' `rotate` so the end anchor reaches the target,
+  leaving everything else in the state alone. The reference solver is
+  cyclic coordinate descent; any solver that reaches the same point is
+  conforming.
 
 ## Color at runtime
 
@@ -174,8 +263,14 @@ the same from any tool:
 | `ref.token` | a shape names a token nothing supplies                           |
 | `ref.part`  | a state names a part the document does not have                  |
 | `tris`      | tris are not triples, or an index is out of range                |
-| `dup.part` `dup.state` `dup.token` | siblings sharing a name                   |
+| `dup.part` `dup.state` `dup.token` `dup.clip` `dup.constraint` | siblings sharing a name |
 | `path`      | an absolute `palette_ref`                                        |
+| `ref.parent` | a part names a parent the document does not have               |
+| `cycle`     | parents that loop                                                |
+| `clip`      | keys empty, out of order, or a key with neither/both of `state` and `parts` |
+| `ref.state` | a clip key names a state the document does not have              |
+| `chain`     | a constraint's chain is empty, or its parts are not parented in order |
+| `ref.anchor` | a constraint's `end` is not `part/anchor` on the chain's last part |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -196,16 +291,16 @@ the corpus only requires it to load every valid file and refuse those two.
   `fart.schema.json` and `examples/` describe version 1 and are tagged
   `format-v1.x.y` together. A patch bump clarifies wording; a minor bump
   adds a field.
+- 1.1 added `parent` on parts, `clips`, and `constraints`. Files that use
+  none of them are byte-for-byte 1.0 files.
 
 ## Reserved for later
 
 Names the format has plans for. Version-1 files may not use them for
 anything else; validators warn when they appear.
 
-- `children` on a part: sub-articulation, if it ever moves into the file.
-- `clips` at the top level: animation -- keyframes over states and poses.
-- `constraints` at the top level: inverse kinematics chains referencing
-  parts and anchors.
+- `children` on a part: nesting, should `parent` ever prove the wrong way
+  round.
 - `space` at the top level: `"2d"` is the only value and the default; a
   three-dimensional Fast Art would be a new major, but the key is spoken
   for.

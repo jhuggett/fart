@@ -23,6 +23,11 @@ import {
 	type Vec2,
 	type Issue,
 	type Rgba,
+	type Clip,
+	type Constraint,
+	type Ease,
+	sampleClip,
+	solveChain,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
 import { project } from "./project.ts";
@@ -50,6 +55,11 @@ export const ed = {
 	curPart: signal(0),
 	curTok: signal(0),
 	curState: signal(-1),
+	/** a clip being previewed; -1 none. Clip and state are exclusive. */
+	curClip: signal(-1),
+	clipTime: signal(0),
+	playing: signal(false),
+	curKey: signal(-1),
 	sel: signal<Ref[]>([]),
 	hover: signal<Ref | null>(null),
 	collide: signal(false),
@@ -91,6 +101,21 @@ export function curPart(): Part | undefined {
 export function curState(): State | undefined {
 	return states()[ed.curState.value];
 }
+export function clips(): Clip[] {
+	return ed.doc.value.clips ?? [];
+}
+export function constraints(): Constraint[] {
+	return ed.doc.value.constraints ?? [];
+}
+export function curClip(): Clip | undefined {
+	return clips()[ed.curClip.value];
+}
+/** The pose list the canvas draws: a clip frame, a state's parts, or nothing (rest). */
+export function frame(): StatePart[] | undefined {
+	const c = curClip();
+	if (c) return sampleClip(ed.doc.value, c, ed.clipTime.value);
+	return curState()?.parts;
+}
 export function curTokName(): string {
 	return palette()[ed.curTok.value]?.name ?? palette()[0]?.name ?? "ink";
 }
@@ -120,13 +145,13 @@ export function rgbaOf(name: string): Rgba {
 	return [255, 0, 255, 255];
 }
 
-/** Part indices drawn right now: all of them, or the current state's. */
+/** Part indices drawn right now: all of them, or the current pose's. */
 export function visibleParts(): number[] {
-	const st = curState();
+	const fr = frame();
 	const ps = parts();
-	if (!st) return ps.map((_, i) => i);
+	if (!fr) return ps.map((_, i) => i);
 	const out: number[] = [];
-	for (const sp of st.parts) {
+	for (const sp of fr) {
 		const i = ps.findIndex((p) => p.name === sp.part);
 		if (i >= 0) out.push(i);
 	}
@@ -206,6 +231,9 @@ function clampCursors() {
 	ed.curPart.value = Math.min(ed.curPart.value, Math.max((d.parts?.length ?? 1) - 1, 0));
 	ed.curTok.value = Math.min(ed.curTok.value, Math.max((d.palette?.length ?? 1) - 1, 0));
 	if (ed.curState.value >= (d.states?.length ?? 0)) ed.curState.value = -1;
+	if (ed.curClip.value >= (d.clips?.length ?? 0)) ed.curClip.value = -1;
+	const c = d.clips?.[ed.curClip.value];
+	if (!c || ed.curKey.value >= c.keys.length) ed.curKey.value = c ? Math.min(ed.curKey.value, c.keys.length - 1) : -1;
 }
 
 // ------------------------------------------------------------- disk
@@ -325,6 +353,10 @@ export async function openFile(rel: string): Promise<boolean> {
 		ed.curPart.value = 0;
 		ed.curTok.value = 0;
 		ed.curState.value = -1;
+		ed.curClip.value = -1;
+		ed.curKey.value = -1;
+		ed.clipTime.value = 0;
+		ed.playing.value = false;
 		ed.sel.value = [];
 		ed.hover.value = null;
 		ed.collide.value = false;
@@ -496,29 +528,29 @@ export function selOrder(up: boolean) {
 
 // ------------------------------------------------------------- clipboard
 
-interface Clip {
+interface Clipped {
 	part: string;
 	sh: Shape;
 }
-let clip: Clip[] = [];
+let clipboard: Clipped[] = [];
 let pasteN = 0;
 
 export function copySel() {
 	const ps = parts();
-	clip = ed.sel.value
+	clipboard = ed.sel.value
 		.filter((r) => ps[r.p]?.shapes?.[r.s])
 		.map((r) => ({ part: ps[r.p].name, sh: cloneShape(ps[r.p].shapes![r.s]) }));
 	pasteN = 0;
 }
 
 export function pasteClip() {
-	if (!clip.length) return;
+	if (!clipboard.length) return;
 	pasteN++;
 	const nudge = 0.8 * pasteN;
 	const landed: Ref[] = [];
 	mutate((d) => {
 		const ps = d.parts!;
-		for (const c of clip) {
+		for (const c of clipboard) {
 			let pi = ps.findIndex((p) => p.name === c.part);
 			if (pi < 0) pi = ed.curPart.value;
 			const sh = cloneShape(c.sh);
@@ -565,6 +597,10 @@ export function deletePart(k: number) {
 	mutate((d) => {
 		d.parts!.splice(k, 1);
 		for (const st of d.states ?? []) st.parts = st.parts.filter((sp) => sp.part !== name);
+		// children lose their parent; chains through it go with it
+		for (const p of d.parts!) if (p.parent === name) delete p.parent;
+		for (const c of d.clips ?? []) for (const k of c.keys) if (k.parts) k.parts = k.parts.filter((sp) => sp.part !== name);
+		if (d.constraints) d.constraints = d.constraints.filter((c) => !c.chain.includes(name));
 	});
 	batch(() => {
 		ed.sel.value = [];
@@ -579,6 +615,38 @@ export function renamePart(k: number, name: string) {
 	mutate((d) => {
 		d.parts![k].name = name;
 		for (const st of d.states ?? []) for (const sp of st.parts) if (sp.part === old) sp.part = name;
+		for (const p of d.parts!) if (p.parent === old) p.parent = name;
+		for (const c of d.clips ?? []) for (const key of c.keys) for (const sp of key.parts ?? []) if (sp.part === old) sp.part = name;
+		for (const c of d.constraints ?? []) {
+			c.chain = c.chain.map((n) => (n === old ? name : n));
+			if (c.end.startsWith(`${old}/`)) c.end = `${name}/${c.end.slice(old.length + 1)}`;
+		}
+	});
+}
+
+/** Names a part may be parented to: everything but itself and its descendants. */
+export function parentCandidates(k: number): string[] {
+	const ps = parts();
+	const me = ps[k]?.name;
+	if (me === undefined) return [];
+	const isDescendant = (name: string): boolean => {
+		const seen = new Set<string>();
+		let cur: string | undefined = name;
+		while (cur !== undefined && !seen.has(cur)) {
+			if (cur === me) return true;
+			seen.add(cur);
+			cur = ps.find((p) => p.name === cur)?.parent;
+		}
+		return false;
+	};
+	return ps.filter((p) => p.name !== me && !isDescendant(p.name)).map((p) => p.name);
+}
+
+export function setParent(k: number, parent: string | undefined) {
+	if (parent !== undefined && !parentCandidates(k).includes(parent)) return;
+	mutate((d) => {
+		if (parent === undefined) delete d.parts![k].parent;
+		else d.parts![k].parent = parent;
 	});
 }
 
@@ -640,14 +708,174 @@ export function addState(name: string) {
 }
 
 export function deleteState(k: number) {
-	mutate((d) => d.states!.splice(k, 1));
-	if (ed.curState.value >= states().length) ed.curState.value = -1;
+	const name = states()[k]?.name;
+	mutate((d) => {
+		d.states!.splice(k, 1);
+		// keys that named it go too; a clip left with nothing goes with them
+		if (d.clips) {
+			for (const c of d.clips) c.keys = c.keys.filter((key) => key.state !== name);
+			d.clips = d.clips.filter((c) => c.keys.length > 0);
+		}
+	});
+	clampCursors();
 }
 
 export function renameState(k: number, name: string) {
+	const old = states()[k]?.name;
 	mutate((d) => {
 		d.states![k].name = name;
+		for (const c of d.clips ?? []) for (const key of c.keys) if (key.state === old) key.state = name;
 	});
+}
+
+// ------------------------------------------------------------- clips
+
+export function selectClip(k: number) {
+	batch(() => {
+		ed.curClip.value = k;
+		ed.curKey.value = k >= 0 ? 0 : -1;
+		ed.clipTime.value = 0;
+		ed.playing.value = false;
+		if (k >= 0) ed.curState.value = -1;
+		ed.sel.value = [];
+		ed.hover.value = null;
+	});
+}
+
+export function addClip(name: string): boolean {
+	const st = curState() ?? states()[0];
+	if (!st) return false;
+	mutate((d) => (d.clips ??= []).push({ name, keys: [{ t: 0, state: st.name }] }));
+	selectClip(clips().length - 1);
+	return true;
+}
+
+export function deleteClip(k: number) {
+	mutate((d) => d.clips!.splice(k, 1));
+	if (ed.curClip.value === k) selectClip(-1);
+	else clampCursors();
+}
+
+export function renameClip(k: number, name: string) {
+	mutate((d) => {
+		d.clips![k].name = name;
+	});
+}
+
+export function setClipLoop(k: number, loop: boolean) {
+	mutate((d) => {
+		if (loop) d.clips![k].loop = true;
+		else delete d.clips![k].loop;
+	});
+}
+
+function sortKeys(c: Clip, follow?: Clip["keys"][number]): number {
+	c.keys.sort((a, b) => a.t - b.t);
+	return follow ? c.keys.indexOf(follow) : -1;
+}
+
+/** A key at the playhead, wearing the state of the key before it. */
+export function addKey() {
+	const c = curClip();
+	if (!c) return;
+	const t = Math.round(ed.clipTime.value * 100) / 100;
+	const before = [...c.keys].reverse().find((k) => k.t <= t);
+	const state = before?.state ?? states()[0]?.name;
+	if (state === undefined) return;
+	const key = { t, state };
+	let idx = -1;
+	mutate(() => {
+		c.keys.push(key);
+		idx = sortKeys(c, key);
+	});
+	ed.curKey.value = idx;
+}
+
+export function deleteKey(i: number) {
+	const c = curClip();
+	if (!c || c.keys.length <= 1) return;
+	mutate(() => c.keys.splice(i, 1));
+	ed.curKey.value = Math.min(i, c.keys.length - 1);
+}
+
+export function setKeyTime(i: number, t: number, merge?: string) {
+	const c = curClip();
+	if (!c) return;
+	const key = c.keys[i];
+	if (!key) return;
+	let idx = i;
+	mutate(() => {
+		key.t = Math.max(0, t);
+		idx = sortKeys(c, key);
+	}, merge);
+	ed.curKey.value = idx;
+}
+
+export function setKeyState(i: number, state: string) {
+	const c = curClip();
+	if (!c?.keys[i]) return;
+	mutate(() => {
+		const key = c.keys[i];
+		key.state = state;
+		delete key.parts;
+	});
+}
+
+export function setKeyEase(i: number, e: Ease | undefined) {
+	const c = curClip();
+	if (!c?.keys[i]) return;
+	mutate(() => {
+		if (e && e !== "linear") c.keys[i].ease = e;
+		else delete c.keys[i].ease;
+	});
+}
+
+/** Seek the preview; the key under the playhead becomes current. */
+export function seek(t: number) {
+	const c = curClip();
+	if (!c) return;
+	ed.clipTime.value = Math.max(0, t);
+	const at = c.keys.findIndex((k) => Math.abs(k.t - t) < 1e-6);
+	if (at >= 0) ed.curKey.value = at;
+}
+
+// ------------------------------------------------------------- chains (IK)
+
+export function addChain(name: string, chain: string[], end: string) {
+	mutate((d) => (d.constraints ??= []).push({ name, chain, end }));
+}
+
+export function deleteChain(k: number) {
+	mutate((d) => d.constraints!.splice(k, 1));
+}
+
+export function renameChain(k: number, name: string) {
+	mutate((d) => {
+		d.constraints![k].name = name;
+	});
+}
+
+export function setChain(k: number, chain: string[], end: string) {
+	mutate((d) => {
+		d.constraints![k].chain = chain;
+		d.constraints![k].end = end;
+	});
+}
+
+export function setChainBend(k: number, bend: 1 | -1 | undefined) {
+	mutate((d) => {
+		if (bend) d.constraints![k].bend = bend;
+		else delete d.constraints![k].bend;
+	});
+}
+
+/** Pull a chain's end to a point in the current state; only rotations move. */
+export function ikTo(c: Constraint, target: Vec2) {
+	const st = curState();
+	if (!st) return;
+	mutate((d) => {
+		solveChain(d, st.parts, c, target);
+	}, "ik");
 }
 
 export function setPose(sp: StatePart, patch: Partial<StatePart>, merge?: string) {

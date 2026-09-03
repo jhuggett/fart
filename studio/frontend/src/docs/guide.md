@@ -63,6 +63,16 @@ runtime rotates about and places; anchors are named points it may ask
 for (a grip, a muzzle, a hinge). When a state is selected, each part row
 grows a checkbox: membership.
 
+## Rigs: parents
+
+A part may have a **parent** (the select under the parts list). A child
+is posed in its parent's frame, so moving or turning the torso carries
+the head and the arms with it, and their own state entries stay at rest.
+Nothing changes at rest: parents only matter once something moves. In
+pose mode the rig shows as dashed bones from each pivot to its parent's.
+Paint order is still the state's list; parents are about motion, not
+layering.
+
 ## States (right, below): pose mode
 
 Click a state and the canvas shows it with its transforms applied — and
@@ -71,6 +81,30 @@ switches from editing geometry to posing parts. Drag a part to place it
 pivot to turn it, and the Pose card gives turn and size sliders and a
 reset. Geometry is locked until you go back to **all parts**. State order
 is paint order, so a lid may layer differently open and closed.
+
+## Clips: states in time
+
+A clip is a list of keys, each at a time in seconds, each naming a state.
+**+ clip** makes one with a single key at 0. Select a clip and the
+timeline appears under the canvas: **▶** (or Space) plays, the ruler
+scrubs, **+ key** drops a key at the playhead, and a key drags along the
+ruler. The selected key's state, its ease (how time approaches it), and
+its time sit to the right. Between keys the parts tween: offset and size
+linearly, turns the short way round; which parts show, and their paint
+order, switch at the key. **loop** wraps time at the last key. Keys name
+states, so to change what a key looks like you pose that state; a clip
+never carries its own pose.
+
+## Chains: reaching with IK
+
+Give a part an anchor (a hand, a foot), then **+ chain** in the Chains
+panel: the chain runs from the part's parent to the part and reaches
+with that anchor. **longer** adds the next parent; **bend** says which
+way an elbow should fold when it could go either way. In pose mode every
+chain shows a teal ring at its reach point: drag the ring and the chain's
+parts turn to follow. Only rotations change, and the result is an
+ordinary state, so games need nothing new to draw it. The chain itself is
+saved too, for games that want to solve live.
 
 ## The collision lens
 

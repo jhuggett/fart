@@ -10,43 +10,234 @@
     "dup.part": "two parts share a name",
     "dup.state": "two states share a name",
     "dup.token": "two local tokens share a name",
-    "path": "a palette_ref is absolute"
+    "path": "a palette_ref is absolute",
+    "dup.clip": "two clips share a name",
+    "dup.constraint": "two constraints share a name",
+    "ref.parent": "a part names a parent the document does not have",
+    "cycle": "parents that loop",
+    "clip": "a clip with no keys, keys out of order, or a key with neither or both of state and parts",
+    "ref.state": "a clip key names a state the document does not have",
+    "chain": "a constraint's chain is empty or its parts are not parented in order",
+    "ref.anchor": "a constraint's end is not part/anchor on the chain's last part"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
-    "reserved": "a field or value this version reserves for later (children, clips, constraints, space)",
+    "reserved": "a field or value this version reserves for later (children, space)",
     "unresolved": "a palette_ref could not be read, so token references were not checked"
   },
   "cases": [
-    {"file": "valid/minimal.fart", "valid": true, "note": "the smallest legal document"},
-    {"file": "valid/palette.fart", "valid": true, "warnings": ["unknown"], "note": "a palette file: tokens only, one with an additive field this version ignores"},
-    {"file": "valid/chest.fart", "valid": true, "note": "the whole kit: a ref, local tokens, parts, anchors, states that reorder and re-pose, collision, meta"},
-    {"file": "valid/concave.fart", "valid": true, "note": "a concave poly with no tris; loaders may triangulate or fan"},
-    {"file": "valid/rig.fart", "valid": true, "note": "parts without shapes yet, states already posing them"},
-    {"file": "valid/forward-compat.fart", "valid": true, "warnings": ["unknown", "reserved"], "note": "fields from the future: preserved, ignored, warned about"},
-    {"file": "valid/unicode.fart", "valid": true, "note": "names are strings, strings are unicode"},
-    {"file": "valid/zero-width.fart", "valid": true, "note": "zeros everywhere: legal, if pointless"},
-    {"file": "invalid/not-json.fart", "valid": false, "code": "json"},
-    {"file": "invalid/no-version.fart", "valid": false, "code": "version"},
-    {"file": "invalid/version-2.fart", "valid": false, "code": "version", "note": "a version-1 reader must refuse a newer major"},
-    {"file": "invalid/version-string.fart", "valid": false, "code": "version"},
-    {"file": "invalid/reserved-kind.fart", "valid": false, "code": "schema", "note": "ring is reserved, not yet a kind"},
-    {"file": "invalid/circle-no-radius.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/line-no-width.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/poly-two-points.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/shape-no-color.fart", "valid": false, "code": "schema", "note": "a drawn shape names a token; only collision shapes may skip it"},
-    {"file": "invalid/rgb-three.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/rgb-range.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/literal-color.fart", "valid": false, "code": "ref.token", "note": "a hex string is not a token; the validator sees a token nothing supplies"},
-    {"file": "invalid/unknown-token.fart", "valid": false, "code": "ref.token"},
-    {"file": "invalid/unknown-part.fart", "valid": false, "code": "ref.part"},
-    {"file": "invalid/tris-out-of-range.fart", "valid": false, "code": "tris"},
-    {"file": "invalid/tris-not-triples.fart", "valid": false, "code": "tris"},
-    {"file": "invalid/duplicate-part.fart", "valid": false, "code": "dup.part"},
-    {"file": "invalid/duplicate-state.fart", "valid": false, "code": "dup.state"},
-    {"file": "invalid/duplicate-token.fart", "valid": false, "code": "dup.token"},
-    {"file": "invalid/absolute-ref.fart", "valid": false, "code": "path"},
-    {"file": "invalid/empty-name.fart", "valid": false, "code": "schema"},
-    {"file": "invalid/state-no-parts.fart", "valid": false, "code": "schema"}
+    {
+      "file": "valid/minimal.fart",
+      "valid": true,
+      "note": "the smallest legal document"
+    },
+    {
+      "file": "valid/palette.fart",
+      "valid": true,
+      "warnings": [
+        "unknown"
+      ],
+      "note": "a palette file: tokens only, one with an additive field this version ignores"
+    },
+    {
+      "file": "valid/chest.fart",
+      "valid": true,
+      "note": "the whole kit: a ref, local tokens, parts, anchors, states that reorder and re-pose, collision, meta"
+    },
+    {
+      "file": "valid/concave.fart",
+      "valid": true,
+      "note": "a concave poly with no tris; loaders may triangulate or fan"
+    },
+    {
+      "file": "valid/rig.fart",
+      "valid": true,
+      "note": "parts without shapes yet, states already posing them"
+    },
+    {
+      "file": "valid/forward-compat.fart",
+      "valid": true,
+      "warnings": [
+        "unknown",
+        "reserved"
+      ],
+      "note": "fields from the future: preserved, ignored, warned about (children stays reserved)"
+    },
+    {
+      "file": "valid/unicode.fart",
+      "valid": true,
+      "note": "names are strings, strings are unicode"
+    },
+    {
+      "file": "valid/zero-width.fart",
+      "valid": true,
+      "note": "zeros everywhere: legal, if pointless"
+    },
+    {
+      "file": "valid/hero.fart",
+      "valid": true,
+      "note": "1.1: a parented rig, two clips (named and inline keys), an IK chain"
+    },
+    {
+      "file": "invalid/not-json.fart",
+      "valid": false,
+      "code": "json"
+    },
+    {
+      "file": "invalid/no-version.fart",
+      "valid": false,
+      "code": "version"
+    },
+    {
+      "file": "invalid/version-2.fart",
+      "valid": false,
+      "code": "version",
+      "note": "a version-1 reader must refuse a newer major"
+    },
+    {
+      "file": "invalid/version-string.fart",
+      "valid": false,
+      "code": "version"
+    },
+    {
+      "file": "invalid/reserved-kind.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "ring is reserved, not yet a kind"
+    },
+    {
+      "file": "invalid/circle-no-radius.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/line-no-width.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/poly-two-points.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/shape-no-color.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a drawn shape names a token; only collision shapes may skip it"
+    },
+    {
+      "file": "invalid/rgb-three.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/rgb-range.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/literal-color.fart",
+      "valid": false,
+      "code": "ref.token",
+      "note": "a hex string is not a token; the validator sees a token nothing supplies"
+    },
+    {
+      "file": "invalid/unknown-token.fart",
+      "valid": false,
+      "code": "ref.token"
+    },
+    {
+      "file": "invalid/unknown-part.fart",
+      "valid": false,
+      "code": "ref.part"
+    },
+    {
+      "file": "invalid/tris-out-of-range.fart",
+      "valid": false,
+      "code": "tris"
+    },
+    {
+      "file": "invalid/tris-not-triples.fart",
+      "valid": false,
+      "code": "tris"
+    },
+    {
+      "file": "invalid/duplicate-part.fart",
+      "valid": false,
+      "code": "dup.part"
+    },
+    {
+      "file": "invalid/duplicate-state.fart",
+      "valid": false,
+      "code": "dup.state"
+    },
+    {
+      "file": "invalid/duplicate-token.fart",
+      "valid": false,
+      "code": "dup.token"
+    },
+    {
+      "file": "invalid/absolute-ref.fart",
+      "valid": false,
+      "code": "path"
+    },
+    {
+      "file": "invalid/empty-name.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/state-no-parts.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/unknown-parent.fart",
+      "valid": false,
+      "code": "ref.parent"
+    },
+    {
+      "file": "invalid/parent-cycle.fart",
+      "valid": false,
+      "code": "cycle"
+    },
+    {
+      "file": "invalid/clip-unsorted.fart",
+      "valid": false,
+      "code": "clip"
+    },
+    {
+      "file": "invalid/clip-no-keys.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "minItems is the schema's to refuse"
+    },
+    {
+      "file": "invalid/clip-key-both.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a key names a state or carries parts, never both"
+    },
+    {
+      "file": "invalid/clip-unknown-state.fart",
+      "valid": false,
+      "code": "ref.state"
+    },
+    {
+      "file": "invalid/chain-unparented.fart",
+      "valid": false,
+      "code": "chain"
+    },
+    {
+      "file": "invalid/chain-unknown-anchor.fart",
+      "valid": false,
+      "code": "ref.anchor"
+    },
+    {
+      "file": "invalid/duplicate-clip.fart",
+      "valid": false,
+      "code": "dup.clip"
+    }
   ]
 }

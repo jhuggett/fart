@@ -6,6 +6,7 @@ package fastart_test
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:testing"
 import fart ".."
@@ -76,4 +77,31 @@ version_gate :: proc(t: ^testing.T) {
 	doc, ok1 := arena_load(transmute([]byte)string(`{"version": 1}`))
 	testing.expect(t, ok1, "the smallest legal document loads")
 	_ = doc
+}
+
+@(test)
+parents_compose :: proc(t: ^testing.T) {
+	data, err := os.read_entire_file(EXAMPLES + "valid/hero.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := arena_load(data)
+	if !testing.expect(t, ok) do return
+	// a quarter turn of the torso carries the head's pivot from (0,-8) to (8,0)
+	poses := [?]fart.State_Part{{part = "torso", rotate = math.PI / 2}, {part = "head", offset = {0, -8}}}
+	W := fart.world_xf(&doc, poses[:], "head")
+	p := fart.xf_apply(W, {0, -8})
+	testing.expect(t, abs(p.x - 8) < 1e-4 && abs(p.y) < 1e-4, "the head rides the torso")
+	// the wave clip tweens the upper arm halfway at t = 0.15 (in-out is symmetric)
+	frame := make([dynamic]fart.State_Part, context.temp_allocator)
+	wave: ^fart.Clip
+	for &c in doc.clips do if c.name == "wave" do wave = &c
+	if !testing.expect(t, wave != nil) do return
+	fart.sample_clip(&doc, wave, 0.15, &frame)
+	for sp in frame do if sp.part == "upper_l" {
+		testing.expect(t, abs(sp.rotate - (-0.95)) < 1e-4, "halfway to the wave")
+	}
+	// the loop wraps
+	fart.sample_clip(&doc, wave, 0.6, &frame)
+	for sp in frame do if sp.part == "upper_l" do testing.expect(t, abs(sp.rotate) < 1e-4, "back at rest")
+	testing.expect_value(t, len(doc.constraints), 1)
+	testing.expect_value(t, doc.constraints[0].end, "fore_l/hand")
 }

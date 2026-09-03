@@ -1,0 +1,2 @@
+{"version": 1, "parts": [{"name": "body"}], "states": [{"name": "s", "parts": [{"part": "body"}]}],
+ "clips": [{"name": "c", "keys": [{"t": 1, "state": "s"}, {"t": 0.5, "state": "s"}]}]}

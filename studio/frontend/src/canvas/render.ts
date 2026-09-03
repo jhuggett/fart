@@ -3,11 +3,11 @@
 // selection outlines, handles, the selection box and its grips, pivots
 // and anchors, the pose lever, the marquee, and whatever is being drawn.
 
-import { cssColor, colorOf, posePoint, poseOf, type Shape, type Vec2 } from "@fastart/core";
+import { cssColor, colorOf, xfApply, xfScale, pivotOf, XF_ID, type Shape, type Vec2 } from "@fastart/core";
 import { view } from "./view.ts";
 import { drawDoc, fillShape, outlineShape, tracePoly, ident, type Map2 } from "./draw.ts";
-import { ix, handlesOf, scaleGrips, poseLever } from "./interact.ts";
-import { ed, curPart, curState, curTokName, selShapes, selShape, shapeAt, colShape, poseOfCur } from "../state/editor.ts";
+import { ix, handlesOf, scaleGrips, poseLever, frameW, worldPivot, chainGrabs } from "./interact.ts";
+import { ed, curPart, curState, curClip, curTokName, selShapes, selShape, shapeAt, colShape, poseOfCur, frame, parts } from "../state/editor.ts";
 import { canvasColors } from "../state/theme.ts";
 
 export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr: number) {
@@ -30,10 +30,12 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	const doc = ed.doc.value;
 	const tokens = ed.tokens.value;
 	const st = curState();
+	const clip = curClip();
 	const collide = ed.collide.value;
+	const fr = frame();
 
 	world();
-	drawDoc(ctx, doc, tokens, { state: st?.name, alpha: collide ? 0.22 : 1 });
+	drawDoc(ctx, doc, tokens, { pose: fr, alpha: collide ? 0.22 : 1 });
 
 	if (collide) {
 		// the lens: solids the game may honour, never drawn by it
@@ -46,31 +48,66 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		});
 		const cs = colShape();
 		if (cs) drawHandles(ctx, handlesOf(cs).map(toS), screen, world, C.handleFill, ACCENT, LW);
-	} else if (st) {
-		// pose mode: outline the current part where it lands, and its lever
-		const part = curPart();
-		const sp = poseOfCur();
-		if (part && sp) {
-			const map: Map2 = (p) => posePoint(p, part, sp);
-			const scale = poseOf(sp, part).scale;
-			for (const sh of part.shapes ?? []) outlineShape(ctx, sh, ACCENT, LW, zoom, map, scale);
-			const off = sp.offset ?? part.pivot ?? [0, 0];
-			const lever = poseLever();
+	} else if (st || clip) {
+		const W = frameW();
+		// the rig: a bone from each child's pivot to its parent's
+		screen();
+		ctx.strokeStyle = C.accentSoft;
+		ctx.lineWidth = LW;
+		ctx.setLineDash([3, 3]);
+		for (const p of parts()) {
+			if (!p.parent) continue;
+			const a = worldPivot(p.name, W);
+			const b = worldPivot(p.parent, W);
+			if (!a || !b) continue;
+			const sa = toS(a);
+			const sb = toS(b);
+			ctx.beginPath();
+			ctx.moveTo(sa[0], sa[1]);
+			ctx.lineTo(sb[0], sb[1]);
+			ctx.stroke();
+		}
+		ctx.setLineDash([]);
+		world();
+		if (st) {
+			// pose mode: outline the current part where it lands, and its lever
+			const part = curPart();
+			const sp = poseOfCur();
+			if (part && sp) {
+				const xf = W.get(part.name) ?? XF_ID;
+				const map: Map2 = (p) => xfApply(xf, p);
+				for (const sh of part.shapes ?? []) outlineShape(ctx, sh, ACCENT, LW, zoom, map, xfScale(xf));
+				const lever = poseLever();
+				screen();
+				const o = toS(xfApply(xf, pivotOf(part)));
+				crosshair(ctx, o, ACCENT);
+				if (lever) {
+					const l = toS(lever);
+					ctx.strokeStyle = ACCENT;
+					ctx.lineWidth = 1.5 * LW;
+					ctx.beginPath();
+					ctx.moveTo(o[0], o[1]);
+					ctx.lineTo(l[0], l[1]);
+					ctx.stroke();
+					ctx.fillStyle = ACCENT;
+					ctx.beginPath();
+					ctx.arc(l[0], l[1], 5, 0, Math.PI * 2);
+					ctx.fill();
+				}
+				world();
+			}
+			// chain reach points: rings you can drag
 			screen();
-			const o = toS(off);
-			crosshair(ctx, o, ACCENT);
-			if (lever) {
-				const l = toS(lever);
-				ctx.strokeStyle = ACCENT;
-				ctx.lineWidth = 1.5 * LW;
+			for (const g of chainGrabs()) {
+				const s = toS(g.at);
+				ctx.strokeStyle = TEAL;
+				ctx.lineWidth = 2 * LW;
 				ctx.beginPath();
-				ctx.moveTo(o[0], o[1]);
-				ctx.lineTo(l[0], l[1]);
+				ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
 				ctx.stroke();
-				ctx.fillStyle = ACCENT;
-				ctx.beginPath();
-				ctx.arc(l[0], l[1], 5, 0, Math.PI * 2);
-				ctx.fill();
+				ctx.fillStyle = TEAL;
+				ctx.font = "11px system-ui, sans-serif";
+				ctx.fillText(g.c.name, s[0] + 10, s[1] - 8);
 			}
 			world();
 		}

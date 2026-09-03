@@ -3,17 +3,23 @@ import { PalettePanel } from "../ui/PalettePanel.tsx";
 import { SelectedCard } from "../ui/SelectedCard.tsx";
 import { PartsPanel } from "../ui/PartsPanel.tsx";
 import { StatesPanel } from "../ui/StatesPanel.tsx";
+import { ClipsPanel } from "../ui/ClipsPanel.tsx";
+import { ChainsPanel } from "../ui/ChainsPanel.tsx";
+import { Timeline } from "../ui/Timeline.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
-import { ed, curState } from "../state/editor.ts";
+import { ed, curState, curClip } from "../state/editor.ts";
 import { view } from "../canvas/view.ts";
 
 export function Editor() {
 	void ed.rev.value;
 	const st = curState();
+	const clip = curClip();
 	const hint = ed.collide.value
 		? "collision lens: shapes a game may treat as solid · C flips back"
-		: st
-			? `posing "${st.name}": drag a part to place it, pull the lever to turn · geometry is locked`
+		: clip
+			? `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`
+			: st
+				? `posing "${st.name}": drag a part to place it, pull the lever to turn, drag a ring to reach · geometry is locked`
 			: ed.pending.value === "pivot"
 				? "click the canvas to place the pivot"
 				: ed.pending.value === "anchor"
@@ -30,6 +36,7 @@ export function Editor() {
 					<PalettePanel />
 					<SelectedCard />
 				</div>
+				<div class="canvas-col">
 				<div class="canvas-wrap">
 					<Canvas />
 					<div class="hud">
@@ -46,9 +53,13 @@ export function Editor() {
 						</div>
 					)}
 				</div>
+				<Timeline />
+				</div>
 				<div class="panel right">
 					<PartsPanel />
 					<StatesPanel />
+					<ClipsPanel />
+					<ChainsPanel />
 				</div>
 			</div>
 		</div>
