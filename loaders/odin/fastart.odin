@@ -66,10 +66,50 @@ Doc :: struct {
 // A byte source for palette_refs: engines that embed assets pass their own.
 Resolver :: proc(path: string, user: rawptr) -> ([]byte, bool)
 
+// Strings inside the Doc belong to the allocator unmarshal used; destroy
+// frees the containers only. Games load into an arena and drop the lot.
 load_bytes :: proc(data: []byte) -> (doc: Doc, ok: bool) {
+	// the raw tree first: the version gate must not trust unmarshal's
+	// coercions ("1" is not 1), and absent offsets are only visible here
+	tree, terr := json.parse(data, allocator = context.temp_allocator)
+	if terr != nil do return {}, false
+	root, is_obj := tree.(json.Object)
+	if !is_obj || !version_ok(root["version"]) do return {}, false
 	if json.unmarshal(data, &doc) != nil do return {}, false
-	if doc.version > 1 do return {}, false
+	normalize_offsets(&doc, root)
 	return doc, true
+}
+
+@(private)
+version_ok :: proc(v: json.Value) -> bool {
+	#partial switch n in v {
+	case json.Integer:
+		return n == 1
+	case json.Float:
+		return n == 1
+	}
+	return false
+}
+
+// A state entry with no offset means "the pivot lands on itself" (rest).
+// Unmarshalling can't tell absent from [0, 0], so a second look at the
+// raw tree fills the pivot in wherever the field was missing.
+@(private)
+normalize_offsets :: proc(doc: ^Doc, root: json.Object) {
+	if len(doc.states) == 0 do return
+	states := root["states"].(json.Array) or_else nil
+	for st_v, i in states {
+		if i >= len(doc.states) do break
+		st := st_v.(json.Object) or_continue
+		parts := st["parts"].(json.Array) or_continue
+		for sp_v, j in parts {
+			if j >= len(doc.states[i].parts) do break
+			sp := sp_v.(json.Object) or_continue
+			if "offset" in sp do continue
+			sp_d := &doc.states[i].parts[j]
+			if part := part_of(doc, sp_d.part); part != nil do sp_d.offset = part.pivot
+		}
+	}
 }
 
 destroy :: proc(doc: ^Doc) {

@@ -1,0 +1,12 @@
+{
+  "name": "fastart",
+  "private": true,
+  "description": "the Fast Art Format: spec, core library, and the studio",
+  "workspaces": ["packages/*", "studio/frontend"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present",
+    "validate": "node packages/core/src/cli.ts validate spec/examples"
+  }
+}

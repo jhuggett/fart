@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jhuggett/fart/main/spec/fart.schema.json",
+  "title": "Fast Art Format (.fart), version 1",
+  "description": "JSON-backed vector art for games: shapes, recolorable palette tokens, re-posable parts, states. This schema checks structure; spec/FORMAT.md holds meaning, and the validator in packages/core adds the cross-reference checks a schema cannot express (names resolve, tris index the points). Unknown fields are allowed everywhere: editors preserve them, loaders ignore them.",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "The format major. Readers must reject anything newer than they know."
+    },
+    "name": { "type": "string" },
+    "palette_refs": {
+      "type": "array",
+      "description": "Other .fart files whose palettes this one borrows, relative to this file, resolved in order. Later refs beat earlier ones; the local palette beats them all.",
+      "items": { "$ref": "#/$defs/relpath" }
+    },
+    "palette": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/token" }
+    },
+    "parts": {
+      "type": "array",
+      "description": "Layers with a pivot. File order is paint order when no state says otherwise.",
+      "items": { "$ref": "#/$defs/part" }
+    },
+    "states": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/state" }
+    },
+    "collision": {
+      "type": "array",
+      "description": "Shapes a game may treat as solid. Never drawn, so color is optional. Rest-space, state-independent.",
+      "items": { "$ref": "#/$defs/shape" }
+    },
+    "meta": { "$ref": "#/$defs/meta" }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vec2": {
+      "type": "array",
+      "description": "[x, y]; y-down, x-right, in the project's world units.",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "rgba": {
+      "type": "array",
+      "description": "[r, g, b, a], each 0-255. The field is called rgb and holds four numbers; that ship has sailed.",
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "relpath": {
+      "type": "string",
+      "description": "A relative path with forward slashes. Never absolute, never a drive letter.",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)[^/\\\\]"
+    },
+    "meta": {
+      "type": "object",
+      "description": "Yours. The format never looks inside."
+    },
+    "token": {
+      "type": "object",
+      "required": ["name", "rgb"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "rgb": { "$ref": "#/$defs/rgba" }
+      }
+    },
+    "shape": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["circle", "line", "poly"] },
+        "color": {
+          "$ref": "#/$defs/name",
+          "description": "A palette token, never a literal color."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "circle" } } },
+          "then": {
+            "required": ["at", "r"],
+            "properties": {
+              "at": { "$ref": "#/$defs/vec2" },
+              "r": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "line" } } },
+          "then": {
+            "required": ["a", "b", "w"],
+            "properties": {
+              "a": { "$ref": "#/$defs/vec2" },
+              "b": { "$ref": "#/$defs/vec2" },
+              "w": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Stroke width. Round caps. In a collision list, the capsule's girth."
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "poly" } } },
+          "then": {
+            "required": ["points"],
+            "properties": {
+              "points": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/vec2" },
+                "minItems": 3
+              },
+              "tris": {
+                "type": "array",
+                "description": "Index triples into points, baked by editors on save. The validator checks the count is a multiple of three and every index is in range.",
+                "items": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drawn_shape": {
+      "description": "A shape inside a part: it is painted, so it names a token.",
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/shape" },
+        { "type": "object", "required": ["color"], "properties": { "color": { "$ref": "#/$defs/name" } } }
+      ]
+    },
+    "anchor": {
+      "type": "object",
+      "description": "A named document-space point a runtime may ask for: a grip, a muzzle, a hinge.",
+      "required": ["name", "at"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "at": { "$ref": "#/$defs/vec2" }
+      }
+    },
+    "part": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "pivot": {
+          "$ref": "#/$defs/vec2",
+          "description": "Document-space point the runtime rotates about and places. Absent means [0, 0]."
+        },
+        "shapes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/drawn_shape" }
+        },
+        "anchors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "meta": { "$ref": "#/$defs/meta" }
+      }
+    },
+    "state_part": {
+      "type": "object",
+      "required": ["part"],
+      "properties": {
+        "part": { "$ref": "#/$defs/name" },
+        "offset": {
+          "$ref": "#/$defs/vec2",
+          "description": "Where the part's pivot lands. Absent means the pivot itself: the rest placement. Note this is a position, not a delta."
+        },
+        "rotate": {
+          "type": "number",
+          "description": "Radians about the pivot. Absent means 0."
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Multiplier about the pivot. Absent or 0 means 1."
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "description": "A named part list. Its order is paint order; parts it leaves out are not drawn.",
+      "required": ["name", "parts"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/state_part" }
+        }
+      }
+    }
+  }
+}

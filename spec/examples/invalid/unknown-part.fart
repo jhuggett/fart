@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "parts": [{"name": "body"}],
+  "states": [{"name": "idle", "parts": [{"part": "body"}, {"part": "tail"}]}]
+}
