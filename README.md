@@ -43,10 +43,11 @@ puts the same editor on your network for a tablet (one finger draws, two
 pan and pinch). The interface is the web (Preact + a canvas) in a thin Go
 shell (Wails 3); the same frontend runs from the shell's LAN server.
 
-    npm install
-    cd studio && wails3 task package            # bin/studio.app (macOS)
-    cd studio && wails3 dev                     # live-reload development
-    ./bin/studio --serve path/to/art            # headless: just the LAN server
+    make setup                    # once: npm deps + the Wails CLI
+    make dev                      # live-reload development
+    make run                      # build studio/bin/studio.app and open it
+    make serve DIR=path/to/art    # headless: just the LAN server
+    make                          # the rest
 
 It needs Go, Node, and the Wails CLI (`go install
 github.com/wailsapp/wails/v3/cmd/wails3@latest`). Releases are cut by

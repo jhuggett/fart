@@ -1,0 +1,62 @@
+# fastart: the shortcuts. `make` lists them.
+#
+#   make setup      once: npm deps + the Wails CLI
+#   make dev        the studio with live reload
+#   make app        build studio/bin/studio.app (or bin/studio elsewhere)
+#   make run        build it, then open it
+#   make serve DIR=path/to/art      the LAN server only, no window
+#   make test       every check: core, corpus, Odin loader, studio
+#   make validate DIR=path/to/art   fart validate
+#   make classic    the raylib editor (./fastart, fastart.app)
+
+SHELL := /bin/sh
+export PATH := $(shell go env GOPATH)/bin:$(PATH)
+DIR ?= spec/examples
+UNAME := $(shell uname)
+
+.PHONY: help setup dev app run serve test validate classic clean
+
+help:
+	@sed -n 's/^#   //p' Makefile
+
+setup:
+	npm install
+	go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+dev: node_modules
+	cd studio && wails3 dev
+
+app: node_modules
+	cd studio && wails3 task package
+
+run: app
+ifeq ($(UNAME),Darwin)
+	open studio/bin/studio.app
+else
+	./studio/bin/studio
+endif
+
+serve: node_modules
+	cd studio && wails3 task build
+	./studio/bin/studio --serve $(DIR)
+
+test: node_modules
+	npm run check -w @fastart/core
+	npm test -w @fastart/core
+	odin test loaders/odin/test
+	npm run check -w @fastart/studio
+	npm run build -w @fastart/studio
+	cd studio && go vet ./...
+
+validate: node_modules
+	node packages/core/src/cli.ts validate $(DIR)
+
+classic:
+	./build.sh
+
+clean:
+	rm -rf studio/bin studio/frontend/dist packages/core/dist fastart fastart.app web_out
+
+node_modules: package.json package-lock.json
+	npm install
+	@touch node_modules
