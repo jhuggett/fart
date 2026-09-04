@@ -3,6 +3,7 @@ import { project, goBrowse, pickFolder, leaveDocs, goDocs } from "./state/projec
 import { ed, save, undo, redo, deleteSel, copySel, pasteClip, cutSel, dupSel, selOrder, curClip, type Tool } from "./state/editor.ts";
 import { escape, polyEnter } from "./canvas/interact.ts";
 import { prompt } from "./state/prompt.ts";
+import { toggleExplorer } from "./state/explorer.ts";
 import { shell } from "./shell/shell.ts";
 import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
@@ -22,6 +23,10 @@ function onKey(e: KeyboardEvent) {
 
 	if (screen === "docs" && k === "Escape") return leaveDocs();
 	if (k === "?" && screen !== "docs") return goDocs();
+	if (cmd && k.toLowerCase() === "b" && (screen === "edit" || screen === "browse")) {
+		e.preventDefault();
+		return toggleExplorer();
+	}
 
 	if (screen !== "edit") {
 		if (cmd && k.toLowerCase() === "o" && shell.kind === "wails") {

@@ -17,6 +17,11 @@ one; a name like `enemies/bat` makes the folder too. **Browse** (or
 Cmd+O) brings the shelf back; **Open…** switches projects; **Projects**
 returns to the welcome screen.
 
+The **explorer** on the left (☰, or Cmd+B) is the same project as a
+tree, beside the shelf and beside the canvas: click a file to open it
+from anywhere, hover a folder for **+** to start a file inside it. The
+open file is lit, with an amber dot while it has unsaved changes.
+
 ## The editor
 
 - **Toolbar**: Select (1) and the Add menu — circle (2), line (3), poly

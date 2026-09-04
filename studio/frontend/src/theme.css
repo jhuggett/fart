@@ -558,7 +558,92 @@ code,
 	flex: 1;
 	min-height: 0;
 	display: grid;
-	grid-template-columns: var(--left) 1fr var(--right);
+	grid-template-columns: auto var(--left) 1fr var(--right);
+}
+.browse-body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+.explorer {
+	width: 216px;
+	flex: none;
+	background: var(--panel);
+	border-right: 1px solid var(--edge);
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	padding: 0 6px 24px;
+}
+.explorer .hdr {
+	margin: 14px 8px 4px;
+}
+.explorer .hdr .hint {
+	display: flex;
+	gap: 2px;
+}
+.btn.x.plain {
+	color: var(--text-3);
+	width: 20px;
+	height: 20px;
+}
+.btn.x.plain:hover {
+	color: var(--text);
+	background: var(--btn);
+}
+.tree-row {
+	height: 24px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding-right: 4px;
+	border-radius: 6px;
+	cursor: pointer;
+	white-space: nowrap;
+	color: var(--text);
+	font-size: var(--fs-body);
+}
+.tree-row:hover {
+	background: var(--btn);
+}
+.tree-row.active {
+	background: var(--accent-dim);
+	color: var(--accent);
+}
+.tree-row.project {
+	color: var(--text-2);
+	font-size: var(--fs-small);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	padding-left: 8px;
+	cursor: default;
+}
+.tree-row.project:hover {
+	background: none;
+}
+.tree-row .name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.tree-row .caret {
+	width: 12px;
+	color: var(--text-3);
+	display: inline-block;
+	transition: transform 0.1s;
+}
+.tree-row .caret.open {
+	transform: rotate(90deg);
+}
+.tree-row .plus {
+	visibility: hidden;
+	color: var(--text-3);
+}
+.tree-row:hover .plus {
+	visibility: visible;
+}
+.tree-row .dot {
+	margin: 0 4px 0 0;
 }
 .panel {
 	background: var(--panel);

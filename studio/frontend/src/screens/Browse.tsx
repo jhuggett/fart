@@ -6,6 +6,7 @@ import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
 import { theme } from "../state/theme.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
+import { Explorer, ExplorerButton } from "../ui/Explorer.tsx";
 
 function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	const ref = useRef<HTMLCanvasElement>(null);
@@ -34,6 +35,7 @@ export function Browse() {
 	return (
 		<div class="app">
 			<div class="topbar">
+				<ExplorerButton />
 				<span class="brand">fastart</span>
 				<span class="title">{project.name.value}</span>
 				<span class="sub">
@@ -67,15 +69,18 @@ export function Browse() {
 					Docs
 				</button>
 			</div>
-			<div class="shelf">
-				{files.map((rel) => (
-					<FileCard key={rel} rel={rel} thumb={thumbs.get(rel)} />
-				))}
-				{files.length === 0 && !project.busy.value && (
-					<div class="empty" style="grid-column: 1 / -1">
-						No .fart files here yet. "new file" makes one; a name like <code>enemies/bat</code> makes the folder too.
-					</div>
-				)}
+			<div class="browse-body">
+				<Explorer />
+				<div class="shelf">
+					{files.map((rel) => (
+						<FileCard key={rel} rel={rel} thumb={thumbs.get(rel)} />
+					))}
+					{files.length === 0 && !project.busy.value && (
+						<div class="empty" style="grid-column: 1 / -1">
+							No .fart files here yet. "new file" makes one; a name like <code>enemies/bat</code> makes the folder too.
+						</div>
+					)}
+				</div>
 			</div>
 			{serve?.on && serve.qr && (
 				<div class="qr">

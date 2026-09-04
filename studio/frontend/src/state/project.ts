@@ -164,7 +164,10 @@ export async function openDoc(rel: string): Promise<boolean> {
 
 export async function newFile(name: string) {
 	const rel = name.endsWith(".fart") ? name : `${name}.fart`;
-	if (await openDoc(rel)) await save();
+	if (await openDoc(rel)) {
+		await save();
+		await refreshFiles();
+	}
 }
 
 export async function toggleServe() {

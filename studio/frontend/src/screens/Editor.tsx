@@ -7,6 +7,7 @@ import { ClipsPanel } from "../ui/ClipsPanel.tsx";
 import { ChainsPanel } from "../ui/ChainsPanel.tsx";
 import { Timeline } from "../ui/Timeline.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
+import { Explorer } from "../ui/Explorer.tsx";
 import { ed, curState, curClip } from "../state/editor.ts";
 import { view } from "../canvas/view.ts";
 
@@ -32,6 +33,7 @@ export function Editor() {
 		<div class="app">
 			<Toolbar />
 			<div class="editor">
+				<Explorer />
 				<div class="panel left">
 					<PalettePanel />
 					<SelectedCard />

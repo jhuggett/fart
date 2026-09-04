@@ -3,6 +3,7 @@ import { ed, curState, save, undo, redo, type Tool } from "../state/editor.ts";
 import { project, goBrowse, goDocs } from "../state/project.ts";
 import { basename } from "../state/paths.ts";
 import { ThemeButton } from "./ThemeMenu.tsx";
+import { ExplorerButton } from "./Explorer.tsx";
 
 const addOpen = signal(false);
 export const showIssues = signal(false);
@@ -22,6 +23,7 @@ export function Toolbar() {
 	const posing = !!curState();
 	return (
 		<div class="topbar">
+			<ExplorerButton />
 			<div class="group" style="position:relative">
 				<button
 					class={`tool ${tool === "select" ? "active" : ""}`}
