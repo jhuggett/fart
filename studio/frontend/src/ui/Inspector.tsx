@@ -11,6 +11,7 @@ import { InlineName } from "./Rename.tsx";
 import { ColorPicker } from "./ColorPicker.tsx";
 import { Slider } from "./Slider.tsx";
 import {
+	doc,
 	ed,
 	parts,
 	palette,
@@ -371,7 +372,7 @@ function ClipSection() {
 }
 
 function DocumentSection() {
-	const d = ed.doc.value;
+	const d = doc();
 	const toks = palette();
 	const shared = ed.shared.value;
 	const [pick, setPick] = useState<{ k: number; x: number; y: number } | null>(null);

@@ -91,17 +91,24 @@ const UNDO_MAX = 200;
 
 // ------------------------------------------------------------- access
 
+/**
+ * The document, for anyone rendering it. Reads the revision too, so a
+ * component that derives anything from the doc re-renders when it
+ * changes: the doc is mutated in place, and the signals integration
+ * skips re-rendering a child whose props did not change.
+ */
 export function doc(): Doc {
+	void ed.rev.value;
 	return ed.doc.value;
 }
 export function parts(): Part[] {
-	return ed.doc.value.parts ?? [];
+	return doc().parts ?? [];
 }
 export function states(): State[] {
-	return ed.doc.value.states ?? [];
+	return doc().states ?? [];
 }
 export function palette(): Token[] {
-	return ed.doc.value.palette ?? [];
+	return doc().palette ?? [];
 }
 export function curPart(): Part | undefined {
 	return parts()[ed.curPart.value];
@@ -110,10 +117,10 @@ export function curState(): State | undefined {
 	return states()[ed.curState.value];
 }
 export function clips(): Clip[] {
-	return ed.doc.value.clips ?? [];
+	return doc().clips ?? [];
 }
 export function constraints(): Constraint[] {
-	return ed.doc.value.constraints ?? [];
+	return doc().constraints ?? [];
 }
 export function curClip(): Clip | undefined {
 	return clips()[ed.curClip.value];
@@ -121,7 +128,7 @@ export function curClip(): Clip | undefined {
 /** The pose list the canvas draws: a clip frame, else the current state's parts. */
 export function frame(): StatePart[] | undefined {
 	const c = curClip();
-	if (c) return sampleClip(ed.doc.value, c, ed.clipTime.value);
+	if (c) return sampleClip(doc(), c, ed.clipTime.value);
 	return curState()?.parts;
 }
 
@@ -152,7 +159,7 @@ export function selShape(): Shape | undefined {
 	return shapeAt(primary());
 }
 export function colShape(): Shape | undefined {
-	return ed.doc.value.collision?.[ed.colSel.value];
+	return doc().collision?.[ed.colSel.value];
 }
 export function poseOfCur(): StatePart | undefined {
 	const st = curState();
@@ -214,7 +221,7 @@ export function freshName(base: string, taken: Iterable<string>): string {
 // ------------------------------------------------------------- change
 
 function docText(): string {
-	return JSON.stringify(ed.doc.value);
+	return JSON.stringify(doc());
 }
 
 function snapshot(): Snap {
@@ -248,7 +255,7 @@ export function mutate(fn: (d: Doc) => void, merge?: string) {
 		pushUndo();
 		mergeKey = merge ?? null;
 	}
-	fn(ed.doc.value);
+	fn(doc());
 	touch();
 }
 
@@ -285,7 +292,7 @@ export function redo() {
 }
 
 function clampCursors() {
-	const d = ed.doc.value;
+	const d = doc();
 	ed.curPart.value = Math.min(ed.curPart.value, Math.max((d.parts?.length ?? 1) - 1, 0));
 	ed.curTok.value = Math.min(ed.curTok.value, Math.max((d.palette?.length ?? 1) - 1, 0));
 	if (ed.curState.value >= (d.states?.length ?? 0)) ed.curState.value = Math.max((d.states?.length ?? 1) - 1, 0);
@@ -321,7 +328,7 @@ export async function flushNow() {
 	const snap = docText();
 	if (snap === lastFlush) return;
 	lastFlush = snap;
-	await writeDoc(rel, stringifyDoc(ed.doc.value));
+	await writeDoc(rel, stringifyDoc(doc()));
 }
 
 function backupWrite(rel: string) {
@@ -334,10 +341,10 @@ export async function save() {
 	if (!rel) return;
 	if (flushTimer !== undefined) clearTimeout(flushTimer);
 	flushTimer = undefined;
-	bakeTris(ed.doc.value);
+	bakeTris(doc());
 	ed.rev.value++;
 	const snap = docText();
-	await writeDoc(rel, stringifyDoc(ed.doc.value));
+	await writeDoc(rel, stringifyDoc(doc()));
 	base = snap;
 	lastFlush = snap;
 	ed.dirty.value = false;
