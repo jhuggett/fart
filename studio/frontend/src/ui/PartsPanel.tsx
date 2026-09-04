@@ -22,8 +22,8 @@ export function PartsPanel() {
 	const part = ps[cur];
 	return (
 		<>
-			<div class="hdr">
-				Parts <span class="hint">top paints first</span>
+			<div class="hdr" title="layers: the top row paints first, lower rows paint over it">
+				Parts
 			</div>
 			{ps.map((p, k) => {
 				const member = st ? st.parts.some((sp) => sp.part === p.name) : true;
@@ -60,7 +60,7 @@ export function PartsPanel() {
 					</div>
 				);
 			})}
-			<button class="btn ghost" style="width:100%;margin-top:6px" onClick={() => void ask("Name the new part").then((n) => n && addPart(n))}>
+			<button class="add-row" onClick={() => void ask("Name the new part").then((n) => n && addPart(n))}>
 				+ part
 			</button>
 			<div class="line" style="display:flex;gap:6px;margin-top:8px">
@@ -84,7 +84,7 @@ export function PartsPanel() {
 			{part && ps.length > 1 && (
 				<div class="line" style="display:flex;align-items:center;gap:8px;margin-top:8px">
 					<span class="chip" style="margin:0">parent</span>
-					<select class="select" style="flex:1" value={part.parent ?? ""} onChange={(e) => setParent(cur, (e.target as HTMLSelectElement).value || undefined)}>
+					<select class="picker" style="flex:1" value={part.parent ?? ""} onChange={(e) => setParent(cur, (e.target as HTMLSelectElement).value || undefined)}>
 						<option value="">none</option>
 						{parentCandidates(cur).map((n) => (
 							<option value={n}>{n}</option>

@@ -20,6 +20,7 @@ export function Toolbar() {
 	const path = ed.path.value ?? "";
 	const dirty = ed.dirty.value;
 	const issues = ed.issues.value;
+	const errors = issues.filter((i) => !["unknown", "reserved", "unresolved"].includes(i.code)).length;
 	const posing = !!curState();
 	return (
 		<div class="topbar">
@@ -64,20 +65,23 @@ export function Toolbar() {
 					</div>
 				)}
 			</div>
-			<button class={`btn ${dirty ? "" : "ghost"}`} onClick={() => void save()}>
+			<span class="sep" />
+			<button class={`btn ${dirty ? "" : "ghost"}`} title="Cmd+S" onClick={() => void save()}>
 				Save
 			</button>
-			<button class="btn ghost" disabled={!ed.canUndo.value} onClick={undo}>
+			<button class="btn ghost" title="Cmd+Z" disabled={!ed.canUndo.value} onClick={undo}>
 				Undo
 			</button>
-			<button class="btn ghost" disabled={!ed.canRedo.value} onClick={redo}>
+			<button class="btn ghost" title="Cmd+Shift+Z" disabled={!ed.canRedo.value} onClick={redo}>
 				Redo
 			</button>
-			<button class="btn ghost" onClick={() => void goBrowse()}>
+			<span class="sep" />
+			<button class="btn ghost" title="the shelf  (Cmd+O)" onClick={() => void goBrowse()}>
 				Browse
 			</button>
 			<button
 				class={`btn ${ed.collide.value ? "active" : "ghost"}`}
+				title="the collision lens  (C)"
 				onClick={() => {
 					ed.collide.value = !ed.collide.value;
 					ed.colSel.value = -1;
@@ -85,14 +89,15 @@ export function Toolbar() {
 			>
 				Collision
 			</button>
-			<button class="btn ghost" onClick={goDocs}>
-				Docs
-			</button>
-			<ThemeButton />
 			<div class="spacer" />
 			{issues.length > 0 && (
-				<button class={`btn small ${showIssues.value ? "active" : "ghost"}`} onClick={() => (showIssues.value = !showIssues.value)}>
-					{issues.length} note{issues.length === 1 ? "" : "s"}
+				<button
+					class={`btn small ${showIssues.value ? "active" : "ghost"}`}
+					style={errors ? "color:var(--danger)" : ""}
+					title={errors ? "problems the format refuses; the file opened anyway" : "notes: fields this version does not know, and the like"}
+					onClick={() => (showIssues.value = !showIssues.value)}
+				>
+					{errors ? `${errors} problem${errors === 1 ? "" : "s"}` : `${issues.length} note${issues.length === 1 ? "" : "s"}`}
 				</button>
 			)}
 			<span class="sub" title={path}>
@@ -100,6 +105,11 @@ export function Toolbar() {
 				{project.name.value ? `${project.name.value} / ` : ""}
 				{basename(path)}
 			</span>
+			<span class="sep" />
+			<button class="btn ghost" title="the guide and the format  (?)" onClick={goDocs}>
+				Docs
+			</button>
+			<ThemeButton />
 		</div>
 	);
 }

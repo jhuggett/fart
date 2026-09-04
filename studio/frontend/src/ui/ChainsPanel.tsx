@@ -33,8 +33,8 @@ export function ChainsPanel() {
 	const last = c ? ps.find((p) => p.name === c.chain[c.chain.length - 1]) : undefined;
 	return (
 		<>
-			<div class="hdr">
-				Chains <span class="hint">reach with IK</span>
+			<div class="hdr" title="inverse kinematics: drag an anchor and the chain follows">
+				Chains
 			</div>
 			{cs.map((x, i) => (
 				<div
@@ -54,8 +54,7 @@ export function ChainsPanel() {
 				</div>
 			))}
 			<button
-				class="btn ghost"
-				style="width:100%;margin-top:6px"
+				class="add-row"
 				disabled={!canStart}
 				title={canStart ? "a chain that ends at this part's anchor" : "give the current part an anchor first: that is what the chain reaches with"}
 				onClick={start}
@@ -75,7 +74,7 @@ export function ChainsPanel() {
 					</div>
 					<div class="line">
 						<span class="k">end</span>
-						<select class="select" style="flex:1" value={c.end} onChange={(e) => setChain(k, c.chain, (e.target as HTMLSelectElement).value)}>
+						<select class="picker" style="flex:1" value={c.end} onChange={(e) => setChain(k, c.chain, (e.target as HTMLSelectElement).value)}>
 							{(last?.anchors ?? []).map((a) => (
 								<option value={`${last!.name}/${a.name}`}>{`${last!.name}/${a.name}`}</option>
 							))}
@@ -84,7 +83,7 @@ export function ChainsPanel() {
 					<div class="line">
 						<span class="k">bend</span>
 						<select
-							class="select"
+							class="picker"
 							style="flex:1"
 							value={c.bend ?? 0}
 							onChange={(e) => {

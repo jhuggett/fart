@@ -49,14 +49,14 @@ export function PalettePanel() {
 				<>
 					<div class="hdr">Shared</div>
 					{shared.map((t) => (
-						<div class="row dim" title="from a palette_ref; edit it in its own file" onClick={() => paintSel(t.name)}>
+						<div class="row dim" title="shared through palette_refs: paint with it here, edit it in its own file" onClick={() => paintSel(t.name)}>
 							<span class="swatch" style={{ background: cssColor(t.rgb) }} />
 							<span class="name">{t.name}</span>
 						</div>
 					))}
 				</>
 			)}
-			<button class="btn ghost" style="width:100%;margin-top:6px" onClick={() => void ask("Name the new token").then((n) => n && addToken(n))}>
+			<button class="add-row" onClick={() => void ask("Name the new token").then((n) => n && addToken(n))}>
 				+ token
 			</button>
 			{tk && (

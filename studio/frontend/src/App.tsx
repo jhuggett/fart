@@ -70,9 +70,9 @@ function onKey(e: KeyboardEvent) {
 		ed.tool.value = TOOL_KEYS[k];
 		return;
 	}
-	if (curClip() && k === " ") {
-		e.preventDefault();
-		ed.playing.value = !ed.playing.value;
+	if (k === " ") {
+		e.preventDefault(); // never scroll a panel
+		if (curClip()) ed.playing.value = !ed.playing.value;
 		return;
 	}
 	switch (k) {

@@ -115,13 +115,13 @@ export function Timeline() {
 			</button>
 			{key && (
 				<>
-					<select class="select" value={key.state ?? ""} onChange={(e) => setKeyState(ki, (e.target as HTMLSelectElement).value)} title="the state this key shows">
+					<select class="picker" value={key.state ?? ""} onChange={(e) => setKeyState(ki, (e.target as HTMLSelectElement).value)} title="the state this key shows">
 						{key.state === undefined && <option value="">inline pose</option>}
 						{states().map((s) => (
 							<option value={s.name}>{s.name}</option>
 						))}
 					</select>
-					<select class="select" value={key.ease ?? "linear"} onChange={(e) => setKeyEase(ki, (e.target as HTMLSelectElement).value as Ease)} title="how time approaches this key">
+					<select class="picker" value={key.ease ?? "linear"} onChange={(e) => setKeyEase(ki, (e.target as HTMLSelectElement).value as Ease)} title="how time approaches this key">
 						{EASES.map((e) => (
 							<option value={e}>{e}</option>
 						))}

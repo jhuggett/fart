@@ -16,7 +16,7 @@ function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	}, [thumb, rev]);
 	const dir = dirname(rel);
 	return (
-		<div class="file" onClick={() => void openDoc(rel)}>
+		<div class="shelf-card" onClick={() => void openDoc(rel)}>
 			<canvas ref={ref} />
 			<div class="label">
 				<div class="n">{stripExt(basename(rel))}</div>

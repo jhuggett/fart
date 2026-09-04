@@ -242,18 +242,25 @@ input {
 .group {
 	display: flex;
 	align-items: center;
-	gap: 4px;
-	padding: 3px;
+	gap: 2px;
+	padding: 2px;
 	background: var(--inset);
-	border-radius: 8px;
+	border-radius: 7px;
+}
+.sep {
+	width: 1px;
+	height: 18px;
+	background: var(--edge-strong);
+	margin: 0 4px;
+	flex: none;
 }
 
 /* ---------------------------------------------------------- widgets */
 .btn {
-	height: 28px;
-	padding: 0 12px;
+	height: 26px;
+	padding: 0 10px;
 	border: 1px solid transparent;
-	border-radius: 8px;
+	border-radius: 6px;
 	background: var(--btn);
 	color: var(--text);
 	cursor: pointer;
@@ -268,13 +275,19 @@ input {
 }
 .btn.ghost {
 	background: transparent;
-	border-color: var(--edge);
+	border-color: var(--edge-strong);
 	color: var(--text-2);
 }
 .btn.ghost:hover {
-	background: var(--accent-dim);
-	border-color: var(--edge-strong);
+	background: var(--btn);
 	color: var(--text);
+}
+/* in a top bar, ghosts are quiet words; in a panel they keep their outline */
+.topbar .btn.ghost {
+	border-color: transparent;
+}
+.topbar .btn.ghost:hover {
+	border-color: transparent;
 }
 .btn.active {
 	background: var(--accent-dim);
@@ -318,10 +331,10 @@ input {
 	background: var(--danger-dim);
 }
 .tool {
-	height: 26px;
+	height: 24px;
 	padding: 0 8px 0 10px;
 	border: 1px solid transparent;
-	border-radius: 7px;
+	border-radius: 5px;
 	background: transparent;
 	color: var(--text);
 	cursor: pointer;
@@ -353,14 +366,20 @@ input {
 	white-space: nowrap;
 }
 .hdr {
-	font-size: var(--fs-small);
-	letter-spacing: 0.14em;
+	font-size: 10.5px;
+	letter-spacing: 0.12em;
 	color: var(--text-3);
 	text-transform: uppercase;
 	display: flex;
 	align-items: baseline;
 	gap: 8px;
-	margin: 14px 0 6px;
+	margin: 16px 0 6px;
+	padding: 0 2px;
+}
+.panel .hdr:not(:first-child) {
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid var(--edge);
 }
 .hdr .hint {
 	margin-left: auto;
@@ -374,12 +393,12 @@ input {
 	margin: 10px 0;
 }
 .row {
-	height: var(--row);
+	height: 24px;
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 0 9px;
-	border-radius: 6px;
+	padding: 0 8px;
+	border-radius: 5px;
 	cursor: pointer;
 	color: var(--text);
 	white-space: nowrap;
@@ -438,6 +457,30 @@ input {
 	border-radius: 3px;
 	background: var(--accent);
 }
+.add-row {
+	height: 24px;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 8px;
+	margin-top: 2px;
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-3);
+	font-size: var(--fs-small);
+	cursor: pointer;
+	text-align: left;
+}
+.add-row:hover {
+	background: var(--btn);
+	color: var(--text);
+}
+.add-row:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
 .card {
 	background: var(--raised);
 	border: 1px solid var(--edge);
@@ -455,6 +498,11 @@ input {
 	color: var(--text-2);
 	width: 52px;
 	flex: none;
+}
+.card .chip {
+	white-space: normal;
+	line-height: 1.3;
+	margin: 0;
 }
 .popwrap {
 	position: relative;
@@ -532,7 +580,7 @@ code,
 	padding: 1px 5px;
 }
 
-.select {
+.picker {
 	height: 22px;
 	background: var(--btn);
 	border: 1px solid var(--edge);
@@ -566,21 +614,27 @@ code,
 	display: flex;
 }
 .explorer {
-	width: 216px;
+	width: 208px;
 	flex: none;
 	background: var(--panel);
 	border-right: 1px solid var(--edge);
 	overflow-y: auto;
 	overflow-x: hidden;
 	overscroll-behavior: contain;
-	padding: 0 6px 24px;
+	padding: 0 4px 24px;
 }
 .explorer .hdr {
-	margin: 14px 8px 4px;
+	margin: 12px 6px 2px;
+	padding: 0;
+	border: none;
 }
 .explorer .hdr .hint {
 	display: flex;
-	gap: 2px;
+	gap: 0;
+	visibility: hidden;
+}
+.explorer:hover .hdr .hint {
+	visibility: visible;
 }
 .btn.x.plain {
 	color: var(--text-3);
@@ -592,16 +646,26 @@ code,
 	background: var(--btn);
 }
 .tree-row {
-	height: 24px;
+	height: 22px;
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 5px;
 	padding-right: 4px;
-	border-radius: 6px;
+	border-radius: 4px;
 	cursor: pointer;
 	white-space: nowrap;
 	color: var(--text);
-	font-size: var(--fs-body);
+	font-size: 12.5px;
+}
+.tree-row .glyph {
+	width: 12px;
+	color: var(--text-3);
+	display: inline-block;
+	text-align: center;
+	font-size: 10px;
+}
+.tree-row.active .glyph {
+	color: var(--accent);
 }
 .tree-row:hover {
 	background: var(--btn);
@@ -611,12 +675,13 @@ code,
 	color: var(--accent);
 }
 .tree-row.project {
-	color: var(--text-2);
-	font-size: var(--fs-small);
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	color: var(--text);
+	font-weight: 600;
+	font-size: 11.5px;
+	letter-spacing: 0.04em;
 	padding-left: 8px;
 	cursor: default;
+	margin-bottom: 2px;
 }
 .tree-row.project:hover {
 	background: none;
@@ -650,7 +715,7 @@ code,
 	overflow-y: auto;
 	overflow-x: hidden;
 	overscroll-behavior: contain;
-	padding: 0 12px 24px;
+	padding: 0 10px 24px;
 }
 .panel.left {
 	border-right: 1px solid var(--edge);
@@ -787,35 +852,35 @@ code,
 	gap: 12px;
 	align-content: start;
 }
-.file {
+.shelf-card {
 	position: relative;
 	background: var(--panel);
 	border: 1px solid var(--edge);
-	border-radius: 12px;
+	border-radius: 10px;
 	cursor: pointer;
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
 }
-.file:hover {
+.shelf-card:hover {
 	background: var(--raised);
 	border-color: var(--accent-line);
 }
-.file canvas {
+.shelf-card canvas {
 	flex: 1;
 	width: 100%;
 	display: block;
 }
-.file .label {
+.shelf-card .label {
 	padding: 4px 10px 8px;
 }
-.file .label .n {
+.shelf-card .label .n {
 	color: var(--text);
 }
-.file:hover .label .n {
+.shelf-card:hover .label .n {
 	color: var(--accent);
 }
-.file .label .d {
+.shelf-card .label .d {
 	color: var(--text-3);
 	font-size: var(--fs-small);
 	height: 14px;

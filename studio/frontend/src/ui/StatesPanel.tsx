@@ -13,8 +13,8 @@ export function StatesPanel() {
 	const sp = poseOfCur();
 	return (
 		<>
-			<div class="hdr">
-				States <span class="hint">the preview</span>
+			<div class="hdr" title="named poses; pick one to pose the parts, 'all parts' to edit geometry">
+				States
 			</div>
 			<div
 				class={`row ${cur < 0 && ed.curClip.value < 0 ? "active" : ""}`}
@@ -46,7 +46,7 @@ export function StatesPanel() {
 					)}
 				</div>
 			))}
-			<button class="btn ghost" style="width:100%;margin-top:6px" onClick={() => void ask("Name the new state").then((n) => n && addState(n))}>
+			<button class="add-row" onClick={() => void ask("Name the new state").then((n) => n && addState(n))}>
 				+ state
 			</button>
 			{st && part && (

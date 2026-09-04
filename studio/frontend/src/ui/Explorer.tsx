@@ -37,13 +37,14 @@ function Row({ node, depth }: { node: TreeNode; depth: number }) {
 	const active = node.path === cur;
 	return (
 		<div
-			class={`tree-row file ${active ? "active" : ""}`}
-			style={{ paddingLeft: `${8 + depth * 14 + 14}px` }}
+			class={`tree-row leaf ${active ? "active" : ""}`}
+			style={{ paddingLeft: `${8 + depth * 14}px` }}
 			title={node.path}
 			onClick={() => {
 				if (!active) void openDoc(node.path);
 			}}
 		>
+			<span class="glyph">◆</span>
 			<span class="name">{stripExt(node.name)}</span>
 			{active && ed.dirty.value && <span class="dot" title="unsaved: rolls back unless you Save" />}
 		</div>

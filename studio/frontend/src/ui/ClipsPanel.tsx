@@ -9,8 +9,8 @@ export function ClipsPanel() {
 	const clip = curClip();
 	return (
 		<>
-			<div class="hdr">
-				Clips <span class="hint">states in time</span>
+			<div class="hdr" title="animation: states in time">
+				Clips
 			</div>
 			{cs.map((c, k) => (
 				<div
@@ -33,8 +33,7 @@ export function ClipsPanel() {
 				</div>
 			))}
 			<button
-				class="btn ghost"
-				style="width:100%;margin-top:6px"
+				class="add-row"
 				onClick={() =>
 					void ask("Name the new clip").then((n) => {
 						if (n && !addClip(n)) project.error.value = "a clip is states in time: make a state first";
