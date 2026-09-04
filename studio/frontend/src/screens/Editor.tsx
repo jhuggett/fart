@@ -16,15 +16,15 @@ export function Editor() {
 		? "collision lens: shapes a game may treat as solid · C flips back"
 		: clip
 			? `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`
-			: st
-				? `posing "${st.name}": drag a part to place it, pull the lever to turn, drag a ring to reach · geometry is locked`
-				: ed.pending.value === "pivot"
-					? "click the canvas to place the pivot"
-					: ed.pending.value === "anchor"
-						? "click the canvas to place the anchor"
-						: ed.tool.value === "poly"
-							? "click to add points · click the first point or press Enter to close · Esc drops it"
-							: "drawing · shapes and parts are edited here · pick a state on the left to arrange them";
+			: ed.pending.value === "pivot"
+				? "click the canvas to place the pivot"
+				: ed.pending.value === "anchor"
+					? "click the canvas to place the anchor"
+					: ed.tool.value === "poly"
+						? "click to add points · click the first point or press Enter to close · Esc drops it"
+						: st
+							? `state "${st.name}" · shapes edit in place · drag the part's ⌖ to move it, its lever to turn it, a ring to reach`
+							: "";
 	const issues = ed.issues.value;
 	return (
 		<div class="app">

@@ -4,7 +4,7 @@
 
 import { I } from "./Icons.tsx";
 import { InlineName } from "./Rename.tsx";
-import { ed, parts, curState, addPart, deletePart, renamePart, swapParts, toggleMembership, freshName } from "../state/editor.ts";
+import { ed, parts, curState, curClip, addPart, deletePart, renamePart, movePartInState, toggleMembership, freshName } from "../state/editor.ts";
 import { local, toggleHidden, toggleLocked } from "../state/local.ts";
 import { renaming, openContextMenu } from "../state/menu.ts";
 
@@ -14,8 +14,8 @@ export function partMenu(i: number) {
 		{ label: "Rename", keys: "Enter", run: () => (renaming.value = { kind: "part", index: i }) },
 		{ label: "Set pivot", run: () => (ed.pending.value = "pivot") },
 		{ label: "Add anchor", run: () => (ed.pending.value = "anchor") },
-		{ label: "Raise (paints later)", disabled: i === ps.length - 1, run: () => swapParts(i, i + 1), sep: true },
-		{ label: "Lower (paints earlier)", disabled: i === 0, run: () => swapParts(i, i - 1) },
+		{ label: "Raise (paints later)", run: () => movePartInState(ps[i].name, true), sep: true },
+		{ label: "Lower (paints earlier)", run: () => movePartInState(ps[i].name, false) },
 		{ label: "Delete part", danger: true, sep: true, run: () => deletePart(i) },
 	];
 }
@@ -25,10 +25,20 @@ export function addPartNow() {
 	renaming.value = { kind: "part", index: i };
 }
 
-function childrenOf(name: string | undefined) {
+/** Parts in the current state's paint order, then the ones it leaves out. */
+function ordered(): { p: (typeof parts extends () => infer T ? T : never)[number]; i: number }[] {
 	const ps = parts();
-	const names = new Set(ps.map((p) => p.name));
-	return ps.map((p, i) => ({ p, i })).filter(({ p }) => (name === undefined ? !p.parent || !names.has(p.parent) : p.parent === name));
+	const st = curState();
+	const rank = new Map<string, number>();
+	st?.parts.forEach((sp, k) => rank.set(sp.part, k));
+	return ps
+		.map((p, i) => ({ p, i }))
+		.sort((a, b) => (rank.get(a.p.name) ?? 1e9) - (rank.get(b.p.name) ?? 1e9) || a.i - b.i);
+}
+
+function childrenOf(name: string | undefined) {
+	const names = new Set(parts().map((p) => p.name));
+	return ordered().filter(({ p }) => (name === undefined ? !p.parent || !names.has(p.parent) : p.parent === name));
 }
 
 function LayerRow({ i, depth }: { i: number; depth: number }) {
@@ -43,6 +53,7 @@ function LayerRow({ i, depth }: { i: number; depth: number }) {
 	const member = st ? st.parts.some((sp) => sp.part === p.name) : true;
 	const ren = renaming.value;
 	const isRen = ren?.kind === "part" && ren.index === i;
+	const preview = !!curClip();
 	return (
 		<>
 			<div
@@ -56,10 +67,10 @@ function LayerRow({ i, depth }: { i: number; depth: number }) {
 					openContextMenu(e.clientX, e.clientY, partMenu(i));
 				}}
 			>
-				{st ? (
+				{st && !preview ? (
 					<span
 						class={`check ${member ? "on" : ""}`}
-						title="drawn in this state"
+						title={member ? "drawn in this state (click to leave it out)" : "not drawn in this state (click to add it)"}
 						onClick={(e) => {
 							e.stopPropagation();
 							toggleMembership(ed.curState.value, p.name);

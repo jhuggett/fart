@@ -33,7 +33,7 @@ import {
 	deleteAnchor,
 	parentCandidates,
 	setParent,
-	swapParts,
+	movePartInState,
 	setPose,
 	resetPose,
 	toggleMembership,
@@ -169,13 +169,16 @@ function ShapeSection({ sh, collision }: { sh: Shape; collision: boolean }) {
 	);
 }
 
-function PoseSection() {
-	const st = curState()!;
+function PoseBlock() {
+	const st = curState();
 	const part = curPart();
-	if (!part) return null;
+	if (!part || !st) return null;
 	const sp = poseOfCur();
 	return (
-		<Section title="Pose" hint={`how "${part.name}" sits in this state`} tail={st.name}>
+		<>
+			<div class="hdr sub" title={`how "${part.name}" sits in the state "${st.name}"`}>
+				In {st.name}
+			</div>
 			{sp ? (
 				<>
 					<div class="fields">
@@ -189,7 +192,7 @@ function PoseSection() {
 							reset
 						</button>
 						<button class="btn small ghost" onClick={() => toggleMembership(ed.curState.value, part.name)}>
-							hide in this state
+							leave out of this state
 						</button>
 					</div>
 				</>
@@ -201,7 +204,7 @@ function PoseSection() {
 					</button>
 				</div>
 			)}
-		</Section>
+		</>
 	);
 }
 
@@ -278,9 +281,8 @@ function PartSection() {
 	const k = ed.curPart.value;
 	const part = parts()[k];
 	if (!part) return null;
-	const ps = parts();
 	const ren = renaming.value;
-	const posing = !!curState() || !!curClip();
+	const preview = !!curClip();
 	return (
 		<Section title="Part" hint="a layer with a pivot: the unit that poses" tail={part.name}>
 			<div class="line">
@@ -293,14 +295,14 @@ function PartSection() {
 			</div>
 			<div class="line">
 				<span class="k">parent</span>
-				<select class="picker" style="flex:1" value={part.parent ?? ""} onChange={(e) => setParent(k, (e.target as HTMLSelectElement).value || undefined)} disabled={ps.length < 2} title="the part this one rides">
+				<select class="picker" style="flex:1" value={part.parent ?? ""} onChange={(e) => setParent(k, (e.target as HTMLSelectElement).value || undefined)} disabled={parts().length < 2} title="the part this one rides">
 					<option value="">none</option>
 					{parentCandidates(k).map((n) => (
 						<option value={n}>{n}</option>
 					))}
 				</select>
 			</div>
-			{!posing && (
+			{!preview && (
 				<div class="line" style="gap:6px">
 					<button class={`btn small ghost ${ed.pending.value === "pivot" ? "active" : ""}`} title="the next canvas click places the pivot" onClick={() => (ed.pending.value = ed.pending.value === "pivot" ? "none" : "pivot")}>
 						<I.target size={12} /> set pivot
@@ -309,14 +311,15 @@ function PartSection() {
 						<I.anchor size={12} /> add anchor
 					</button>
 					<span class="spacer" />
-					<button class="btn x" title={`raise: paints later (${k + 1} of ${ps.length})`} disabled={k === ps.length - 1} onClick={() => swapParts(k, k + 1)}>
+					<button class="btn x" title="raise: paints later in this state" onClick={() => movePartInState(part.name, true)}>
 						<I.up size={12} />
 					</button>
-					<button class="btn x" title="lower: paints earlier" disabled={k === 0} onClick={() => swapParts(k, k - 1)}>
+					<button class="btn x" title="lower: paints earlier in this state" onClick={() => movePartInState(part.name, false)}>
 						<I.down size={12} />
 					</button>
 				</div>
 			)}
+			{!preview && <PoseBlock />}
 			{(part.anchors?.length ?? 0) > 0 && (
 				<>
 					<div class="hdr sub" title="named points a game or a chain reaches for">
@@ -447,7 +450,6 @@ function DocumentSection() {
 export function Inspector() {
 	void ed.rev.value;
 	const collide = ed.collide.value;
-	const st = curState();
 	const clip = curClip();
 	const sh = collide ? colShape() : selShape();
 	return (
@@ -457,9 +459,8 @@ export function Inspector() {
 			</Section>)}
 			{!collide && clip && <ClipSection />}
 			{!collide && !clip && sh && <ShapeSection sh={sh} collision={false} />}
-			{!collide && !clip && st && <PoseSection />}
 			{!collide && <PartSection />}
-			{!collide && !clip && !sh && !st && <DocumentSection />}
+			{!collide && !clip && !sh && <DocumentSection />}
 		</div>
 	);
 }

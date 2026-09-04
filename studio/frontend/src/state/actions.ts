@@ -2,10 +2,10 @@
 // and the command palette all run these by id.
 
 import { register } from "./commands.ts";
-import { ed, save, undo, redo, copySel, pasteClip, cutSel, dupSel, deleteSel, selOrder, selectAll, nudgeSel, endGesture, curClip, curPart, addKey, type Tool } from "./editor.ts";
+import { ed, save, undo, redo, copySel, pasteClip, cutSel, dupSel, deleteSel, selOrder, selectAll, endGesture, curClip, curPart, addKey, type Tool } from "./editor.ts";
 import { project, goBrowse, goWelcome, goDocs, pickFolder, newFile, toggleServe } from "./project.ts";
 import { view, fitBounds, zoomBy } from "../canvas/view.ts";
-import { escape, polyEnter, selBounds } from "../canvas/interact.ts";
+import { escape, polyEnter, selBounds, nudgeWorld } from "../canvas/interact.ts";
 import { toggleExplorer } from "./explorer.ts";
 import { openPalette, renaming } from "./menu.ts";
 import { ask } from "./prompt.ts";
@@ -15,11 +15,11 @@ import { docBounds } from "@fastart/core";
 const inEditor = () => project.screen.value === "edit";
 const inProject = () => project.screen.value === "edit" || project.screen.value === "browse";
 const native = () => shell.kind === "wails";
-const setup = () => inEditor() && ed.curState.value < 0 && ed.curClip.value < 0;
+const setup = () => inEditor() && ed.curClip.value < 0;
 
 let nudgeTimer: number | undefined;
 function nudge(dx: number, dy: number) {
-	nudgeSel([dx, dy]);
+	nudgeWorld([dx, dy]);
 	// a burst of taps is one undo step; a pause ends it
 	if (nudgeTimer !== undefined) clearTimeout(nudgeTimer);
 	nudgeTimer = window.setTimeout(endGesture, 600);

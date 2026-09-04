@@ -55,7 +55,8 @@ export const ed = {
 	tool: signal<Tool>("select"),
 	curPart: signal(0),
 	curTok: signal(0),
-	curState: signal(-1),
+	/** the state on the canvas; there is always one */
+	curState: signal(0),
 	/** a clip being previewed; -1 none. Clip and state are exclusive. */
 	curClip: signal(-1),
 	clipTime: signal(0),
@@ -72,8 +73,14 @@ export const ed = {
 	canRedo: signal(false),
 };
 
-let undoStack: string[] = [];
-let redoStack: string[] = [];
+/** A moment to return to: the document, and which state and clip were on the canvas. */
+interface Snap {
+	doc: string;
+	state: number;
+	clip: number;
+}
+let undoStack: Snap[] = [];
+let redoStack: Snap[] = [];
 let base = ""; // the doc as of the last real save: the rollback point
 let lastFlush = ""; // the doc as last written to disk
 let flushTimer: number | undefined;
@@ -111,11 +118,24 @@ export function constraints(): Constraint[] {
 export function curClip(): Clip | undefined {
 	return clips()[ed.curClip.value];
 }
-/** The pose list the canvas draws: a clip frame, a state's parts, or nothing (rest). */
+/** The pose list the canvas draws: a clip frame, else the current state's parts. */
 export function frame(): StatePart[] | undefined {
 	const c = curClip();
 	if (c) return sampleClip(ed.doc.value, c, ed.clipTime.value);
 	return curState()?.parts;
+}
+
+export type Mode = "state" | "clip" | "collide";
+/** What the canvas is doing: editing a state, previewing a clip, or the collision lens. */
+export function mode(): Mode {
+	if (ed.collide.value) return "collide";
+	if (curClip()) return "clip";
+	return "state";
+}
+
+/** Whether the current part is drawn by the current state (it has an entry). */
+export function curPartPose(): StatePart | undefined {
+	return poseOfCur();
 }
 export function curTokName(): string {
 	return palette()[ed.curTok.value]?.name ?? palette()[0]?.name ?? "ink";
@@ -193,9 +213,12 @@ export function freshName(base: string, taken: Iterable<string>): string {
 
 // ------------------------------------------------------------- change
 
-function snapshot(): string {
-	const d = ed.doc.value;
-	return JSON.stringify(d);
+function docText(): string {
+	return JSON.stringify(ed.doc.value);
+}
+
+function snapshot(): Snap {
+	return { doc: docText(), state: ed.curState.value, clip: ed.curClip.value };
 }
 
 function touch() {
@@ -233,9 +256,11 @@ export function endGesture() {
 	mergeKey = null;
 }
 
-function restore(snap: string) {
+function restore(snap: Snap) {
 	batch(() => {
-		ed.doc.value = JSON.parse(snap) as Doc;
+		ed.doc.value = JSON.parse(snap.doc) as Doc;
+		ed.curState.value = snap.state;
+		ed.curClip.value = snap.clip;
 		clampCursors();
 		ed.sel.value = [];
 		ed.colSel.value = -1;
@@ -263,7 +288,7 @@ function clampCursors() {
 	const d = ed.doc.value;
 	ed.curPart.value = Math.min(ed.curPart.value, Math.max((d.parts?.length ?? 1) - 1, 0));
 	ed.curTok.value = Math.min(ed.curTok.value, Math.max((d.palette?.length ?? 1) - 1, 0));
-	if (ed.curState.value >= (d.states?.length ?? 0)) ed.curState.value = -1;
+	if (ed.curState.value >= (d.states?.length ?? 0)) ed.curState.value = Math.max((d.states?.length ?? 1) - 1, 0);
 	if (ed.curClip.value >= (d.clips?.length ?? 0)) ed.curClip.value = -1;
 	const c = d.clips?.[ed.curClip.value];
 	if (!c || ed.curKey.value >= c.keys.length) ed.curKey.value = c ? Math.min(ed.curKey.value, c.keys.length - 1) : -1;
@@ -293,7 +318,7 @@ export async function flushNow() {
 	flushTimer = undefined;
 	const rel = ed.path.value;
 	if (!rel) return;
-	const snap = snapshot();
+	const snap = docText();
 	if (snap === lastFlush) return;
 	lastFlush = snap;
 	await writeDoc(rel, stringifyDoc(ed.doc.value));
@@ -311,7 +336,7 @@ export async function save() {
 	flushTimer = undefined;
 	bakeTris(ed.doc.value);
 	ed.rev.value++;
-	const snap = snapshot();
+	const snap = docText();
 	await writeDoc(rel, stringifyDoc(ed.doc.value));
 	base = snap;
 	lastFlush = snap;
@@ -340,6 +365,8 @@ function ensureDefaults(d: Doc) {
 		p.pivot ??= [0, 0];
 	}
 	d.states ??= [];
+	// everything is a state: a file without one gets its drawing as one
+	if (!d.states.length) d.states.push({ name: "default", parts: d.parts.map((p) => ({ part: p.name, offset: p.pivot ?? [0, 0] })) });
 }
 
 /** A file the format refuses outright: not JSON, wrong version, bad shape. */
@@ -387,7 +414,7 @@ export async function openFile(rel: string): Promise<boolean> {
 		ed.issues.value = issues;
 		ed.curPart.value = 0;
 		ed.curTok.value = 0;
-		ed.curState.value = -1;
+		ed.curState.value = 0;
 		ed.curClip.value = -1;
 		ed.curKey.value = -1;
 		ed.clipTime.value = 0;
@@ -403,7 +430,7 @@ export async function openFile(rel: string): Promise<boolean> {
 		ed.canRedo.value = false;
 		ed.rev.value++;
 	});
-	base = snapshot();
+	base = docText();
 	lastFlush = base;
 	backupWrite(rel);
 	return true;
@@ -621,10 +648,26 @@ export function dupSel() {
 
 // ------------------------------------------------------------- parts
 
+/** A new part joins every state, at rest; leaving one out is a choice made after. */
 export function addPart(name: string): number {
-	mutate((d) => d.parts!.push({ name, pivot: [0, 0], shapes: [] }));
+	mutate((d) => {
+		d.parts!.push({ name, pivot: [0, 0], shapes: [] });
+		for (const st of d.states ?? []) st.parts.push({ part: name, offset: [0, 0] });
+	});
 	ed.curPart.value = parts().length - 1;
 	return ed.curPart.value;
+}
+
+/** Move the current part one step through the current state's paint order. */
+export function movePartInState(name: string, up: boolean) {
+	const st = curState();
+	if (!st) return;
+	const i = st.parts.findIndex((sp) => sp.part === name);
+	const j = i + (up ? 1 : -1);
+	if (i < 0 || j < 0 || j >= st.parts.length) return;
+	mutate(() => {
+		[st.parts[i], st.parts[j]] = [st.parts[j], st.parts[i]];
+	});
 }
 
 /** Duplicate the selection exactly in place (an Alt-drag begins with this). */
@@ -801,17 +844,26 @@ export function toggleMembership(stateIdx: number, partName: string) {
 
 // ------------------------------------------------------------- states
 
-export function addState(name: string) {
+/** A new state starts as a copy of another (the current one, unless told). */
+export function addState(name: string, from?: number): number {
+	const src = states()[from ?? ed.curState.value] ?? states()[0];
 	mutate((d) => {
-		// identity pose: every part, offset on its own pivot
-		const st: State = { name, parts: d.parts!.map((p) => ({ part: p.name, offset: p.pivot ?? [0, 0] })) };
+		const st: State = {
+			name,
+			parts: src
+				? src.parts.map((sp) => ({ ...sp, offset: sp.offset ? ([sp.offset[0], sp.offset[1]] as Vec2) : undefined }))
+				: d.parts!.map((p) => ({ part: p.name, offset: p.pivot ?? [0, 0] })),
+		};
+		for (const sp of st.parts) if (sp.offset === undefined) delete sp.offset;
 		(d.states ??= []).push(st);
 	});
-	ed.curState.value = states().length - 1;
-	ed.sel.value = [];
+	selectState(states().length - 1);
+	return ed.curState.value;
 }
 
-export function deleteState(k: number) {
+/** The last state cannot go: the file always has one. Returns false then. */
+export function deleteState(k: number): boolean {
+	if (states().length <= 1) return false;
 	const name = states()[k]?.name;
 	mutate((d) => {
 		d.states!.splice(k, 1);
@@ -822,6 +874,7 @@ export function deleteState(k: number) {
 		}
 	});
 	clampCursors();
+	return true;
 }
 
 export function renameState(k: number, name: string) {
@@ -840,7 +893,15 @@ export function selectClip(k: number) {
 		ed.curKey.value = k >= 0 ? 0 : -1;
 		ed.clipTime.value = 0;
 		ed.playing.value = false;
-		if (k >= 0) ed.curState.value = -1;
+		ed.sel.value = [];
+		ed.hover.value = null;
+	});
+}
+
+export function selectState(k: number) {
+	batch(() => {
+		selectClip(-1);
+		ed.curState.value = k;
 		ed.sel.value = [];
 		ed.hover.value = null;
 	});

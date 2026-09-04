@@ -10,7 +10,7 @@ import type { Vec2 } from "@fastart/core";
 import { view, toWorld, zoomAt } from "./view.ts";
 import { render } from "./render.ts";
 import { onDown, onMove, onUp, cancelGesture, ix, pick } from "./interact.ts";
-import { ed, selHas, selOnly, curState, curClip } from "../state/editor.ts";
+import { ed, selHas, selOnly, curClip } from "../state/editor.ts";
 import { theme } from "../state/theme.ts";
 import { openContextMenu } from "../state/menu.ts";
 import { run, keysFor } from "../state/commands.ts";
@@ -85,7 +85,7 @@ export function Canvas() {
 			e.preventDefault();
 			const wm = toWorld(s, W, H);
 			const items = [];
-			if (!ed.collide.value && !curState() && !curClip()) {
+			if (!ed.collide.value && !curClip()) {
 				const hit = pick(wm);
 				if (hit && !selHas(hit)) selOnly(hit);
 				const some = ed.sel.value.length > 0;

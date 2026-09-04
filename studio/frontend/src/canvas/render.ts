@@ -3,11 +3,11 @@
 // selection outlines, handles, the selection box and its grips, pivots
 // and anchors, the pose lever, the marquee, and whatever is being drawn.
 
-import { cssColor, colorOf, xfApply, xfScale, pivotOf, XF_ID, type Shape, type Vec2 } from "@fastart/core";
+import { cssColor, colorOf, xfApply, xfScale, pivotOf, type Shape, type Vec2 } from "@fastart/core";
 import { view } from "./view.ts";
-import { drawDoc, fillShape, outlineShape, tracePoly, ident, type Map2 } from "./draw.ts";
-import { ix, handlesOf, scaleGrips, poseLever, frameW, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
-import { ed, curPart, curState, curClip, curTokName, selShapes, selShape, shapeAt, colShape, poseOfCur, frame, parts } from "../state/editor.ts";
+import { drawDoc, fillShape, outlineShape, tracePoly, ident } from "./draw.ts";
+import { ix, handlesOf, worldHandles, scaleGrips, poseLever, frameW, partXf, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
+import { ed, curPart, curClip, curTokName, selShape, shapeAt, colShape, poseOfCur, frame, parts } from "../state/editor.ts";
 import { canvasColors } from "../state/theme.ts";
 
 export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr: number) {
@@ -29,7 +29,6 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 
 	const doc = ed.doc.value;
 	const tokens = ed.tokens.value;
-	const st = curState();
 	const clip = curClip();
 	const collide = ed.collide.value;
 	const fr = frame();
@@ -48,7 +47,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		});
 		const cs = colShape();
 		if (cs) drawHandles(ctx, handlesOf(cs).map(toS), screen, world, C.handleFill, ACCENT, LW);
-	} else if (st || clip) {
+	} else {
 		const W = frameW();
 		// the rig: a bone from each child's pivot to its parent's
 		screen();
@@ -69,30 +68,80 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		}
 		ctx.setLineDash([]);
 		world();
-		if (st) {
-			// pose mode: outline the current part where it lands, and its lever
+		if (!clip) {
+			// hover and selection, through each part's pose
+			const hov = ed.hover.value;
+			const hs = shapeAt(hov);
+			if (hov && hs && !ed.sel.value.some((r) => r.p === hov.p && r.s === hov.s)) {
+				const xf = partXf(hov.p, W);
+				outlineShape(ctx, hs, HOVER, LW, zoom, (q) => xfApply(xf, q), xfScale(xf));
+			}
+			const ps = parts();
+			for (const r of ed.sel.value) {
+				const sh = ps[r.p]?.shapes?.[r.s];
+				if (!sh) continue;
+				const xf = partXf(r.p, W);
+				outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom, (q) => xfApply(xf, q), xfScale(xf));
+			}
+			if (selShape()) drawHandles(ctx, worldHandles().map(toS), screen, world, C.handleFill, ACCENT, LW);
+			const grips = scaleGrips();
+			if (grips.length && ed.sel.value.length) {
+				screen();
+				const a = toS(grips[0].at);
+				const c = toS(grips[2].at);
+				ctx.strokeStyle = C.accentSoft;
+				ctx.lineWidth = LW;
+				ctx.setLineDash([4, 4]);
+				ctx.strokeRect(a[0], a[1], c[0] - a[0], c[1] - a[1]);
+				ctx.setLineDash([]);
+				for (const g of grips) {
+					const s = toS(g.at);
+					ctx.fillStyle = C.handleFill;
+					ctx.strokeStyle = ACCENT;
+					ctx.beginPath();
+					ctx.rect(s[0] - 4, s[1] - 4, 8, 8);
+					ctx.fill();
+					ctx.stroke();
+				}
+				world();
+			}
+			// the current part: its pivot (a grip that moves it), its lever, its anchors
 			const part = curPart();
 			const sp = poseOfCur();
-			if (part && sp) {
-				const xf = W.get(part.name) ?? XF_ID;
-				const map: Map2 = (p) => xfApply(xf, p);
-				for (const sh of part.shapes ?? []) outlineShape(ctx, sh, ACCENT, LW, zoom, map, xfScale(xf));
-				const lever = poseLever();
+			if (part) {
+				const xf = partXf(ed.curPart.value, W);
 				screen();
 				const o = toS(xfApply(xf, pivotOf(part)));
-				crosshair(ctx, o, ACCENT);
-				if (lever) {
-					const l = toS(lever);
+				if (sp) {
+					ctx.fillStyle = C.handleFill;
 					ctx.strokeStyle = ACCENT;
 					ctx.lineWidth = 1.5 * LW;
 					ctx.beginPath();
-					ctx.moveTo(o[0], o[1]);
-					ctx.lineTo(l[0], l[1]);
-					ctx.stroke();
-					ctx.fillStyle = ACCENT;
-					ctx.beginPath();
-					ctx.arc(l[0], l[1], 5, 0, Math.PI * 2);
+					ctx.arc(o[0], o[1], 7, 0, Math.PI * 2);
 					ctx.fill();
+					ctx.stroke();
+					crosshair(ctx, o, ACCENT, 5);
+					const lever = poseLever();
+					if (lever) {
+						const l = toS(lever);
+						ctx.strokeStyle = ACCENT;
+						ctx.lineWidth = 1.5 * LW;
+						ctx.beginPath();
+						ctx.moveTo(o[0], o[1]);
+						ctx.lineTo(l[0], l[1]);
+						ctx.stroke();
+						ctx.fillStyle = ACCENT;
+						ctx.beginPath();
+						ctx.arc(l[0], l[1], 5, 0, Math.PI * 2);
+						ctx.fill();
+					}
+				} else crosshair(ctx, o, C.text3);
+				for (const a of part.anchors ?? []) {
+					const s = toS(xfApply(xf, a.at));
+					diamond(ctx, s, TEAL);
+					ctx.fillStyle = TEAL;
+					ctx.font = "11px system-ui, sans-serif";
+					ctx.fillText(a.name, s[0] + 8, s[1] - 6);
 				}
 				world();
 			}
@@ -107,50 +156,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 				ctx.stroke();
 				ctx.fillStyle = TEAL;
 				ctx.font = "11px system-ui, sans-serif";
-				ctx.fillText(g.c.name, s[0] + 10, s[1] - 8);
-			}
-			world();
-		}
-	} else {
-		// geometry mode: hover, selection, handles, the box
-		const hov = ed.hover.value;
-		const hs = shapeAt(hov);
-		if (hs && !ed.sel.value.some((r) => r.p === hov!.p && r.s === hov!.s)) outlineShape(ctx, hs, HOVER, LW, zoom);
-		for (const sh of selShapes()) outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom);
-		const prim = selShape();
-		if (prim) drawHandles(ctx, handlesOf(prim).map(toS), screen, world, C.handleFill, ACCENT, LW);
-		const grips = scaleGrips();
-		if (grips.length && ed.sel.value.length) {
-			screen();
-			const a = toS(grips[0].at);
-			const c = toS(grips[2].at);
-			ctx.strokeStyle = C.accentSoft;
-			ctx.lineWidth = LW;
-			ctx.setLineDash([4, 4]);
-			ctx.strokeRect(a[0], a[1], c[0] - a[0], c[1] - a[1]);
-			ctx.setLineDash([]);
-			for (const g of grips) {
-				const s = toS(g.at);
-				ctx.fillStyle = C.handleFill;
-				ctx.strokeStyle = ACCENT;
-				ctx.beginPath();
-				ctx.rect(s[0] - 4, s[1] - 4, 8, 8);
-				ctx.fill();
-				ctx.stroke();
-			}
-			world();
-		}
-		// the current part's pivot and anchors
-		const part = curPart();
-		if (part) {
-			screen();
-			crosshair(ctx, toS(part.pivot ?? [0, 0]), C.accentSoft);
-			for (const a of part.anchors ?? []) {
-				const s = toS(a.at);
-				diamond(ctx, s, TEAL);
-				ctx.fillStyle = TEAL;
-				ctx.font = "11px system-ui, sans-serif";
-				ctx.fillText(a.name, s[0] + 8, s[1] - 6);
+				ctx.fillText(g.c.name, s[0] + 10, s[1] + 14);
 			}
 			world();
 		}

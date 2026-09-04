@@ -1,5 +1,5 @@
 import { I } from "./Icons.tsx";
-import { ed, curState, curClip, save, type Tool } from "../state/editor.ts";
+import { ed, curClip, save, type Tool } from "../state/editor.ts";
 import { project, goDocs, goBrowse } from "../state/project.ts";
 import { view } from "../canvas/view.ts";
 import { basename } from "../state/paths.ts";
@@ -24,7 +24,7 @@ export function Toolbar() {
 	const dirty = ed.dirty.value;
 	const issues = ed.issues.value;
 	const errors = issues.filter((i) => !["unknown", "reserved", "unresolved"].includes(i.code)).length;
-	const posing = !!curState() || !!curClip();
+	const posing = !!curClip();
 	const collide = ed.collide.value;
 	return (
 		<div class="topbar">
@@ -34,7 +34,7 @@ export function Toolbar() {
 					<button
 						class={`tool ${tool === t.tool ? "active" : ""}`}
 						disabled={posing && t.tool !== "select"}
-						title={posing && t.tool !== "select" ? "geometry is locked while posing" : `${t.label}  (${t.key})`}
+						title={posing && t.tool !== "select" ? "a clip is a preview; pick a state to edit" : `${t.label}  (${t.key})`}
 						onClick={() => run(`tool.${t.tool}`)}
 					>
 						<t.icon />

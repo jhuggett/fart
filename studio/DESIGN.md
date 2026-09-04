@@ -27,10 +27,10 @@ Four regions, like Rive and Spine and Figma:
   and IK chains; a pose gets offset, turn and size; nothing selected
   gets the document: name, palette, collision.
 - **Bottom is time**: only the timeline, and only when a clip is chosen.
-  The first row under States is **the drawing**: the geometry itself,
-  where shapes are edited; it is not a state. Picking a state enters
-  *pose* mode; picking a clip enters *preview*. Spine calls these setup
-  and animate; the split is the same.
+- **Every view is a state.** There is no separate drawing mode: shapes
+  are edited inside whichever state is on the canvas, through its pose,
+  and the part is placed and turned by its own grips. A new state copies
+  the current one. A clip is a *preview*: nothing edits there.
 - **The canvas is the tool**: hover tells you what a click would do, the
   hint line at the bottom-left says what mode you are in.
 
@@ -47,7 +47,7 @@ definition each, and the tooltips repeat them.
 | pivot      | `pivot`         | the point a part turns about and is placed by               |
 | anchor     | `anchors[]`     | a named point on a part a game or a chain reaches for       |
 | parent     | `parent`        | the part this one rides                                     |
-| state      | `states[]`      | a named pose of the parts, with who shows and in what order |
+| state      | `states[]`      | a view of the parts: who shows, where each sits, in what order; the first one is the drawing |
 | clip       | `clips[]`       | states in time: keys, eased                                 |
 | chain      | `constraints[]` | parts in a row that IK turns to reach an anchor             |
 | collision  | `collision[]`   | shapes a game may treat as solid; never drawn               |
@@ -104,7 +104,7 @@ Digits `1`–`5` still pick tools, for the hands that learned the classic.
   shapes' points) is on, with `Cmd` held to defeat it for one gesture.
 - **Right-click is the short list**: the four things you do most to that
   thing. The long list is `Cmd K`.
-- **Modes are visible.** Draw, pose, preview, collision: the hint line
-  names the mode, the toolbar dims what does not apply.
+- **Modes are visible.** A state, a clip preview, the collision lens:
+  the hint line names which, the toolbar dims what does not apply.
 - **No settings screen.** Theme, explorer, snap are toggles where they
   act. If a preference needs a screen, it is probably a bad preference.

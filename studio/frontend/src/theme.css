@@ -1505,29 +1505,6 @@ code,
 	visibility: visible;
 }
 
-.chip.mode {
-	background: transparent;
-	border-color: var(--edge-strong);
-	color: var(--text-2);
-	padding: 0 10px 0 8px;
-}
-.chip.mode.active {
-	background: var(--accent-dim);
-	border-color: var(--accent-line);
-	color: var(--accent);
-}
-
-.row.mode {
-	color: var(--text-2);
-	font-style: italic;
-	margin-bottom: 4px;
-	border-bottom: 1px solid var(--edge);
-	border-radius: 5px 5px 0 0;
-}
-.row.mode.active {
-	color: var(--accent);
-	font-style: normal;
-}
 .row .chip {
 	margin-left: auto;
 }

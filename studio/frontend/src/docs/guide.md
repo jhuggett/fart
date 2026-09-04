@@ -94,19 +94,23 @@ palette says what that means today.
 A part may have a **parent** (the select under the parts list). A child
 is posed in its parent's frame, so moving or turning the torso carries
 the head and the arms with it, and their own state entries stay at rest.
-Nothing changes at rest: parents only matter once something moves. In
-pose mode the rig shows as dashed bones from each pivot to its parent's.
+Nothing changes at rest: parents only matter once something moves. The
+rig shows as dashed bones from each pivot to its parent's.
 Paint order is still the state's list; parents are about motion, not
 layering.
 
-## States: pose mode
+## States
 
-States live in the left panel under the layers. The first row, **the
-drawing**, is the drawing itself, where shapes and parts are made and
-reshaped; it is not a state. The states beneath it are arrangements of
-that one drawing: which parts show, where each sits, in what order.
-Click a state and the canvas shows it with its transforms applied — and
-switches from editing geometry to posing parts. Drag a part to place it
+Every view is a state. A file opens on its first state (a file that has
+none gets one, `default`, with every part where it was drawn), and
+everything you do happens in whichever state you are looking at: shapes
+are drawn and reshaped in place, even inside a part that the state has
+turned, and the part itself is placed by dragging its ⌖ and turned by
+its lever. **+ state** makes a new state as a copy of the one on the
+canvas; right-click any state to duplicate that one instead. A state
+says which parts show (the checkboxes in Layers), where each sits, and
+in what order (raise and lower in the inspector). The last state cannot
+be deleted; there is always one. Drag a part to place it
 (its offset is where the part's pivot lands), pull the lever off the
 pivot to turn it, and the Pose card gives turn and size sliders and a
 reset. Geometry is locked until you go back to **all parts**. State order
@@ -130,8 +134,8 @@ never carries its own pose.
 Give a part an anchor (a hand, a foot), then **+ chain** in the Chains
 panel: the chain runs from the part's parent to the part and reaches
 with that anchor. **longer** adds the next parent; **bend** says which
-way an elbow should fold when it could go either way. In pose mode every
-chain shows a teal ring at its reach point: drag the ring and the chain's
+way an elbow should fold when it could go either way. Every chain shows
+a teal ring at its reach point: drag the ring and the chain's
 parts turn to follow. Only rotations change, and the result is an
 ordinary state, so games need nothing new to draw it. The chain itself is
 saved too, for games that want to solve live.
