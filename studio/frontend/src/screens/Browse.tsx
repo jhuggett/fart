@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "preact/hooks";
-import { project, openDoc, newFile, pickFolder, goWelcome, goDocs, toggleServe, type Thumb } from "../state/project.ts";
+import { project, openDoc, pickFolder, goWelcome, goDocs, toggleServe, type Thumb } from "../state/project.ts";
 import { shell } from "../shell/shell.ts";
-import { ask } from "../state/prompt.ts";
 import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
 import { theme } from "../state/theme.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import { Explorer, ExplorerButton } from "../ui/Explorer.tsx";
+import { fileMenu, folderMenu, askNewFile } from "../ui/fileMenu.ts";
+import { openContextMenu } from "../state/menu.ts";
 
 function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	const ref = useRef<HTMLCanvasElement>(null);
@@ -16,7 +17,14 @@ function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	}, [thumb, rev]);
 	const dir = dirname(rel);
 	return (
-		<div class="shelf-card" onClick={() => void openDoc(rel)}>
+		<div
+			class="shelf-card"
+			onClick={() => void openDoc(rel)}
+			onContextMenu={(e) => {
+				e.preventDefault();
+				openContextMenu(e.clientX, e.clientY, fileMenu(rel));
+			}}
+		>
 			<canvas ref={ref} />
 			<div class="label">
 				<div class="n">{stripExt(basename(rel))}</div>
@@ -61,7 +69,7 @@ export function Browse() {
 						)}
 					</>
 				)}
-				<button class="btn ghost" onClick={() => void ask("Name the new file").then((n) => { if (n) void newFile(n); })}>
+				<button class="btn ghost" onClick={() => askNewFile("")}>
 					new file
 				</button>
 				<ThemeButton />
@@ -71,7 +79,14 @@ export function Browse() {
 			</div>
 			<div class="browse-body">
 				<Explorer />
-				<div class="shelf">
+				<div
+					class="shelf"
+					onContextMenu={(e) => {
+						if (e.target !== e.currentTarget) return;
+						e.preventDefault();
+						openContextMenu(e.clientX, e.clientY, folderMenu(""));
+					}}
+				>
 					{files.map((rel) => (
 						<FileCard key={rel} rel={rel} thumb={thumbs.get(rel)} />
 					))}

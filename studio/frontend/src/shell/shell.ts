@@ -9,6 +9,14 @@ import type { ServeInfo } from "../../bindings/studio/models.js";
 
 export type { ServeInfo };
 
+/** What the machine can do with files, so the menus say the right thing. */
+export interface Caps {
+	/** removeFile moves to the Trash rather than deleting */
+	trash: boolean;
+	/** the file browser's name ("Finder"), "" where none can be opened */
+	reveal: string;
+}
+
 export interface Shell {
 	readonly kind: "wails" | "http";
 	pickFolder(): Promise<string | null>;
@@ -18,6 +26,14 @@ export interface Shell {
 	listFiles(root: string): Promise<string[]>;
 	readFile(root: string, rel: string): Promise<string | null>;
 	writeFile(root: string, rel: string, text: string): Promise<void>;
+	caps(): Promise<Caps>;
+	/** to the Trash where there is one, else gone; resolves with which */
+	removeFile(root: string, rel: string): Promise<string>;
+	renameFile(root: string, from: string, to: string): Promise<void>;
+	/** a copy beside the original; resolves with its path */
+	duplicateFile(root: string, rel: string): Promise<string>;
+	/** show it in the file browser; "" is the project folder */
+	revealFile(root: string, rel: string): Promise<void>;
 	recents(): Promise<string[]>;
 	pushRecent(root: string): Promise<string[]>;
 	forgetRecent(root: string): Promise<string[]>;
@@ -61,6 +77,26 @@ class HttpShell implements Shell {
 	async writeFile(_root: string, rel: string, text: string) {
 		await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
 	}
+	async caps() {
+		const r = await fetch("api/info");
+		const info = r.ok ? ((await r.json()) as { trash?: boolean }) : {};
+		return { trash: !!info.trash, reveal: "" };
+	}
+	async removeFile(_root: string, rel: string) {
+		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "DELETE" });
+		if (!r.ok) throw new Error((await r.text()).trim());
+		return (await r.json()) as string;
+	}
+	async renameFile(_root: string, from: string, to: string) {
+		const r = await fetch(`api/rename?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { method: "POST" });
+		if (!r.ok) throw new Error((await r.text()).trim());
+	}
+	async duplicateFile(_root: string, rel: string) {
+		const r = await fetch(`api/duplicate?path=${encodeURIComponent(rel)}`, { method: "POST" });
+		if (!r.ok) throw new Error((await r.text()).trim());
+		return (await r.json()) as string;
+	}
+	async revealFile() {}
 	async recents() {
 		return [];
 	}

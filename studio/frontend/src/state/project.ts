@@ -4,9 +4,10 @@
 
 import { signal, batch } from "@preact/signals";
 import { parseDoc, resolvePalettes, type Doc, type Token } from "@fastart/core";
-import { shell, initShell, type ServeInfo } from "../shell/shell.ts";
+import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
-import { basename, dirname, joinRel, under } from "./paths.ts";
+import { ask, confirm } from "./prompt.ts";
+import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
 
 export type Screen = "welcome" | "browse" | "edit" | "docs";
 
@@ -28,6 +29,8 @@ export const project = {
 	docsPage: signal<string>("guide"),
 	error: signal<string | null>(null),
 	busy: signal(false),
+	/** what the machine can do with files; the menus read it */
+	caps: signal<Caps>({ trash: false, reveal: "" }),
 };
 
 let errorTimer: number | undefined;
@@ -38,6 +41,7 @@ project.error.subscribe((e) => {
 
 export async function boot() {
 	await initShell();
+	void shell.caps().then((c) => (project.caps.value = c));
 	if (shell.kind === "http") {
 		const info = await shell.info();
 		batch(() => {
@@ -178,6 +182,77 @@ export async function newFile(name: string) {
 	if (await openDoc(rel)) {
 		await save();
 		await refreshFiles();
+	}
+}
+
+// ------------------------------------------------------------- file ops
+
+/** Take a file out of the project, after a word: to the Trash where there is one. */
+export async function deleteFile(rel: string) {
+	const root = project.root.value;
+	if (root === null) return;
+	const name = stripExt(basename(rel));
+	const trash = project.caps.value.trash;
+	const ok = await confirm(trash ? `Move "${name}" to the Trash?` : `Delete "${name}"?`, {
+		body: trash ? "Its checkpoint goes with it. The Trash can give it back." : "This cannot be undone.",
+		ok: trash ? "Move to Trash" : "Delete",
+		danger: true,
+	});
+	if (!ok) return;
+	if (ed.path.value === rel) await goBrowse();
+	try {
+		await shell.removeFile(root, rel);
+	} catch (e) {
+		project.error.value = String(e);
+	}
+	await refreshFiles();
+}
+
+/**
+ * Rename a file, asked inline. A plain name stays in its folder; a name
+ * with a slash is a path from the project's root, so this moves too.
+ */
+export async function renameFile(rel: string) {
+	const root = project.root.value;
+	if (root === null) return;
+	const stem = stripExt(basename(rel));
+	const name = await ask(`Rename "${stem}"`, stem);
+	if (!name || name === stem) return;
+	const dir = dirname(rel);
+	const bare = name.endsWith(".fart") ? name.slice(0, -5) : name;
+	const to = `${name.includes("/") ? bare : dir ? `${dir}/${bare}` : bare}.fart`;
+	if (to === rel) return;
+	try {
+		await shell.renameFile(root, rel, to);
+		if (ed.path.value === rel) ed.path.value = to;
+	} catch (e) {
+		project.error.value = `could not rename: ${String(e)}`;
+	}
+	await refreshFiles();
+}
+
+/** A copy beside the original ("hero copy"). */
+export async function duplicateFile(rel: string): Promise<string | null> {
+	const root = project.root.value;
+	if (root === null) return null;
+	try {
+		const copy = await shell.duplicateFile(root, rel);
+		await refreshFiles();
+		return copy;
+	} catch (e) {
+		project.error.value = `could not duplicate: ${String(e)}`;
+		return null;
+	}
+}
+
+/** Show a file or folder ("" is the project) in the file browser. */
+export async function revealFile(rel: string) {
+	const root = project.root.value;
+	if (root === null) return;
+	try {
+		await shell.revealFile(root, rel);
+	} catch (e) {
+		project.error.value = String(e);
 	}
 }
 

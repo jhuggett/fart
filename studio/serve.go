@@ -79,7 +79,7 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 	mux.Handle("/", http.FileServer(http.FS(dist)))
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
-		writeJSON(w, map[string]any{"name": filepath.Base(root), "serve": true})
+		writeJSON(w, map[string]any{"name": filepath.Base(root), "serve": true, "trash": caps().Trash})
 	})
 	mux.HandleFunc("/api/list", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
@@ -121,9 +121,62 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
+		case http.MethodDelete:
+			how, err := removeFile(full)
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			writeJSON(w, how)
 		default:
 			http.Error(w, "method", 405)
 		}
+	})
+	mux.HandleFunc("/api/rename", func(w http.ResponseWriter, r *http.Request) {
+		noStore(w)
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		q := r.URL.Query()
+		from, err := rooted(root, q.Get("from"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		to, err := rooted(root, q.Get("to"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if err := renameFile(from, to); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/api/duplicate", func(w http.ResponseWriter, r *http.Request) {
+		noStore(w)
+		if r.Method != http.MethodPost {
+			http.Error(w, "method", 405)
+			return
+		}
+		full, err := rooted(root, r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		dst, err := duplicateFile(full)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		rel, err := filepath.Rel(root, dst)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, filepath.ToSlash(rel))
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", servePort))

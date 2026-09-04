@@ -1007,6 +1007,27 @@ code,
 	font-size: var(--fs-small);
 	color: var(--text-3);
 }
+.dialog .t:only-child,
+.dialog .body {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+}
+.dialog .actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 14px;
+}
+.btn.primary {
+	background: var(--accent-dim);
+	border-color: var(--accent-line);
+	color: var(--accent);
+}
+.btn.danger {
+	background: var(--danger-dim);
+	border-color: var(--danger);
+	color: var(--danger);
+}
 .toast {
 	position: fixed;
 	left: 50%;

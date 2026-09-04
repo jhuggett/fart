@@ -11,7 +11,7 @@ import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
 import { Editor } from "./screens/Editor.tsx";
 import { Docs } from "./screens/Docs.tsx";
-import { Prompt } from "./ui/Prompt.tsx";
+import { Prompt, Confirm } from "./ui/Prompt.tsx";
 import { ContextMenu } from "./ui/ContextMenu.tsx";
 import { CommandPalette } from "./ui/CommandPalette.tsx";
 
@@ -64,6 +64,7 @@ export function App() {
 			{screen === "edit" && <Editor />}
 			{screen === "docs" && <Docs />}
 			<Prompt />
+			<Confirm />
 			<ContextMenu />
 			<CommandPalette />
 			{err && (

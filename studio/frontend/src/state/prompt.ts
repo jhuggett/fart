@@ -1,5 +1,6 @@
 // One modal prompt for every "name the new thing" and "rename": ask()
-// resolves with the text, or null on cancel.
+// resolves with the text, or null on cancel. confirm() is its yes/no
+// sibling, for the few things that cannot be undone.
 
 import { signal } from "@preact/signals";
 
@@ -34,4 +35,33 @@ export function promptCancel() {
 	const r = pending;
 	pending = null;
 	r?.(null);
+}
+
+export const confirmBox = {
+	open: signal(false),
+	title: signal(""),
+	body: signal(""),
+	ok: signal("OK"),
+	danger: signal(false),
+};
+
+let pendingYes: ((v: boolean) => void) | null = null;
+
+export function confirm(title: string, opts: { body?: string; ok?: string; danger?: boolean } = {}): Promise<boolean> {
+	if (pendingYes) pendingYes(false);
+	confirmBox.title.value = title;
+	confirmBox.body.value = opts.body ?? "";
+	confirmBox.ok.value = opts.ok ?? "OK";
+	confirmBox.danger.value = !!opts.danger;
+	confirmBox.open.value = true;
+	return new Promise((resolve) => {
+		pendingYes = resolve;
+	});
+}
+
+export function confirmAnswer(yes: boolean) {
+	confirmBox.open.value = false;
+	const r = pendingYes;
+	pendingYes = null;
+	r?.(yes);
 }

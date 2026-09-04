@@ -10,6 +10,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Caps: what this machine can do with files (see files.go).
+ */
+export function Caps(): $CancellablePromise<$models.Caps> {
+    return $Call.ByID(2879812873);
+}
+
+/**
  * DefaultRoot is the terminal's directory when the studio was launched
  * from one; launched from the Finder (cwd / or the home folder) it is "",
  * and the welcome screen takes over.
@@ -20,6 +27,13 @@ export function DefaultRoot(): $CancellablePromise<string> {
 
 export function DrainOpenQueue(): $CancellablePromise<string[] | null> {
     return $Call.ByID(3935871685);
+}
+
+/**
+ * Duplicate copies a file beside itself and returns the copy's relative path.
+ */
+export function Duplicate(root: string, rel: string): $CancellablePromise<string> {
+    return $Call.ByID(230797401, root, rel);
 }
 
 export function Exists(root: string, rel: string): $CancellablePromise<boolean> {
@@ -66,6 +80,28 @@ export function ReadFile(root: string, rel: string): $CancellablePromise<string>
 
 export function Recents(): $CancellablePromise<string[] | null> {
     return $Call.ByID(865853008);
+}
+
+/**
+ * Remove takes a file out of the project: to the Trash where there is
+ * one, else deleted. Returns "trash" or "deleted".
+ */
+export function Remove(root: string, rel: string): $CancellablePromise<string> {
+    return $Call.ByID(3488627824, root, rel);
+}
+
+/**
+ * Rename moves a file within the project ("hero.fart" to "enemies/boss.fart").
+ */
+export function Rename(root: string, $from: string, to: string): $CancellablePromise<void> {
+    return $Call.ByID(4872810, root, $from, to);
+}
+
+/**
+ * Reveal shows a file or folder in the system's file browser; "" is the project itself.
+ */
+export function Reveal(root: string, rel: string): $CancellablePromise<void> {
+    return $Call.ByID(2085297517, root, rel);
 }
 
 export function Serve(root: string): $CancellablePromise<$models.ServeInfo> {

@@ -7,5 +7,6 @@ export {
 };
 
 export type {
+    Caps,
     ServeInfo
 } from "./models.js";

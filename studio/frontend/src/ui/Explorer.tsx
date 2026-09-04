@@ -1,14 +1,15 @@
 import { explorer, toggleExplorer, toggleFolder, tree, type TreeNode } from "../state/explorer.ts";
-import { project, openDoc, newFile, refreshFiles, goBrowse } from "../state/project.ts";
+import { project, openDoc, refreshFiles, goBrowse } from "../state/project.ts";
 import { I } from "./Icons.tsx";
 import { ed } from "../state/editor.ts";
-import { ask } from "../state/prompt.ts";
 import { stripExt } from "../state/paths.ts";
+import { openContextMenu } from "../state/menu.ts";
+import { fileMenu, folderMenu, askNewFile } from "./fileMenu.ts";
 
-function askNewFile(folder: string) {
-	void ask(folder ? `Name the new file in ${folder}/` : "Name the new file").then((n) => {
-		if (n) void newFile(folder ? `${folder}/${n}` : n);
-	});
+function menuAt(e: MouseEvent, items: ReturnType<typeof fileMenu>) {
+	e.preventDefault();
+	e.stopPropagation();
+	openContextMenu(e.clientX, e.clientY, items);
 }
 
 function Row({ node, depth }: { node: TreeNode; depth: number }) {
@@ -17,7 +18,7 @@ function Row({ node, depth }: { node: TreeNode; depth: number }) {
 		const open = explorer.expanded.value.has(node.path);
 		return (
 			<>
-				<div class="tree-row folder" style={{ paddingLeft: `${8 + depth * 14}px` }} onClick={() => toggleFolder(node.path)}>
+				<div class="tree-row folder" style={{ paddingLeft: `${8 + depth * 14}px` }} onClick={() => toggleFolder(node.path)} onContextMenu={(e) => menuAt(e, folderMenu(node.path))}>
 					<span class={`caret ${open ? "open" : ""}`}>▸</span>
 					<span class="name">{node.name}</span>
 					<button
@@ -44,6 +45,7 @@ function Row({ node, depth }: { node: TreeNode; depth: number }) {
 			onClick={() => {
 				if (!active) void openDoc(node.path);
 			}}
+			onContextMenu={(e) => menuAt(e, fileMenu(node.path))}
 		>
 			<span class="glyph">◆</span>
 			<span class="name">{stripExt(node.name)}</span>
@@ -77,6 +79,7 @@ export function Explorer() {
 				class={`tree-row project ${project.screen.value === "edit" ? "link" : ""}`}
 				title={project.screen.value === "edit" ? "back to the shelf  (⌘ O)" : (project.root.value ?? "")}
 				onClick={() => project.screen.value === "edit" && void goBrowse()}
+				onContextMenu={(e) => menuAt(e, folderMenu(""))}
 			>
 				<I.grid size={12} />
 				<span class="name">{project.name.value || "project"}</span>

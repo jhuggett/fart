@@ -6,10 +6,10 @@ package main
 
 import (
 	"bufio"
-	"log"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -158,6 +158,66 @@ func (p *ProjectService) WriteFile(root, rel, text string) error {
 		return err
 	}
 	return os.WriteFile(full, []byte(text), 0o644)
+}
+
+// Caps: what this machine can do with files (see files.go).
+func (p *ProjectService) Caps() Caps {
+	return caps()
+}
+
+// Remove takes a file out of the project: to the Trash where there is
+// one, else deleted. Returns "trash" or "deleted".
+func (p *ProjectService) Remove(root, rel string) (string, error) {
+	full, err := rooted(root, rel)
+	if err != nil {
+		return "", err
+	}
+	return removeFile(full)
+}
+
+// Rename moves a file within the project ("hero.fart" to "enemies/boss.fart").
+func (p *ProjectService) Rename(root, from, to string) error {
+	a, err := rooted(root, from)
+	if err != nil {
+		return err
+	}
+	b, err := rooted(root, to)
+	if err != nil {
+		return err
+	}
+	return renameFile(a, b)
+}
+
+// Duplicate copies a file beside itself and returns the copy's relative path.
+func (p *ProjectService) Duplicate(root, rel string) (string, error) {
+	full, err := rooted(root, rel)
+	if err != nil {
+		return "", err
+	}
+	dst, err := duplicateFile(full)
+	if err != nil {
+		return "", err
+	}
+	out, err := filepath.Rel(root, dst)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(out), nil
+}
+
+// Reveal shows a file or folder in the system's file browser; "" is the project itself.
+func (p *ProjectService) Reveal(root, rel string) error {
+	if root == "" {
+		return errors.New("no project open")
+	}
+	full := root
+	if rel != "" {
+		var err error
+		if full, err = rooted(root, rel); err != nil {
+			return err
+		}
+	}
+	return revealPath(full)
 }
 
 // ------------------------------------------------------------- recents
