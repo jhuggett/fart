@@ -101,9 +101,12 @@ layering.
 
 ## States: pose mode
 
-States are chips along the bottom; **setup** is every part at rest,
-where geometry is edited. Click a state and the canvas shows it with its
-transforms applied — and switches from editing geometry to posing parts. Drag a part to place it
+The bar along the bottom starts with **draw**: the drawing itself,
+where shapes and parts are made and reshaped. It is not a state. The
+states beside it are arrangements of that one drawing: which parts show,
+where each sits, in what order. Click a state and the canvas shows it
+with its transforms applied — and switches from editing geometry to
+posing parts. Drag a part to place it
 (its offset is where the part's pivot lands), pull the lever off the
 pivot to turn it, and the Pose card gives turn and size sliders and a
 reset. Geometry is locked until you go back to **all parts**. State order

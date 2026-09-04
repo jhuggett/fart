@@ -25,9 +25,10 @@ Four regions, like Rive and Spine and Figma:
   gets its numbers and its fill; a part gets its pivot, parent, anchors
   and IK chains; a pose gets offset, turn and size; nothing selected
   gets the document: name, palette, collision.
-- **Bottom is time**: states and clips live in one strip. Picking a
-  state enters *pose* mode; picking a clip enters *preview* and the
-  timeline appears. "All parts" is *setup* mode, where geometry is edited.
+- **Bottom is time**: the strip starts with **draw**, the drawing itself,
+  where geometry is edited; it is not a state. Then the states, which are
+  arrangements of that drawing, and the clips. Picking a state enters
+  *pose* mode; picking a clip enters *preview* and the timeline appears.
   Spine calls these setup and animate; the split is the same.
 - **The canvas is the tool**: hover tells you what a click would do, the
   hint line at the bottom-left says what mode you are in.
@@ -102,7 +103,7 @@ Digits `1`–`5` still pick tools, for the hands that learned the classic.
   shapes' points) is on, with `Cmd` held to defeat it for one gesture.
 - **Right-click is the short list**: the four things you do most to that
   thing. The long list is `Cmd K`.
-- **Modes are visible.** Setup, pose, preview, collision: the hint line
+- **Modes are visible.** Draw, pose, preview, collision: the hint line
   names the mode, the toolbar dims what does not apply.
 - **No settings screen.** Theme, explorer, snap are toggles where they
   act. If a preference needs a screen, it is probably a bad preference.

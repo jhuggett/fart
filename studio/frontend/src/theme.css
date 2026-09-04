@@ -1504,3 +1504,15 @@ code,
 .tree-row.project.link:hover .chip {
 	visibility: visible;
 }
+
+.chip.mode {
+	background: transparent;
+	border-color: var(--edge-strong);
+	color: var(--text-2);
+	padding: 0 10px 0 8px;
+}
+.chip.mode.active {
+	background: var(--accent-dim);
+	border-color: var(--accent-line);
+	color: var(--accent);
+}

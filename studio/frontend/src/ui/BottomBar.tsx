@@ -33,20 +33,21 @@ export function BottomBar() {
 	return (
 		<div class="bottom">
 			<div class="strip">
-				<span class="hdr inline" title="named poses of the parts; setup is every part at rest, where geometry is edited">
-					States
-				</span>
 				<button
-					class={`chip ${setup ? "active" : ""}`}
+					class={`chip mode ${setup ? "active" : ""}`}
 					onClick={() => {
 						selectClip(-1);
 						ed.curState.value = -1;
 						ed.sel.value = [];
 					}}
-					title="every part at rest; edit geometry here"
+					title="the drawing itself: add and reshape shapes and parts here. Not a state; the states below are arrangements of this drawing."
 				>
-					setup
+					<I.select size={11} /> draw
 				</button>
+				<span class="sep" />
+				<span class="hdr inline" title="arrangements of the drawing: which parts show, where each sits, in what order">
+					States
+				</span>
 				{sts.map((s, k) => (
 					<button
 						class={`chip ${k === curS ? "active" : ""}`}

@@ -24,7 +24,7 @@ export function Editor() {
 						? "click the canvas to place the anchor"
 						: ed.tool.value === "poly"
 							? "click to add points · click the first point or press Enter to close · Esc drops it"
-							: "";
+							: "drawing · shapes and parts are edited here · pick a state below to arrange them";
 	const issues = ed.issues.value;
 	return (
 		<div class="app">
@@ -38,7 +38,8 @@ export function Editor() {
 					<div class="canvas-wrap">
 						<Canvas />
 						<div class="hud">
-							{hint || `zoom ${view.zoom.value.toFixed(1)}×${view.snapGrid.value ? " · grid snap" : ""}`}
+							{hint}
+							{` · zoom ${view.zoom.value.toFixed(1)}×${view.snapGrid.value ? " · grid snap" : ""}`}
 						</div>
 						{issues.length > 0 && showIssues.value && (
 							<div class="issues">
