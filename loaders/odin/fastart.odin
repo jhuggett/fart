@@ -216,6 +216,11 @@ state_of :: proc(doc: ^Doc, name: string) -> ^State {
 	return nil
 }
 
+clip_of :: proc(doc: ^Doc, name: string) -> ^Clip {
+	for &c in doc.clips do if c.name == name do return &c
+	return nil
+}
+
 // ------------------------------------------------------------ posing (1.1)
 // A part's pose is an affine map; a child's composes with its parent's.
 // Xf is the canvas convention: x' = a x + c y + e, y' = b x + d y + f.
