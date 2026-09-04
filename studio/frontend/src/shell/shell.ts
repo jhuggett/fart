@@ -30,6 +30,8 @@ export interface Shell {
 	info(): Promise<{ name: string }>;
 	/** a line into the shell's log, for debugging */
 	log(msg: string): void;
+	/** the menu bar chose a command (by id) */
+	onMenu(cb: (id: string) => void): void;
 }
 
 // Over HTTP the server owns the project: root is always "" and the API
@@ -86,6 +88,7 @@ class HttpShell implements Shell {
 	log(msg: string) {
 		console.log(msg);
 	}
+	onMenu() {}
 }
 
 export let shell: Shell = new HttpShell();

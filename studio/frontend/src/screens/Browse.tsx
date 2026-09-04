@@ -65,7 +65,7 @@ export function Browse() {
 					new file
 				</button>
 				<ThemeButton />
-				<button class="btn ghost" onClick={goDocs}>
+				<button class="btn ghost" onClick={() => goDocs("guide")}>
 					Docs
 				</button>
 			</div>

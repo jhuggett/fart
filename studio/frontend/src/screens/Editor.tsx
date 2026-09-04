@@ -1,11 +1,7 @@
 import { Toolbar, showIssues } from "../ui/Toolbar.tsx";
-import { PalettePanel } from "../ui/PalettePanel.tsx";
-import { SelectedCard } from "../ui/SelectedCard.tsx";
-import { PartsPanel } from "../ui/PartsPanel.tsx";
-import { StatesPanel } from "../ui/StatesPanel.tsx";
-import { ClipsPanel } from "../ui/ClipsPanel.tsx";
-import { ChainsPanel } from "../ui/ChainsPanel.tsx";
-import { Timeline } from "../ui/Timeline.tsx";
+import { Layers } from "../ui/Layers.tsx";
+import { Inspector } from "../ui/Inspector.tsx";
+import { BottomBar } from "../ui/BottomBar.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
 import { Explorer } from "../ui/Explorer.tsx";
 import { explorer } from "../state/explorer.ts";
@@ -22,13 +18,13 @@ export function Editor() {
 			? `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`
 			: st
 				? `posing "${st.name}": drag a part to place it, pull the lever to turn, drag a ring to reach · geometry is locked`
-			: ed.pending.value === "pivot"
-				? "click the canvas to place the pivot"
-				: ed.pending.value === "anchor"
-					? "click the canvas to place the anchor"
-					: ed.tool.value === "poly"
-						? "click to add points · click the first point or press Enter to close · Esc drops it"
-						: "";
+				: ed.pending.value === "pivot"
+					? "click the canvas to place the pivot"
+					: ed.pending.value === "anchor"
+						? "click the canvas to place the anchor"
+						: ed.tool.value === "poly"
+							? "click to add points · click the first point or press Enter to close · Esc drops it"
+							: "";
 	const issues = ed.issues.value;
 	return (
 		<div class="app">
@@ -36,34 +32,28 @@ export function Editor() {
 			<div class={`editor ${explorer.open.value ? "" : "no-explorer"}`}>
 				<Explorer />
 				<div class="panel left">
-					<PalettePanel />
-					<SelectedCard />
+					<Layers />
 				</div>
 				<div class="canvas-col">
-				<div class="canvas-wrap">
-					<Canvas />
-					<div class="hud">
-						{hint || `zoom ${view.zoom.value.toFixed(1)}×`}
-					</div>
-					{issues.length > 0 && showIssues.value && (
-						<div class="issues">
-							{issues.slice(0, 6).map((i) => (
-								<div class={["json", "version", "schema", "path", "ref.token", "ref.part", "tris", "dup.part", "dup.state", "dup.token"].includes(i.code) ? "e" : "w"}>
-									{i.code} {i.path}: {i.message}
-								</div>
-							))}
-							{issues.length > 6 && <div>… and {issues.length - 6} more</div>}
+					<div class="canvas-wrap">
+						<Canvas />
+						<div class="hud">
+							{hint || `zoom ${view.zoom.value.toFixed(1)}×${view.snapGrid.value ? " · grid snap" : ""}`}
 						</div>
-					)}
+						{issues.length > 0 && showIssues.value && (
+							<div class="issues">
+								{issues.slice(0, 8).map((i) => (
+									<div class={["unknown", "reserved", "unresolved"].includes(i.code) ? "w" : "e"}>
+										{i.code} {i.path}: {i.message}
+									</div>
+								))}
+								{issues.length > 8 && <div>… and {issues.length - 8} more</div>}
+							</div>
+						)}
+					</div>
+					<BottomBar />
 				</div>
-				<Timeline />
-				</div>
-				<div class="panel right">
-					<PartsPanel />
-					<StatesPanel />
-					<ClipsPanel />
-					<ChainsPanel />
-				</div>
+				<Inspector />
 			</div>
 		</div>
 	);

@@ -12,7 +12,7 @@ export function Welcome() {
 				<span class="sub">the Fast Art Format editor</span>
 				<div class="spacer" />
 				<ThemeButton label />
-				<button class="btn ghost" onClick={goDocs}>
+				<button class="btn ghost" onClick={() => goDocs("guide")}>
 					Docs
 				</button>
 			</div>
@@ -31,7 +31,7 @@ export function Welcome() {
 						From a terminal: <code class="kbd">studio &lt;folder&gt;</code> or <code class="kbd">studio thing.fart</code>
 					</p>
 					<p style="margin-top:22px">
-						New here? The <a onClick={goDocs}>docs</a> live inside the app: the guide, and the format itself.
+						New here? The <a onClick={() => goDocs("guide")}>docs</a> live inside the app: the guide, and the format itself.
 					</p>
 				</div>
 				<div class="recent">

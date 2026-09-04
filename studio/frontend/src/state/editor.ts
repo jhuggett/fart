@@ -32,6 +32,7 @@ import {
 import { shell } from "../shell/shell.ts";
 import { project } from "./project.ts";
 import { dirname, joinRel } from "./paths.ts";
+import { local, clearLocal } from "./local.ts";
 
 export type Tool = "select" | "circle" | "line" | "poly" | "rect";
 export type Pending = "none" | "pivot" | "anchor";
@@ -145,17 +146,49 @@ export function rgbaOf(name: string): Rgba {
 	return [255, 0, 255, 255];
 }
 
-/** Part indices drawn right now: all of them, or the current pose's. */
+/** Part indices drawn right now: all of them, or the current pose's, minus the hidden. */
 export function visibleParts(): number[] {
 	const fr = frame();
 	const ps = parts();
-	if (!fr) return ps.map((_, i) => i);
+	const hidden = local.hidden.value;
+	if (!fr) return ps.map((_, i) => i).filter((i) => !hidden.has(ps[i].name));
 	const out: number[] = [];
 	for (const sp of fr) {
 		const i = ps.findIndex((p) => p.name === sp.part);
-		if (i >= 0) out.push(i);
+		if (i >= 0 && !hidden.has(ps[i].name)) out.push(i);
 	}
 	return out;
+}
+
+/** Parts a click may pick: visible and not locked. */
+export function pickableParts(): number[] {
+	const ps = parts();
+	const locked = local.locked.value;
+	return visibleParts().filter((i) => !locked.has(ps[i].name));
+}
+
+/** Move the selection by a step (the arrow keys). */
+export function nudgeSel(d: Vec2) {
+	const shapes = selShapes();
+	if (!shapes.length) return;
+	mutate(() => {
+		for (const sh of shapes) moveShape(sh, d);
+	}, "nudge");
+}
+
+/** Every shape of every pickable part. */
+export function selectAll() {
+	const ps = parts();
+	const refs: Ref[] = [];
+	for (const p of pickableParts()) (ps[p].shapes ?? []).forEach((_, s) => refs.push({ p, s }));
+	ed.sel.value = refs;
+}
+
+/** A fresh name: "part 2", "state 3", whatever is free. */
+export function freshName(base: string, taken: Iterable<string>): string {
+	const set = new Set(taken);
+	if (!set.has(base)) return base;
+	for (let i = 2; ; i++) if (!set.has(`${base} ${i}`)) return `${base} ${i}`;
 }
 
 // ------------------------------------------------------------- change
@@ -344,6 +377,7 @@ export async function openFile(rel: string): Promise<boolean> {
 	undoStack = [];
 	redoStack = [];
 	mergeKey = null;
+	clearLocal();
 	batch(() => {
 		ed.doc.value = d;
 		ed.path.value = rel;
@@ -586,9 +620,78 @@ export function dupSel() {
 
 // ------------------------------------------------------------- parts
 
-export function addPart(name: string) {
+export function addPart(name: string): number {
 	mutate((d) => d.parts!.push({ name, pivot: [0, 0], shapes: [] }));
 	ed.curPart.value = parts().length - 1;
+	return ed.curPart.value;
+}
+
+/** Duplicate the selection exactly in place (an Alt-drag begins with this). */
+export function dupSelInPlace() {
+	const ps = parts();
+	const src = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+	if (!src.length) return;
+	const landed: Ref[] = [];
+	mutate((d) => {
+		for (const r of src) {
+			const shapes = d.parts![r.p].shapes!;
+			shapes.push(cloneShape(shapes[r.s]));
+			landed.push({ p: r.p, s: shapes.length - 1 });
+		}
+	});
+	ed.sel.value = landed;
+}
+
+/** Set one numeric property of a shape, from a field. */
+export function setShapeNumber(sh: Shape, key: string, sub: 0 | 1 | null, value: number) {
+	if (!Number.isFinite(value)) return;
+	mutate(() => {
+		const o = sh as unknown as Record<string, unknown>;
+		if (sub === null) o[key] = value;
+		else {
+			const v = (o[key] as Vec2) ?? [0, 0];
+			const nv: Vec2 = [v[0], v[1]];
+			nv[sub] = value;
+			o[key] = nv;
+		}
+	}, `field-${key}-${sub}`);
+}
+
+export function setPivotNumber(k: number, sub: 0 | 1, value: number) {
+	if (!Number.isFinite(value)) return;
+	mutate((d) => {
+		const p = d.parts![k];
+		const pv: Vec2 = [...(p.pivot ?? [0, 0])];
+		pv[sub] = value;
+		p.pivot = pv;
+	}, `pivot-${sub}`);
+}
+
+export function setAnchorNumber(k: number, i: number, sub: 0 | 1, value: number) {
+	if (!Number.isFinite(value)) return;
+	mutate((d) => {
+		const a = d.parts![k].anchors![i];
+		const at: Vec2 = [...a.at];
+		at[sub] = value;
+		a.at = at;
+	}, `anchor-${i}-${sub}`);
+}
+
+export function renameAnchor(k: number, i: number, name: string) {
+	const p = parts()[k];
+	const old = p?.anchors?.[i]?.name;
+	if (old === undefined || old === name) return;
+	mutate((d) => {
+		d.parts![k].anchors![i].name = name;
+		for (const c of d.constraints ?? []) if (c.end === `${p.name}/${old}`) c.end = `${p.name}/${name}`;
+	});
+}
+
+export function setDocName(name: string) {
+	mutate((d) => {
+		if (name) d.name = name;
+		else delete d.name;
+	}, "docname");
 }
 
 export function deletePart(k: number) {

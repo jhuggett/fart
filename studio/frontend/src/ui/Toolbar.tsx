@@ -1,93 +1,58 @@
-import { signal } from "@preact/signals";
-import { ed, curState, save, undo, redo, type Tool } from "../state/editor.ts";
-import { project, goBrowse, goDocs } from "../state/project.ts";
+import { I } from "./Icons.tsx";
+import { ed, curState, curClip, save, type Tool } from "../state/editor.ts";
+import { project, goDocs } from "../state/project.ts";
+import { view } from "../canvas/view.ts";
 import { basename } from "../state/paths.ts";
 import { ThemeButton } from "./ThemeMenu.tsx";
 import { ExplorerButton } from "./Explorer.tsx";
+import { run } from "../state/commands.ts";
+import { signal } from "@preact/signals";
 
-const addOpen = signal(false);
 export const showIssues = signal(false);
-const ADD: { tool: Tool; label: string; key: string }[] = [
-	{ tool: "circle", label: "Circle", key: "2" },
-	{ tool: "line", label: "Line", key: "3" },
-	{ tool: "poly", label: "Poly", key: "4" },
-	{ tool: "rect", label: "Rect", key: "5" },
+
+const TOOLS: { tool: Tool; label: string; key: string; icon: (p: { size?: number }) => preact.JSX.Element }[] = [
+	{ tool: "select", label: "Select", key: "V", icon: I.select },
+	{ tool: "rect", label: "Rect", key: "R", icon: I.rect },
+	{ tool: "circle", label: "Circle", key: "O", icon: I.circle },
+	{ tool: "line", label: "Line", key: "L", icon: I.line },
+	{ tool: "poly", label: "Poly", key: "P", icon: I.poly },
 ];
 
 export function Toolbar() {
 	const tool = ed.tool.value;
-	const adding = ADD.find((a) => a.tool === tool);
 	const path = ed.path.value ?? "";
 	const dirty = ed.dirty.value;
 	const issues = ed.issues.value;
 	const errors = issues.filter((i) => !["unknown", "reserved", "unresolved"].includes(i.code)).length;
-	const posing = !!curState();
+	const posing = !!curState() || !!curClip();
+	const collide = ed.collide.value;
 	return (
 		<div class="topbar">
 			<ExplorerButton />
-			<div class="group" style="position:relative">
-				<button
-					class={`tool ${tool === "select" ? "active" : ""}`}
-					onClick={() => {
-						ed.tool.value = "select";
-						addOpen.value = false;
-					}}
-				>
-					Select <span class="key">1</span>
-				</button>
-				<button
-					class={`tool ${adding ? "active" : ""}`}
-					disabled={posing}
-					title={posing ? "geometry is locked while posing" : ""}
-					style={posing ? "opacity:.45" : ""}
-					onClick={() => (addOpen.value = !addOpen.value)}
-				>
-					{adding ? adding.label : "+ Add"} <span class="key">▾</span>
-				</button>
-				{addOpen.value && (
-					<div
-						class="card"
-						style="position:absolute;left:92px;top:34px;z-index:5;min-width:140px;padding:6px"
-						onPointerLeave={() => (addOpen.value = false)}
+			<div class="group">
+				{TOOLS.map((t) => (
+					<button
+						class={`tool ${tool === t.tool ? "active" : ""}`}
+						disabled={posing && t.tool !== "select"}
+						title={posing && t.tool !== "select" ? "geometry is locked while posing" : `${t.label}  (${t.key})`}
+						onClick={() => run(`tool.${t.tool}`)}
 					>
-						{ADD.map((a) => (
-							<div
-								class={`row ${tool === a.tool ? "active" : ""}`}
-								onClick={() => {
-									ed.tool.value = a.tool;
-									addOpen.value = false;
-								}}
-							>
-								<span class="name">{a.label}</span>
-								<span class="chip">{a.key}</span>
-							</div>
-						))}
-					</div>
-				)}
+						<t.icon />
+						<span class="lbl">{t.label}</span>
+						<span class="key">{t.key}</span>
+					</button>
+				))}
 			</div>
 			<span class="sep" />
-			<button class={`btn ${dirty ? "" : "ghost"}`} title="Cmd+S" onClick={() => void save()}>
-				Save
+			<button class={`btn ${collide ? "active" : "ghost"}`} title="the collision lens  (C)" onClick={() => run("view.collision")}>
+				<I.collision /> Collision
 			</button>
-			<button class="btn ghost" title="Cmd+Z" disabled={!ed.canUndo.value} onClick={undo}>
-				Undo
-			</button>
-			<button class="btn ghost" title="Cmd+Shift+Z" disabled={!ed.canRedo.value} onClick={redo}>
-				Redo
+			<button class={`btn ghost ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
+				<I.grid />
 			</button>
 			<span class="sep" />
-			<button class="btn ghost" title="the shelf  (Cmd+O)" onClick={() => void goBrowse()}>
-				Browse
-			</button>
-			<button
-				class={`btn ${ed.collide.value ? "active" : "ghost"}`}
-				title="the collision lens  (C)"
-				onClick={() => {
-					ed.collide.value = !ed.collide.value;
-					ed.colSel.value = -1;
-				}}
-			>
-				Collision
+			<button class={`btn ${dirty ? "" : "ghost"}`} title="the checkpoint  (⌘ S)" onClick={() => void save()}>
+				Save
 			</button>
 			<div class="spacer" />
 			{issues.length > 0 && (
@@ -106,7 +71,7 @@ export function Toolbar() {
 				{basename(path)}
 			</span>
 			<span class="sep" />
-			<button class="btn ghost" title="the guide and the format  (?)" onClick={goDocs}>
+			<button class="btn ghost" title="the guide and the format  (?)" onClick={() => goDocs("guide")}>
 				Docs
 			</button>
 			<ThemeButton />

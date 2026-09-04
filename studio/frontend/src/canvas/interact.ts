@@ -56,12 +56,16 @@ import {
 	ikTo,
 	frame,
 	doc,
+	pickableParts,
+	dupSelInPlace,
 	type Ref,
 } from "../state/editor.ts";
 
 export interface Mods {
 	shift: boolean;
 	alt: boolean;
+	/** Cmd defeats snapping for the gesture */
+	cmd?: boolean;
 }
 
 /** Everything a gesture in progress remembers. */
@@ -84,7 +88,93 @@ export const ix = {
 	ik: null as Constraint | null,
 	cursor: null as Vec2 | null, // world position, for previews
 	down: false,
+	/** the modifiers as of the last pointer event */
+	mods: { shift: false, alt: false, cmd: false } as Mods,
+	/** where the last snap landed, for the marker; null when none */
+	snapAt: null as Vec2 | null,
+	/** the space bar is down: the next drag pans */
+	space: false,
 };
+
+// ------------------------------------------------------------- snapping
+// Geometry snap: drawn and dragged points pull to nearby vertices,
+// endpoints and centres of other shapes, and to pivots. Grid snap (a
+// toggle) pulls to the half-unit grid. Cmd held defeats both.
+
+const SNAP_PX = 8;
+
+function snapCandidates(exclude: Set<string>): Vec2[] {
+	const out: Vec2[] = [];
+	const ps = parts();
+	for (const p of pickableParts()) {
+		(ps[p].shapes ?? []).forEach((sh, s) => {
+			if (exclude.has(`${p}:${s}`)) return;
+			switch (sh.kind) {
+				case "circle":
+					out.push(sh.at);
+					break;
+				case "line":
+					out.push(sh.a, sh.b);
+					break;
+				case "poly":
+					out.push(...sh.points);
+					break;
+			}
+		});
+		out.push(pivotOf(ps[p]));
+	}
+	return out;
+}
+
+/** Pull a world point to nearby geometry or the grid; remembers where, for the marker. */
+export function snap(wm: Vec2, mods: Mods, exclude: Ref[] = []): Vec2 {
+	ix.snapAt = null;
+	if (mods.cmd) return wm;
+	const ex = new Set(exclude.map((r) => `${r.p}:${r.s}`));
+	let best: Vec2 | null = null;
+	let bd = SNAP_PX / z();
+	for (const c of snapCandidates(ex)) {
+		const d = dist(c, wm);
+		if (d < bd) {
+			bd = d;
+			best = c;
+		}
+	}
+	if (best) {
+		ix.snapAt = best;
+		return [best[0], best[1]];
+	}
+	if (view.snapGrid.value) {
+		const g: Vec2 = [Math.round(wm[0] * 2) / 2, Math.round(wm[1] * 2) / 2];
+		ix.snapAt = g;
+		return g;
+	}
+	return wm;
+}
+
+/** Shift while drawing: lines to 45°, rects square. */
+function constrain(a: Vec2, b: Vec2, tool: string, shift: boolean): Vec2 {
+	if (!shift) return b;
+	const dx = b[0] - a[0];
+	const dy = b[1] - a[1];
+	if (tool === "line") {
+		const ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+		const len = Math.hypot(dx, dy);
+		return [a[0] + Math.cos(ang) * len, a[1] + Math.sin(ang) * len];
+	}
+	if (tool === "rect") {
+		const side = Math.max(Math.abs(dx), Math.abs(dy));
+		return [a[0] + Math.sign(dx || 1) * side, a[1] + Math.sign(dy || 1) * side];
+	}
+	return b;
+}
+
+/** Where the cursor really is for a drawing preview: snapped and constrained. */
+export function drawCursor(): Vec2 | null {
+	const cur = ix.cursor;
+	if (!cur) return null;
+	return constrain(ix.drawA, snap(cur, ix.mods), ed.tool.value, ix.mods.shift);
+}
 
 function z(): number {
 	return view.zoom.value;
@@ -132,10 +222,10 @@ export function scaleGrips(): { at: Vec2; anchor: Vec2 }[] {
 	];
 }
 
-/** The shape under a point among the visible parts; topmost wins. */
+/** The shape under a point among the pickable parts; topmost wins. */
 export function pick(at: Vec2, onlyVisible = true): Ref | null {
 	const ps = parts();
-	const order = onlyVisible ? visibleParts() : ps.map((_, i) => i);
+	const order = onlyVisible ? pickableParts() : ps.map((_, i) => i);
 	let best: Ref | null = null;
 	let bd = 10 / z() + 2;
 	for (const p of order) {
@@ -297,6 +387,7 @@ export function chainGrabs(): { c: Constraint; at: Vec2 }[] {
 export function onDown(wm: Vec2, mods: Mods) {
 	ix.down = true;
 	ix.cursor = wm;
+	ix.mods = mods;
 
 	// an armed crosshair: this click places it
 	if (ed.pending.value !== "none") {
@@ -323,12 +414,12 @@ export function onDown(wm: Vec2, mods: Mods) {
 		case "line":
 		case "rect":
 			ix.drawing = true;
-			ix.drawA = wm;
+			ix.drawA = snap(wm, mods);
 			return;
 		case "poly": {
 			const pts = ed.polyPts.value;
 			if (pts.length >= 3 && dist(pts[0], wm) * z() < 10) commitPoly();
-			else ed.polyPts.value = [...pts, wm];
+			else ed.polyPts.value = [...pts, snap(wm, mods)];
 			return;
 		}
 	}
@@ -360,8 +451,10 @@ function selectDown(wm: Vec2, mods: Mods) {
 		else {
 			if (!selHas(hit)) selOnly(hit);
 			else selMakePrimary(hit);
+			// Alt: drag away a copy, leave the original
+			if (mods.alt) dupSelInPlace();
 			ix.dragging = true;
-				ix.dragOff = wm;
+			ix.dragOff = wm;
 		}
 	} else {
 		ix.marquee = true;
@@ -450,6 +543,7 @@ function collideDown(wm: Vec2) {
 
 export function onMove(wm: Vec2, mods: Mods) {
 	ix.cursor = wm;
+	ix.mods = mods;
 	if (!ix.down) {
 		// hover: what a click would pick
 		if (ed.tool.value === "select" && !ed.collide.value && !curState()) {
@@ -462,7 +556,8 @@ export function onMove(wm: Vec2, mods: Mods) {
 	const target = ed.collide.value ? colShape() : selShape();
 
 	if (ix.handle > 0 && target) {
-		mutate(() => dragHandle(target, ix.handle, wm, mods.alt), "handle");
+		const at = ed.collide.value ? wm : snap(wm, mods, ed.sel.value);
+		mutate(() => dragHandle(target, ix.handle, at, mods.alt), "handle");
 	} else if (ix.scaling) {
 		const d = Math.max(dist(ix.scaleAnchor, wm), 0.001);
 		if (d !== ix.scaleD) {
@@ -474,13 +569,15 @@ export function onMove(wm: Vec2, mods: Mods) {
 			ix.scaleD = d;
 		}
 	} else if (ix.dragging) {
-		const d: Vec2 = [wm[0] - ix.dragOff[0], wm[1] - ix.dragOff[1]];
+		// the grab point pulls to geometry, so what you hold lands on things
+		const at = ed.collide.value ? wm : snap(wm, mods, ed.sel.value);
+		const d: Vec2 = [at[0] - ix.dragOff[0], at[1] - ix.dragOff[1]];
 		if (d[0] !== 0 || d[1] !== 0) {
 			const shapes = ed.collide.value ? (target ? [target] : []) : selShapes();
 			mutate(() => {
 				for (const sh of shapes) moveShape(sh, d);
 			}, "drag");
-			ix.dragOff = wm;
+			ix.dragOff = at;
 		}
 	} else if (ix.ik) {
 		ikTo(ix.ik, wm);
@@ -537,9 +634,16 @@ export function onUp(wm: Vec2, mods: Mods) {
 		ix.drawing = false;
 		const kind = ed.tool.value;
 		if (kind === "circle" || kind === "line" || kind === "rect") {
-			addShape(newShape(kind, ix.drawA, wm, ed.collide.value));
+			let b = constrain(ix.drawA, ed.collide.value ? wm : snap(wm, mods), kind, mods.shift);
+			if (dist(ix.drawA, b) * z() < 3) {
+				// a click, not a drag: a default-sized shape, not a speck
+				const a = ix.drawA;
+				b = kind === "circle" ? [a[0] + 2, a[1]] : kind === "line" ? [a[0] + 4, a[1]] : [a[0] + 4, a[1] + 4];
+			}
+			addShape(newShape(kind, ix.drawA, b, ed.collide.value));
 		}
 	}
+	ix.snapAt = null;
 	ix.dragging = false;
 	ix.handle = 0;
 	ix.scaling = false;

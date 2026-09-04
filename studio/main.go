@@ -25,8 +25,9 @@ import (
 var assets embed.FS
 
 func init() {
-	// the frontend listens for this; the payload is the path that arrived
+	// the frontend listens for these: a path that arrived, a menu item chosen
 	application.RegisterEvent[string]("open-files")
+	application.RegisterEvent[string]("menu")
 }
 
 func main() {
@@ -104,6 +105,7 @@ func main() {
 		URL:              "/",
 	})
 	proj.win = win
+	app.Menu.Set(buildMenu(app))
 	// a folder or a .fart dropped on the window opens, like the Finder's
 	win.OnWindowEvent(events.Common.WindowFilesDropped, func(ev *application.WindowEvent) {
 		for _, f := range ev.Context().DroppedFiles() {

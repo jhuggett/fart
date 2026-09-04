@@ -24,49 +24,70 @@ open file is lit, with an amber dot while it has unsaved changes.
 
 ## The editor
 
-- **Toolbar**: Select (1) and the Add menu — circle (2), line (3), poly
-  (4), rect (5) — then Save, Undo, Redo, Browse, Collision, Docs.
-- **Canvas**: the tool is what a click does. Right-drag (or middle-drag)
-  pans; scrolling pans; Cmd/Ctrl+scroll or a trackpad pinch zooms about
-  the cursor. With Select, hovering outlines what a click would pick; a
-  selected shape shows drag handles (circle radius, line ends, every
-  polygon vertex) and dragging its body moves it. X deletes.
-- A **rect** keeps itself rectangular when you drag a corner — its
-  neighbours follow; hold Alt to break it into a free quad.
-- **Shift-click** adds to or removes from the selection; dragging on
-  empty ground sweeps a rubber band over many shapes at once. A crowd
-  moves, deletes, paints, re-parts, and raises/lowers together — it
-  drifts through the stack keeping its internal order.
-- **Scaling**: a selection grows a box whose corner grips scale it about
-  the opposite corner.
+Four regions, the way Rive, Spine and Figma lay it out: **structure on
+the left** (the project's files, then the open file's parts as a tree),
+**the canvas in the middle**, **the inspector on the right** (whatever is
+selected), and **time along the bottom** (states and clips; the timeline
+rises when a clip is chosen).
+
+- **Tools**: Select `V`, Rect `R`, Circle `O`, Line `L`, Poly `P`. The
+  digits `1`–`5` still work. `C` is the collision lens.
+- **Canvas**: the tool is what a click does. Hold `Space` and drag (or
+  middle-drag) to pan; scroll pans; `Cmd`+scroll or a pinch zooms about
+  the cursor. `Cmd =` / `Cmd -` zoom, `Cmd 0` is actual size, `Shift 1`
+  fits everything, `Shift 2` fits the selection. Right-click for the
+  short list. `Cmd K` for the long one.
+- **Select**: hovering outlines what a click would pick; a selected shape
+  shows handles (circle radius, line ends, every vertex) and its body
+  drags. `Shift`-click adds to the selection; drag on empty ground for a
+  rubber band; `Cmd A` takes everything. Arrows nudge a unit, `Shift`
+  arrows ten. `Alt`-drag drags away a copy. `X` or `Delete` deletes.
+- **Snapping**: points pull to other shapes' corners, ends, centres and
+  pivots as you draw or drag; `Cmd '` adds the half-unit grid. Hold `Cmd`
+  during a gesture to snap to nothing. A small × marks where a point
+  landed.
+- **Constrain**: `Shift` while drawing keeps a line to 45° steps and a
+  rect square. `Alt` on a rect's corner breaks it into a free quad;
+  without it the rect stays a rect.
 - **Poly**: click to add points; click the first point again, or press
-  Enter, to close it. Esc drops it.
+  `Enter`, to close. `Esc` drops it.
+- **Rename** anything inline: double-click a part, a state, a clip, a
+  token, an anchor, or press `Enter` with a part current. New things
+  arrive already being renamed.
 
-## Palette (left)
+## Layers (left)
 
-Click a token to make it current — and to paint it onto the selection,
-if there is one. The sliders below edit the current token's RGBA live.
-Tokens arriving from shared palettes (`palette_refs`) are listed under
-**Shared**, read-only: paint with them here, edit them in their own file.
-Double-click a token to rename it; shapes follow. Colors are never
-literal: a shape names a token, the palette says what that means today.
+The parts of the file as a tree: children sit under their parents. Click
+to make a part current (new shapes land there); the **eye** hides a part
+while you work and the **lock** keeps it out of reach, and neither is
+saved. Right-click a row for rename, pivot, anchor, order and delete.
+File order is paint order; raise and lower a part from the inspector or
+the menu.
 
-## Selected (left, below)
+## Inspector (right)
 
-Kind, token, part; a width slider for lines; raise and lower through the
-part's stacking order (also `]` and `[`); delete; and **to part**, which
-moves the selection into the current part.
+The properties of whatever is selected, as numbers you can type:
 
-## Parts (right)
+- **Shape**: its fill (a palette token, picked from a grid), its numbers
+  (centre and radius, ends and width), raise, lower, to part, delete.
+- **Part**: name, pivot, parent, the buttons that arm the pivot and
+  anchor crosshairs, its anchors with their coordinates, and its IK
+  chains.
+- **Pose** (with a state chosen): where the pivot lands, turn, size,
+  reset, and whether the part is drawn in this state.
+- **Document** (nothing selected): the file's name, the palette with a
+  colour picker behind every swatch, the shared tokens, the collision
+  count.
 
-Parts are the layers. They paint top to bottom, so a lower row paints
-over the ones above; the ˄ ˅ buttons on the current row reorder them and
-× deletes one (its shapes go with it; states drop the name). New shapes
-land in the current part. **Set pivot** and **Add anchor** arm a
-crosshair: the next canvas click places it. The pivot is the point a
-runtime rotates about and places; anchors are named points it may ask
-for (a grip, a muzzle, a hinge). When a state is selected, each part row
-grows a checkbox: membership.
+## Palette
+
+A shape's fill is a token, picked in the inspector. The palette itself
+lives in the Document section of the inspector (nothing selected): click
+a swatch for the colour picker, double-click a name to rename it, and
+shapes follow the rename. Tokens arriving through `palette_refs` are
+listed under **Shared**, read-only: paint with them here, edit them in
+their own file. Colours are never literal: a shape names a token, the
+palette says what that means today.
 
 ## Rigs: parents
 
@@ -78,10 +99,11 @@ pose mode the rig shows as dashed bones from each pivot to its parent's.
 Paint order is still the state's list; parents are about motion, not
 layering.
 
-## States (right, below): pose mode
+## States: pose mode
 
-Click a state and the canvas shows it with its transforms applied — and
-switches from editing geometry to posing parts. Drag a part to place it
+States are chips along the bottom; **setup** is every part at rest,
+where geometry is edited. Click a state and the canvas shows it with its
+transforms applied — and switches from editing geometry to posing parts. Drag a part to place it
 (its offset is where the part's pivot lands), pull the lever off the
 pivot to turn it, and the Pose card gives turn and size sliders and a
 reset. Geometry is locked until you go back to **all parts**. State order
@@ -128,8 +150,9 @@ tablet can wear a different one than the desk.
 
 ## Clipboard and keys
 
-Cmd+C / Cmd+V copy and paste the selection; Cmd+X cuts; Cmd+D duplicates
-in place. Pasted shapes land in the part they were copied from (matched
+Everything the studio does is in the menu bar, in `Cmd K`, and on a
+key; the same list drives all three. Cmd+C / Cmd+V copy and paste the
+selection; Cmd+X cuts; Cmd+D duplicates in place. Pasted shapes land in the part they were copied from (matched
 by name, so pasting works across files), or the current part when no
 name matches, nudged a little each paste. Esc deselects or cancels;
 Cmd+Z undoes; Cmd+Shift+Z (or Cmd+Y) redoes. `?` opens these docs.

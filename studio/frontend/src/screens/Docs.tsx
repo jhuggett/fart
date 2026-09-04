@@ -2,9 +2,8 @@
 // rendered from the same markdown the repo keeps.
 
 import { useMemo } from "preact/hooks";
-import { signal } from "@preact/signals";
 import { marked } from "marked";
-import { leaveDocs } from "../state/project.ts";
+import { leaveDocs, project } from "../state/project.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import guide from "../docs/guide.md?raw";
 import spec from "../../../../spec/FORMAT.md?raw";
@@ -13,7 +12,7 @@ const PAGES = [
 	{ id: "guide", title: "Studio guide", md: guide },
 	{ id: "format", title: "The format", md: spec },
 ];
-const page = signal("guide");
+const page = project.docsPage;
 
 export function Docs() {
 	const cur = PAGES.find((p) => p.id === page.value) ?? PAGES[0];

@@ -1,107 +1,59 @@
 import { useEffect } from "preact/hooks";
-import { project, goBrowse, pickFolder, leaveDocs, goDocs } from "./state/project.ts";
-import { ed, save, undo, redo, deleteSel, copySel, pasteClip, cutSel, dupSel, selOrder, curClip, type Tool } from "./state/editor.ts";
-import { escape, polyEnter } from "./canvas/interact.ts";
+import { project, leaveDocs } from "./state/project.ts";
+import { curClip } from "./state/editor.ts";
+import { ix } from "./canvas/interact.ts";
 import { prompt } from "./state/prompt.ts";
-import { toggleExplorer } from "./state/explorer.ts";
+import { palette } from "./state/menu.ts";
+import { KEYMAP, keyOf, run } from "./state/commands.ts";
+import { initCommands } from "./state/actions.ts";
 import { shell } from "./shell/shell.ts";
 import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
 import { Editor } from "./screens/Editor.tsx";
 import { Docs } from "./screens/Docs.tsx";
 import { Prompt } from "./ui/Prompt.tsx";
+import { ContextMenu } from "./ui/ContextMenu.tsx";
+import { CommandPalette } from "./ui/CommandPalette.tsx";
 
-const TOOL_KEYS: Record<string, Tool> = { "1": "select", "2": "circle", "3": "line", "4": "poly", "5": "rect" };
+initCommands();
+
+function typing(e: KeyboardEvent): boolean {
+	const t = e.target as HTMLElement | null;
+	return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+}
 
 function onKey(e: KeyboardEvent) {
-	if (prompt.open.value) return;
-	const t = e.target as HTMLElement | null;
-	if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && e.key !== "Escape") return;
-	const cmd = e.metaKey || e.ctrlKey;
+	if (prompt.open.value || palette.open.value) return;
+	if (typing(e) && e.key !== "Escape") return;
 	const screen = project.screen.value;
-	const k = e.key;
-
-	if (screen === "docs" && k === "Escape") return leaveDocs();
-	if (k === "?" && screen !== "docs") return goDocs();
-	if (cmd && k.toLowerCase() === "b" && (screen === "edit" || screen === "browse")) {
+	if (screen === "docs" && e.key === "Escape") return leaveDocs();
+	const k = keyOf(e);
+	// the space bar: play a clip, or hold to pan
+	if (k === "space") {
+		if (typing(e)) return;
 		e.preventDefault();
-		return toggleExplorer();
+		if (screen === "edit" && curClip()) run("clip.play");
+		else if (screen === "edit") ix.space = true;
+		return;
 	}
+	const id = KEYMAP[k];
+	if (!id) return;
+	if (run(id)) e.preventDefault();
+}
 
-	if (screen !== "edit") {
-		if (cmd && k.toLowerCase() === "o" && shell.kind === "wails") {
-			e.preventDefault();
-			void pickFolder();
-		}
-		return;
-	}
-
-	// the editor
-	if (cmd) {
-		switch (k.toLowerCase()) {
-			case "s":
-				e.preventDefault();
-				return void save();
-			case "z":
-				e.preventDefault();
-				return e.shiftKey ? redo() : undo();
-			case "y":
-				e.preventDefault();
-				return redo();
-			case "o":
-				e.preventDefault();
-				return e.shiftKey ? void pickFolder() : void goBrowse();
-			case "c":
-				e.preventDefault();
-				return copySel();
-			case "v":
-				e.preventDefault();
-				return pasteClip();
-			case "x":
-				e.preventDefault();
-				return cutSel();
-			case "d":
-				e.preventDefault();
-				return dupSel();
-		}
-		return;
-	}
-	if (TOOL_KEYS[k]) {
-		ed.tool.value = TOOL_KEYS[k];
-		return;
-	}
-	if (k === " ") {
-		e.preventDefault(); // never scroll a panel
-		if (curClip()) ed.playing.value = !ed.playing.value;
-		return;
-	}
-	switch (k) {
-		case "x":
-		case "X":
-		case "Delete":
-		case "Backspace":
-			e.preventDefault();
-			return deleteSel();
-		case "c":
-		case "C":
-			ed.collide.value = !ed.collide.value;
-			ed.colSel.value = -1;
-			return;
-		case "[":
-			return selOrder(false);
-		case "]":
-			return selOrder(true);
-		case "Escape":
-			return escape();
-		case "Enter":
-			return polyEnter();
-	}
+function onKeyUp(e: KeyboardEvent) {
+	if (e.code === "Space") ix.space = false;
 }
 
 export function App() {
 	useEffect(() => {
 		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		window.addEventListener("keyup", onKeyUp);
+		shell.onMenu((id) => void run(id));
+		return () => {
+			window.removeEventListener("keydown", onKey);
+			window.removeEventListener("keyup", onKeyUp);
+		};
 	}, []);
 	const screen = project.screen.value;
 	const err = project.error.value;
@@ -112,6 +64,8 @@ export function App() {
 			{screen === "edit" && <Editor />}
 			{screen === "docs" && <Docs />}
 			<Prompt />
+			<ContextMenu />
+			<CommandPalette />
 			{err && (
 				<div class="toast" onClick={() => (project.error.value = null)}>
 					{err}

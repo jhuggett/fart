@@ -9,9 +9,11 @@ import { effect } from "@preact/signals";
 import type { Vec2 } from "@fastart/core";
 import { view, toWorld, zoomAt } from "./view.ts";
 import { render } from "./render.ts";
-import { onDown, onMove, onUp, cancelGesture, ix } from "./interact.ts";
-import { ed } from "../state/editor.ts";
+import { onDown, onMove, onUp, cancelGesture, ix, pick } from "./interact.ts";
+import { ed, selHas, selOnly, curState, curClip } from "../state/editor.ts";
 import { theme } from "../state/theme.ts";
+import { openContextMenu } from "../state/menu.ts";
+import { run, keysFor } from "../state/commands.ts";
 
 export function Canvas() {
 	const ref = useRef<HTMLCanvasElement>(null);
@@ -30,6 +32,7 @@ export function Canvas() {
 			H = canvas.clientHeight;
 			canvas.width = Math.round(W * dpr);
 			canvas.height = Math.round(H * dpr);
+			view.size.value = [W, H];
 			draw();
 		};
 		const draw = () => {
@@ -56,6 +59,7 @@ export function Canvas() {
 			void ed.tool.value;
 			void view.pan.value;
 			void view.zoom.value;
+			void view.snapGrid.value;
 			void theme.rev.value;
 			request();
 		});
@@ -71,7 +75,32 @@ export function Canvas() {
 			const r = canvas.getBoundingClientRect();
 			return [e.clientX - r.left, e.clientY - r.top];
 		};
-		const mods = (e: PointerEvent) => ({ shift: e.shiftKey, alt: e.altKey });
+		const mods = (e: PointerEvent) => ({ shift: e.shiftKey, alt: e.altKey, cmd: e.metaKey || e.ctrlKey });
+
+		// right-click: the short list for what is under the cursor
+		const menu = (e: PointerEvent, s: Vec2) => {
+			e.preventDefault();
+			const wm = toWorld(s, W, H);
+			const items = [];
+			if (!ed.collide.value && !curState() && !curClip()) {
+				const hit = pick(wm);
+				if (hit && !selHas(hit)) selOnly(hit);
+				const some = ed.sel.value.length > 0;
+				items.push(
+					{ label: "Duplicate", keys: keysFor("edit.duplicate"), disabled: !some, run: () => run("edit.duplicate") },
+					{ label: "Copy", keys: keysFor("edit.copy"), disabled: !some, run: () => run("edit.copy") },
+					{ label: "Paste", keys: keysFor("edit.paste"), run: () => run("edit.paste") },
+					{ label: "Raise", keys: "]", disabled: !some, sep: true, run: () => run("edit.raise") },
+					{ label: "Lower", keys: "[", disabled: !some, run: () => run("edit.lower") },
+					{ label: "Delete", keys: "⌫", disabled: !some, danger: true, sep: true, run: () => run("edit.delete") },
+				);
+			}
+			items.push(
+				{ label: "Zoom to fit", keys: keysFor("view.fit"), sep: items.length > 0, run: () => run("view.fit") },
+				{ label: `Snap to grid ${view.snapGrid.value ? "off" : "on"}`, keys: keysFor("view.snapGrid"), run: () => run("view.snapGrid") },
+			);
+			openContextMenu(e.clientX, e.clientY, items);
+		};
 
 		const twoFinger = () => {
 			const [a, b] = [...touches.values()];
@@ -92,7 +121,8 @@ export function Canvas() {
 				}
 				if (touches.size > 2) return;
 			}
-			if (e.button === 2 || e.button === 1) {
+			if (e.button === 2) return menu(e, s);
+			if (e.button === 1 || (e.button === 0 && ix.space)) {
 				panning = true;
 				panLast = s;
 				canvas.classList.add("grab");

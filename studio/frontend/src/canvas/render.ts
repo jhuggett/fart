@@ -6,7 +6,7 @@
 import { cssColor, colorOf, xfApply, xfScale, pivotOf, XF_ID, type Shape, type Vec2 } from "@fastart/core";
 import { view } from "./view.ts";
 import { drawDoc, fillShape, outlineShape, tracePoly, ident, type Map2 } from "./draw.ts";
-import { ix, handlesOf, scaleGrips, poseLever, frameW, worldPivot, chainGrabs } from "./interact.ts";
+import { ix, handlesOf, scaleGrips, poseLever, frameW, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
 import { ed, curPart, curState, curClip, curTokName, selShapes, selShape, shapeAt, colShape, poseOfCur, frame, parts } from "../state/editor.ts";
 import { canvasColors } from "../state/theme.ts";
 
@@ -171,22 +171,38 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	}
 	if (ix.drawing && cur) {
 		const tool = ed.tool.value;
+		const b = (collide ? cur : drawCursor()) ?? cur;
 		const css = collide ? TEAL : cssColor(colorOf(tokens, curTokName()));
 		ctx.globalAlpha = 0.6;
 		let sh: Shape | null = null;
-		if (tool === "circle") sh = { kind: "circle", at: ix.drawA, r: Math.hypot(cur[0] - ix.drawA[0], cur[1] - ix.drawA[1]) };
-		else if (tool === "line") sh = { kind: "line", a: ix.drawA, b: cur, w: collide ? 6 : 1.4 };
+		if (tool === "circle") sh = { kind: "circle", at: ix.drawA, r: Math.hypot(b[0] - ix.drawA[0], b[1] - ix.drawA[1]) };
+		else if (tool === "line") sh = { kind: "line", a: ix.drawA, b, w: collide ? 6 : 1.4 };
 		else if (tool === "rect") {
-			const lo: Vec2 = [Math.min(ix.drawA[0], cur[0]), Math.min(ix.drawA[1], cur[1])];
-			const hi: Vec2 = [Math.max(ix.drawA[0], cur[0]), Math.max(ix.drawA[1], cur[1])];
+			const lo: Vec2 = [Math.min(ix.drawA[0], b[0]), Math.min(ix.drawA[1], b[1])];
+			const hi: Vec2 = [Math.max(ix.drawA[0], b[0]), Math.max(ix.drawA[1], b[1])];
 			sh = { kind: "poly", points: [lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]] };
 		}
 		if (sh) fillShape(ctx, sh, css);
 		ctx.globalAlpha = 1;
 	}
+	// the snap marker: where a point pulled to
+	if (ix.snapAt && (ix.down || ix.drawing)) {
+		screen();
+		const s = toS(ix.snapAt);
+		ctx.strokeStyle = TEAL;
+		ctx.lineWidth = LW;
+		ctx.beginPath();
+		ctx.moveTo(s[0] - 6, s[1] - 6);
+		ctx.lineTo(s[0] + 6, s[1] + 6);
+		ctx.moveTo(s[0] + 6, s[1] - 6);
+		ctx.lineTo(s[0] - 6, s[1] + 6);
+		ctx.stroke();
+		world();
+	}
 	const pts = ed.polyPts.value;
 	if (pts.length) {
 		const css = collide ? TEAL : cssColor(colorOf(tokens, curTokName()));
+		const curSnapped = collide ? cur : cur ? snapForPreview() : null;
 		if (pts.length >= 3) {
 			ctx.globalAlpha = 0.35;
 			tracePoly(ctx, pts, ident);
@@ -203,8 +219,8 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 			if (i === 0) ctx.moveTo(s[0], s[1]);
 			else ctx.lineTo(s[0], s[1]);
 		});
-		if (cur) {
-			const s = toS(cur);
+		if (curSnapped) {
+			const s = toS(curSnapped);
 			ctx.lineTo(s[0], s[1]);
 		}
 		ctx.stroke();
@@ -221,6 +237,21 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 		world();
 	}
 	screen();
+}
+
+function snapForPreview(): Vec2 | null {
+	// the poly's rubber line ends where a click would land
+	return ix.cursor ? (ix.mods.cmd ? ix.cursor : (drawCursorSnapOnly() ?? ix.cursor)) : null;
+}
+
+function drawCursorSnapOnly(): Vec2 | null {
+	const c = ix.cursor;
+	if (!c) return null;
+	const saved = ix.drawA;
+	ix.drawA = c;
+	const r = drawCursor();
+	ix.drawA = saved;
+	return r;
 }
 
 function drawHandles(ctx: CanvasRenderingContext2D, pts: Vec2[], screen: () => void, world: () => void, fill: string, stroke: string, lw: number) {

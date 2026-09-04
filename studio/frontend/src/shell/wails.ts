@@ -64,4 +64,7 @@ export class WailsShell implements Shell {
 		console.log(msg);
 		void Project.Log(msg).catch(() => {});
 	}
+	onMenu(cb: (id: string) => void) {
+		Events.On("menu", (ev: { data: string }) => cb(ev.data));
+	}
 }

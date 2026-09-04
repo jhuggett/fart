@@ -25,6 +25,7 @@ export const project = {
 	serve: signal<ServeInfo | null>(null),
 	screen: signal<Screen>("welcome"),
 	docsBack: signal<Screen>("welcome"),
+	docsPage: signal<string>("guide"),
 	error: signal<string | null>(null),
 	busy: signal(false),
 };
@@ -126,7 +127,8 @@ export async function goBrowse() {
 	await refreshFiles();
 }
 
-export function goDocs() {
+export function goDocs(page?: string) {
+	if (page) project.docsPage.value = page;
 	if (project.screen.value !== "docs") project.docsBack.value = project.screen.value;
 	project.screen.value = "docs";
 }
