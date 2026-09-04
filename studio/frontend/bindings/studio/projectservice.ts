@@ -43,6 +43,13 @@ export function ListFiles(root: string): $CancellablePromise<string[] | null> {
 }
 
 /**
+ * Log prints a line from the page into the shell's log (a debugging aid).
+ */
+export function Log(msg: string): $CancellablePromise<void> {
+    return $Call.ByID(2147002042, msg);
+}
+
+/**
  * PickFolder shows the platform's folder dialog. "" means cancelled.
  */
 export function PickFolder(): $CancellablePromise<string> {

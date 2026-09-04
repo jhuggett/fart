@@ -28,6 +28,8 @@ export interface Shell {
 	serveStop(): Promise<void>;
 	/** http mode only: what the server is serving */
 	info(): Promise<{ name: string }>;
+	/** a line into the shell's log, for debugging */
+	log(msg: string): void;
 }
 
 // Over HTTP the server owns the project: root is always "" and the API
@@ -81,13 +83,31 @@ class HttpShell implements Shell {
 		const r = await fetch("api/info");
 		return r.ok ? ((await r.json()) as { name: string }) : { name: "" };
 	}
+	log(msg: string) {
+		console.log(msg);
+	}
 }
 
 export let shell: Shell = new HttpShell();
 
+/**
+ * Is this page inside the app's webview? The native bridge is what the
+ * Wails runtime itself looks for: WKWebView's message handler on macOS,
+ * Linux and iOS, WebView2's on Windows, the Android interface. (window._wails
+ * is not a sign of anything: the runtime module creates it when it loads.)
+ */
+function inWails(): boolean {
+	const w = window as unknown as {
+		webkit?: { messageHandlers?: { external?: { postMessage?: unknown } } };
+		chrome?: { webview?: { postMessage?: unknown } };
+		wails?: { invoke?: unknown };
+	};
+	return !!(w.webkit?.messageHandlers?.external?.postMessage || w.chrome?.webview?.postMessage || w.wails?.invoke);
+}
+
 /** Pick the face for this environment. Called once, before anything else. */
 export async function initShell(): Promise<Shell> {
-	if ("_wails" in window) {
+	if (inWails()) {
 		const m = await import("./wails.ts");
 		shell = new m.WailsShell();
 	}

@@ -77,6 +77,11 @@ func listFiles(root string) ([]string, error) {
 
 // ------------------------------------------------------------- folders
 
+// Log prints a line from the page into the shell's log (a debugging aid).
+func (p *ProjectService) Log(msg string) {
+	log.Printf("page: %s", msg)
+}
+
 // PickFolder shows the platform's folder dialog. "" means cancelled.
 func (p *ProjectService) PickFolder() (string, error) {
 	dlg := p.app.Dialog.OpenFile().

@@ -60,4 +60,8 @@ export class WailsShell implements Shell {
 	async info() {
 		return { name: "" };
 	}
+	log(msg: string) {
+		console.log(msg);
+		void Project.Log(msg).catch(() => {});
+	}
 }

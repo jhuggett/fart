@@ -48,6 +48,22 @@ func main() {
 	proj := &ProjectService{server: server}
 	cwd, _ := os.Getwd()
 
+	// a second launch (a double-click, `studio other.fart`) hands its
+	// arguments to the running one; FASTART_MULTI=1 allows a second studio
+	single := &application.SingleInstanceOptions{
+		UniqueID: "com.fastart.studio",
+		OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
+			args := d.Args
+			if len(args) > 0 {
+				args = args[1:]
+			}
+			proj.queueArgs(args, d.WorkingDir)
+		},
+	}
+	if os.Getenv("FASTART_MULTI") != "" {
+		single = nil
+	}
+
 	app := application.New(application.Options{
 		Name:        "fastart studio",
 		Description: "the Fast Art Format editor",
@@ -58,18 +74,7 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		FileAssociations: []string{".fart"},
-		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "com.fastart.studio",
-			// a second launch (a double-click, `studio other.fart`) hands
-			// its arguments to the running one
-			OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
-				args := d.Args
-				if len(args) > 0 {
-					args = args[1:]
-				}
-				proj.queueArgs(args, d.WorkingDir)
-			},
-		},
+		SingleInstance:   single,
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},

@@ -49,6 +49,10 @@ export async function boot() {
 	project.home.value = await shell.home();
 	project.recents.value = await shell.recents();
 	shell.onOpenFiles(() => void drainOpens());
+	shell.log(`boot: shell=${shell.kind} url=${location.href}`);
+	// anything the page drops on the floor lands in the shell's log too
+	window.addEventListener("unhandledrejection", (ev) => shell.log(`unhandled: ${String(ev.reason)}`));
+	window.addEventListener("error", (ev) => shell.log(`error: ${ev.message} @ ${ev.filename}:${ev.lineno}`));
 	if (await drainOpens()) return;
 	const def = await shell.defaultRoot();
 	if (def) await openProject(def);
@@ -102,6 +106,7 @@ export async function pickFolder() {
 		const p = await shell.pickFolder();
 		if (p) await openProject(p);
 	} catch (e) {
+		shell.log(`pickFolder failed: ${String(e)}`);
 		project.error.value = `the folder dialog failed: ${String(e)}`;
 	}
 }
