@@ -57,6 +57,9 @@ export function Canvas() {
 			void ed.pending.value;
 			void ed.polyPts.value;
 			void ed.tool.value;
+			void ed.curClip.value;
+			void ed.clipTime.value;
+			void ed.curKey.value;
 			void view.pan.value;
 			void view.zoom.value;
 			void view.snapGrid.value;
