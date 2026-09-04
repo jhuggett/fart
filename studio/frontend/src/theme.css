@@ -1469,3 +1469,38 @@ code,
 .rename.field-name:focus {
 	border-color: var(--accent-line);
 }
+
+.crumb {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.crumb .link {
+	border: none;
+	background: transparent;
+	color: var(--text-2);
+	padding: 2px 4px;
+	border-radius: 4px;
+	cursor: pointer;
+}
+.crumb .link:hover {
+	color: var(--accent);
+	background: var(--btn);
+}
+.crumb .slash {
+	color: var(--text-3);
+}
+.tree-row.project.link {
+	cursor: pointer;
+	gap: 6px;
+}
+.tree-row.project.link:hover {
+	background: var(--btn);
+	color: var(--accent);
+}
+.tree-row.project .chip {
+	visibility: hidden;
+}
+.tree-row.project.link:hover .chip {
+	visibility: visible;
+}

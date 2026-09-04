@@ -1,6 +1,6 @@
 import { I } from "./Icons.tsx";
 import { ed, curState, curClip, save, type Tool } from "../state/editor.ts";
-import { project, goDocs } from "../state/project.ts";
+import { project, goDocs, goBrowse } from "../state/project.ts";
 import { view } from "../canvas/view.ts";
 import { basename } from "../state/paths.ts";
 import { ThemeButton } from "./ThemeMenu.tsx";
@@ -65,9 +65,12 @@ export function Toolbar() {
 					{errors ? `${errors} problem${errors === 1 ? "" : "s"}` : `${issues.length} note${issues.length === 1 ? "" : "s"}`}
 				</button>
 			)}
-			<span class="sub" title={path}>
+			<span class="sub crumb" title={path}>
 				{dirty && <span class="dot" />}
-				{project.name.value ? `${project.name.value} / ` : ""}
+				<button class="link" title="back to the shelf  (⌘ O)" onClick={() => void goBrowse()}>
+					{project.name.value || "shelf"}
+				</button>
+				<span class="slash">/</span>
 				{basename(path)}
 			</span>
 			<span class="sep" />

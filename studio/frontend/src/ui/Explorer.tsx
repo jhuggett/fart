@@ -1,5 +1,6 @@
 import { explorer, toggleExplorer, toggleFolder, tree, type TreeNode } from "../state/explorer.ts";
-import { project, openDoc, newFile, refreshFiles } from "../state/project.ts";
+import { project, openDoc, newFile, refreshFiles, goBrowse } from "../state/project.ts";
+import { I } from "./Icons.tsx";
 import { ed } from "../state/editor.ts";
 import { ask } from "../state/prompt.ts";
 import { stripExt } from "../state/paths.ts";
@@ -72,8 +73,14 @@ export function Explorer() {
 					</button>
 				</span>
 			</div>
-			<div class="tree-row project" title={project.root.value ?? ""}>
+			<div
+				class={`tree-row project ${project.screen.value === "edit" ? "link" : ""}`}
+				title={project.screen.value === "edit" ? "back to the shelf  (⌘ O)" : (project.root.value ?? "")}
+				onClick={() => project.screen.value === "edit" && void goBrowse()}
+			>
+				<I.grid size={12} />
 				<span class="name">{project.name.value || "project"}</span>
+				{project.screen.value === "edit" && <span class="chip">shelf</span>}
 			</div>
 			{root.children.length === 0 && <div class="empty">no .fart files yet</div>}
 			{root.children.map((c) => (
