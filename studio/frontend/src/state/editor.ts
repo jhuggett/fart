@@ -365,6 +365,7 @@ export async function openFile(rel: string): Promise<boolean> {
 		issues = [...report.errors, ...report.warnings];
 	}
 	ensureDefaults(d);
+	delete d.resolved; // an old writer's cache, not a field
 	const dir = dirname(rel);
 	const resolved = await resolvePalettes(d, (ref) => shell.readFile(root(), joinRel(dir, ref)));
 	const shared = resolved.tokens.slice(0, resolved.tokens.length - (d.palette?.length ?? 0));

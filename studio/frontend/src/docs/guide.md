@@ -27,8 +27,8 @@ open file is lit, with an amber dot while it has unsaved changes.
 Four regions, the way Rive, Spine and Figma lay it out: **structure on
 the left** (the project's files, then the open file's parts as a tree),
 **the canvas in the middle**, **the inspector on the right** (whatever is
-selected), and **time along the bottom** (states and clips; the timeline
-rises when a clip is chosen).
+selected), and **the timeline along the bottom** when a clip is chosen.
+States and clips are listed in the left panel, under the layers.
 
 - **Tools**: Select `V`, Rect `R`, Circle `O`, Line `L`, Poly `P`. The
   digits `1`–`5` still work. `C` is the collision lens.
@@ -101,12 +101,12 @@ layering.
 
 ## States: pose mode
 
-The bar along the bottom starts with **draw**: the drawing itself,
-where shapes and parts are made and reshaped. It is not a state. The
-states beside it are arrangements of that one drawing: which parts show,
-where each sits, in what order. Click a state and the canvas shows it
-with its transforms applied — and switches from editing geometry to
-posing parts. Drag a part to place it
+States live in the left panel under the layers. The first row, **the
+drawing**, is the drawing itself, where shapes and parts are made and
+reshaped; it is not a state. The states beneath it are arrangements of
+that one drawing: which parts show, where each sits, in what order.
+Click a state and the canvas shows it with its transforms applied — and
+switches from editing geometry to posing parts. Drag a part to place it
 (its offset is where the part's pivot lands), pull the lever off the
 pivot to turn it, and the Pose card gives turn and size sliders and a
 reset. Geometry is locked until you go back to **all parts**. State order
@@ -115,8 +115,8 @@ is paint order, so a lid may layer differently open and closed.
 ## Clips: states in time
 
 A clip is a list of keys, each at a time in seconds, each naming a state.
-**+ clip** makes one with a single key at 0. Select a clip and the
-timeline appears under the canvas: **▶** (or Space) plays, the ruler
+**+ clip** (left panel, under the states) makes one with a single key
+at 0. Select a clip and the timeline appears under the canvas: **▶** (or Space) plays, the ruler
 scrubs, **+ key** drops a key at the playhead, and a key drags along the
 ruler. The selected key's state, its ease (how time approaches it), and
 its time sit to the right. Between keys the parts tween: offset and size

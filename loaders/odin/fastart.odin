@@ -85,8 +85,8 @@ Doc :: struct {
 	// optional: shapes an engine may treat as solid (a line is a capsule).
 	// Never drawn; rest-space, state-independent.
 	collision:    [dynamic]Shape,
-	// filled by resolve_palettes; not serialized meaningfully
-	resolved:     [dynamic]Tok,
+	// filled by resolve_palettes; never written
+	resolved:     [dynamic]Tok `json:"-"`,
 }
 
 // A byte source for palette_refs: engines that embed assets pass their own.

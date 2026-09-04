@@ -1,7 +1,7 @@
 import { Toolbar, showIssues } from "../ui/Toolbar.tsx";
 import { Layers } from "../ui/Layers.tsx";
 import { Inspector } from "../ui/Inspector.tsx";
-import { BottomBar } from "../ui/BottomBar.tsx";
+import { BottomBar, StatesList, ClipsList } from "../ui/BottomBar.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
 import { Explorer } from "../ui/Explorer.tsx";
 import { explorer } from "../state/explorer.ts";
@@ -24,7 +24,7 @@ export function Editor() {
 						? "click the canvas to place the anchor"
 						: ed.tool.value === "poly"
 							? "click to add points · click the first point or press Enter to close · Esc drops it"
-							: "drawing · shapes and parts are edited here · pick a state below to arrange them";
+							: "drawing · shapes and parts are edited here · pick a state on the left to arrange them";
 	const issues = ed.issues.value;
 	return (
 		<div class="app">
@@ -33,6 +33,8 @@ export function Editor() {
 				<Explorer />
 				<div class="panel left">
 					<Layers />
+					<StatesList />
+					<ClipsList />
 				</div>
 				<div class="canvas-col">
 					<div class="canvas-wrap">

@@ -54,7 +54,8 @@ export interface ValidateOptions {
 
 const KINDS = ["circle", "line", "poly"];
 const RESERVED_KINDS = ["ring", "path"];
-const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta"];
+// "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
+const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta", "resolved"];
 const RESERVED_TOP = ["space"];
 const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta"];
 const KNOWN_CLIP = ["name", "loop", "keys"];
@@ -62,10 +63,13 @@ const KNOWN_KEY = ["t", "state", "parts", "ease"];
 const EASES = ["linear", "in", "out", "in-out", "step"];
 const KNOWN_CONSTRAINT = ["name", "chain", "end", "bend"];
 const RESERVED_PART = ["children"];
+// every shape field is known on every kind: writers that serialise a
+// whole struct (the classic editor did) leave the others at zero
+const SHAPE_FIELDS = ["kind", "color", "at", "r", "a", "b", "w", "points", "tris"];
 const KNOWN_SHAPE: Record<string, string[]> = {
-	circle: ["kind", "color", "at", "r"],
-	line: ["kind", "color", "a", "b", "w"],
-	poly: ["kind", "color", "points", "tris"],
+	circle: SHAPE_FIELDS,
+	line: SHAPE_FIELDS,
+	poly: SHAPE_FIELDS,
 };
 const KNOWN_TOKEN = ["name", "rgb"];
 const KNOWN_ANCHOR = ["name", "at"];

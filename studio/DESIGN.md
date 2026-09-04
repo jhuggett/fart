@@ -14,22 +14,23 @@ Four regions, like Rive and Spine and Figma:
     ├──────────┬───────────────────────────────────┬───────────────┤
     │ explorer │                                   │ inspector     │
     │ layers   │            canvas                 │ (what is      │
-    │ (parts)  │                                   │  selected)    │
-    ├──────────┴───────────────────────────────────┴───────────────┤
-    │ states · clips · timeline (rises when you pose or animate)   │
-    └──────────────────────────────────────────────────────────────┘
+    │ states   │                                   │  selected)    │
+    │ clips    ├───────────────────────────────────┤               │
+    │          │ timeline (when a clip is chosen)  │               │
+    └──────────┴───────────────────────────────────┴───────────────┘
 
 - **Left is structure**: the files of the project, then the parts of the
-  open file as a tree (children under parents), with eye and lock.
+  open file as a tree (children under parents) with eye and lock, then
+  the states and the clips, the way Rive and Spine list animations.
 - **Right is properties**: the inspector shows the selection. A shape
   gets its numbers and its fill; a part gets its pivot, parent, anchors
   and IK chains; a pose gets offset, turn and size; nothing selected
   gets the document: name, palette, collision.
-- **Bottom is time**: the strip starts with **draw**, the drawing itself,
-  where geometry is edited; it is not a state. Then the states, which are
-  arrangements of that drawing, and the clips. Picking a state enters
-  *pose* mode; picking a clip enters *preview* and the timeline appears.
-  Spine calls these setup and animate; the split is the same.
+- **Bottom is time**: only the timeline, and only when a clip is chosen.
+  The first row under States is **the drawing**: the geometry itself,
+  where shapes are edited; it is not a state. Picking a state enters
+  *pose* mode; picking a clip enters *preview*. Spine calls these setup
+  and animate; the split is the same.
 - **The canvas is the tool**: hover tells you what a click would do, the
   hint line at the bottom-left says what mode you are in.
 
