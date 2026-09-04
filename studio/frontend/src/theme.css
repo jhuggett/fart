@@ -608,6 +608,10 @@ code,
 	display: grid;
 	grid-template-columns: auto var(--left) 1fr var(--right);
 }
+/* the explorer hidden: three columns, or every panel slides one over */
+.editor.no-explorer {
+	grid-template-columns: var(--left) 1fr var(--right);
+}
 .browse-body {
 	flex: 1;
 	min-height: 0;

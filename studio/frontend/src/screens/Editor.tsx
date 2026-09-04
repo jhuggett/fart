@@ -8,6 +8,7 @@ import { ChainsPanel } from "../ui/ChainsPanel.tsx";
 import { Timeline } from "../ui/Timeline.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
 import { Explorer } from "../ui/Explorer.tsx";
+import { explorer } from "../state/explorer.ts";
 import { ed, curState, curClip } from "../state/editor.ts";
 import { view } from "../canvas/view.ts";
 
@@ -32,7 +33,7 @@ export function Editor() {
 	return (
 		<div class="app">
 			<Toolbar />
-			<div class="editor">
+			<div class={`editor ${explorer.open.value ? "" : "no-explorer"}`}>
 				<Explorer />
 				<div class="panel left">
 					<PalettePanel />
