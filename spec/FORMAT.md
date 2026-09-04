@@ -217,10 +217,14 @@ when they solve at runtime.
 
 ## Color at runtime
 
-Tokens are the recolor surface. Engines may override token colors wholesale
-(themes), or tint resolved colors (damage flashes, lighting) — both outside
-the format. The format promises only: shapes name tokens, palettes resolve
-them, resolution order is specified above.
+Tokens are the recolor surface: a file's palette is its set of colour
+slots, and a palette file is a map from slot names to colours. Engines
+may lay a palette over a document at load time (a *swap*: same names take
+the new colour, new names join, so one slime file is the red one and the
+blue one), or tint resolved colors (damage flashes, lighting) — both
+outside the format. The reference loaders offer the swap as
+`applyPalette` / `apply_palette`. The format promises only: shapes name
+tokens, palettes resolve them, resolution order is specified above.
 
 ## Collision (optional)
 

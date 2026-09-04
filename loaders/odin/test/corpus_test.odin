@@ -105,3 +105,18 @@ parents_compose :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(doc.constraints), 1)
 	testing.expect_value(t, doc.constraints[0].end, "fore_l/hand")
 }
+
+// A palette swap lays a palette file over a loaded doc by name.
+@(test)
+palette_swap :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	art, ok := fart.load_bytes(transmute([]byte)string(`{"version":1,"palette":[{"name":"skin","rgb":[1,2,3,255]},{"name":"cloth","rgb":[4,5,6,255]}],"parts":[]}`))
+	if !testing.expect(t, ok, "the art loads") do return
+	swap, sok := fart.load_bytes(transmute([]byte)string(`{"version":1,"palette":[{"name":"cloth","rgb":[9,9,9,255]},{"name":"trim","rgb":[7,7,7,255]}]}`))
+	if !testing.expect(t, sok, "the palette file loads") do return
+	fart.apply_palette(&art, swap.palette[:])
+	testing.expect(t, fart.color_of(&art, "cloth") == {9, 9, 9, 255}, "same names take the new colour")
+	testing.expect(t, fart.color_of(&art, "skin") == {1, 2, 3, 255}, "the rest keep theirs")
+	testing.expect(t, fart.color_of(&art, "trim") == {7, 7, 7, 255}, "new names join")
+	testing.expect(t, art.palette[1].rgb == {4, 5, 6, 255}, "the file's own palette is untouched")
+}

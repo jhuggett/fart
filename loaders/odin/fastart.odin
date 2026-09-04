@@ -194,6 +194,30 @@ resolve_palettes :: proc(doc: ^Doc, resolver: Resolver, user: rawptr) {
 	for t in doc.palette do append(&doc.resolved, t)
 }
 
+// A palette swap: lay `palette` over the doc's colours by name. Same
+// names take the new colour, new names join. The doc's own palette and
+// refs are untouched; only the resolved table changes, so swapping back
+// is another apply (or resolve_palettes again). One file, many looks:
+//
+//     red, _ := fastart.load_bytes(red_bytes)   // a palette file
+//     fastart.apply_palette(&slime, red.palette[:])
+apply_palette :: proc(doc: ^Doc, palette: []Tok) {
+	if len(doc.resolved) == 0 {
+		for t in doc.palette do append(&doc.resolved, t)
+	}
+	for p in palette {
+		hit := false
+		for i := len(doc.resolved) - 1; i >= 0; i -= 1 {
+			if doc.resolved[i].name == p.name {
+				doc.resolved[i].rgb = p.rgb
+				hit = true
+				break
+			}
+		}
+		if !hit do append(&doc.resolved, p)
+	}
+}
+
 color_of :: proc(doc: ^Doc, token: string) -> [4]u8 {
 	if len(doc.resolved) > 0 {
 		for i := len(doc.resolved) - 1; i >= 0; i -= 1 {

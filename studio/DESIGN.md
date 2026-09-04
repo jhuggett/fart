@@ -25,7 +25,7 @@ Four regions, like Rive and Spine and Figma:
 - **Right is properties**: the inspector shows the selection. A shape
   gets its numbers and its fill; a part gets its pivot, parent, anchors
   and IK chains; a pose gets offset, turn and size; nothing selected
-  gets the document: name, palette, collision.
+  gets the document: name, colours, shared palettes, collision.
 - **Bottom is time**: only the timeline, and only when a clip is chosen.
 - **Every view is a state.** There is no separate drawing mode: shapes
   are edited inside whichever state is on the canvas, through its pose,
@@ -42,7 +42,7 @@ definition each, and the tooltips repeat them.
 | word       | in the file     | what it is                                                  |
 |------------|-----------------|-------------------------------------------------------------|
 | shape      | `shapes[]`      | a circle, a line, a poly; paints one token                  |
-| token      | `palette[]`     | a named colour; shapes name tokens, never colours           |
+| colour     | `palette[]`     | a named slot; shapes name slots, never colours. A palette file is a map of slots other files draw from |
 | part       | `parts[]`       | a layer with a pivot; the unit that poses; may ride a parent |
 | pivot      | `pivot`         | the point a part turns about and is placed by               |
 | anchor     | `anchors[]`     | a named point on a part a game or a chain reaches for       |

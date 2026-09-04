@@ -3,7 +3,7 @@
 // it and the ways a project gets opened (dialog, drop, argv, the Finder).
 
 import { signal, batch } from "@preact/signals";
-import { parseDoc, resolvePalettes, type Doc, type Token } from "@fastart/core";
+import { parseDoc, resolvePalettes, stringifyDoc, isPaletteFile, type Doc, type Token } from "@fastart/core";
 import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
 import { ask, confirm } from "./prompt.ts";
@@ -175,6 +175,46 @@ export async function openDoc(rel: string): Promise<boolean> {
 	const ok = await openFile(rel);
 	if (ok) project.screen.value = "edit";
 	return ok;
+}
+
+/** The project's palette files: colours and no parts. */
+export function paletteFiles(): string[] {
+	return [...project.thumbs.value].filter(([, t]) => isPaletteFile(t.doc)).map(([rel]) => rel).sort();
+}
+
+/** The files that draw from a palette file, by its project path. */
+export function linkedBy(target: string): string[] {
+	const out: string[] = [];
+	for (const [rel, t] of project.thumbs.value) {
+		for (const ref of t.doc.palette_refs ?? []) if (joinRel(dirname(rel), ref) === target) out.push(rel);
+	}
+	return out.sort();
+}
+
+/**
+ * A palette file: colours and no parts. A plain name lands in palettes/,
+ * a name with a slash is a path from the project's root. Resolves with
+ * the file's path, or null.
+ */
+export async function newPalette(name: string, open = true): Promise<string | null> {
+	const root = project.root.value;
+	if (root === null) return null;
+	const bare = name.endsWith(".fart") ? name.slice(0, -5) : name;
+	const rel = `${bare.includes("/") ? bare : `palettes/${bare}`}.fart`;
+	if (project.files.value.includes(rel)) {
+		project.error.value = `${rel} already exists`;
+		return null;
+	}
+	const doc: Doc = { version: 1, name: basename(bare), palette: [{ name: "ink", rgb: [200, 195, 185, 255] }] };
+	try {
+		await shell.writeFile(root, rel, stringifyDoc(doc));
+	} catch (e) {
+		project.error.value = `could not write ${rel}: ${String(e)}`;
+		return null;
+	}
+	await refreshFiles();
+	if (open) await openDoc(rel);
+	return rel;
 }
 
 export async function newFile(name: string) {

@@ -23,6 +23,15 @@ export function joinRel(dir: string, ref: string): string {
 	return parts.join("/");
 }
 
+/** A relative path from a folder to a file, both project-relative: from "enemies" to "palettes/base.fart" is "../palettes/base.fart". */
+export function relativeTo(fromDir: string, target: string): string {
+	const a = fromDir ? fromDir.split("/") : [];
+	const b = target.split("/");
+	let i = 0;
+	while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+	return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/");
+}
+
 export function stripExt(name: string): string {
 	return name.endsWith(".fart") ? name.slice(0, -5) : name;
 }

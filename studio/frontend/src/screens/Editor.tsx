@@ -1,4 +1,5 @@
 import { Toolbar, showIssues } from "../ui/Toolbar.tsx";
+import { PaletteView } from "../ui/PaletteView.tsx";
 import { Layers } from "../ui/Layers.tsx";
 import { Inspector } from "../ui/Inspector.tsx";
 import { BottomBar, StatesList, ClipsList } from "../ui/BottomBar.tsx";
@@ -26,6 +27,17 @@ export function Editor() {
 							? `state "${st.name}" · shapes edit in place · drag the part's ⌖ to move it, its lever to turn it, a ring to reach`
 							: "";
 	const issues = ed.issues.value;
+	if (ed.isPalette.value) {
+		return (
+			<div class="app">
+				<Toolbar />
+				<div class="browse-body">
+					<Explorer />
+					<PaletteView />
+				</div>
+			</div>
+		);
+	}
 	return (
 		<div class="app">
 			<Toolbar />

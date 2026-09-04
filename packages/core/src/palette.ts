@@ -44,6 +44,32 @@ export async function resolvePalettes(doc: Doc, read: RefReader): Promise<Resolv
 	return { tokens, unresolved };
 }
 
+/**
+ * A palette swap: the same tokens with `palette` laid over them by name.
+ * Same names take the new colour, new names join the end; the input is
+ * not touched. This is how one file becomes the red slime and the blue.
+ */
+export function applyPalette(tokens: readonly Token[], palette: readonly Token[]): Token[] {
+	const out = tokens.map((t) => ({ ...t }));
+	for (const p of palette) {
+		let hit = false;
+		for (let i = out.length - 1; i >= 0; i--) {
+			if (out[i].name === p.name) {
+				out[i] = { ...out[i], rgb: p.rgb };
+				hit = true;
+				break;
+			}
+		}
+		if (!hit) out.push({ ...p });
+	}
+	return out;
+}
+
+/** A palette file: colours and no parts. It is only ever referenced. */
+export function isPaletteFile(doc: Doc): boolean {
+	return !doc.parts && Array.isArray(doc.palette);
+}
+
 /** The colour a token resolves to, or loud magenta. */
 export function colorOf(tokens: readonly Token[], name: string): Rgba {
 	for (let i = tokens.length - 1; i >= 0; i--) if (tokens[i].name === name) return tokens[i].rgb;

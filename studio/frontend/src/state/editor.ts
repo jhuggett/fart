@@ -28,10 +28,11 @@ import {
 	type Ease,
 	sampleClip,
 	solveChain,
+	isPaletteFile,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
 import { project } from "./project.ts";
-import { dirname, joinRel } from "./paths.ts";
+import { dirname, joinRel, relativeTo } from "./paths.ts";
 import { local, clearLocal } from "./local.ts";
 
 export type Tool = "select" | "circle" | "line" | "poly" | "rect";
@@ -51,6 +52,10 @@ export const ed = {
 	tokens: signal<Token[]>([]),
 	/** the tokens palette_refs supplied, read-only here */
 	shared: signal<Token[]>([]),
+	/** palette_refs that could not be read */
+	unresolved: signal<string[]>([]),
+	/** a palette file: colours and no parts; the canvas gives way to swatches */
+	isPalette: signal(false),
 	issues: signal<Issue[]>([]),
 	tool: signal<Tool>("select"),
 	curPart: signal(0),
@@ -264,6 +269,7 @@ export function endGesture() {
 }
 
 function restore(snap: Snap) {
+	const refsBefore = JSON.stringify(ed.doc.value.palette_refs ?? []);
 	batch(() => {
 		ed.doc.value = JSON.parse(snap.doc) as Doc;
 		ed.curState.value = snap.state;
@@ -275,6 +281,7 @@ function restore(snap: Snap) {
 	});
 	mergeKey = null;
 	touch();
+	if (JSON.stringify(ed.doc.value.palette_refs ?? []) !== refsBefore) void reloadShared();
 }
 
 export function undo() {
@@ -365,6 +372,8 @@ export async function leaveFile() {
 }
 
 function ensureDefaults(d: Doc) {
+	// a palette file stays one: no parts, no states, and an empty list is fine
+	if (isPaletteFile(d)) return;
 	if (!d.parts?.length) d.parts = [{ name: "body", pivot: [0, 0], shapes: [] }];
 	if (!d.palette?.length) d.palette = [{ name: "ink", rgb: [200, 195, 185, 255] }];
 	for (const p of d.parts) {
@@ -384,6 +393,61 @@ const HARD = new Set(["json", "version", "schema", "path"]);
  * dangling token or part reference renders loud rather than refusing to
  * open, and the issues sit in the toolbar for you to fix.
  */
+/** The tokens the file's palette_refs supply, read relative to the file. */
+async function resolveShared(d: Doc, rel: string): Promise<{ shared: Token[]; unresolved: string[] }> {
+	const dir = dirname(rel);
+	const resolved = await resolvePalettes(d, (ref) => shell.readFile(root(), joinRel(dir, ref)));
+	return { shared: resolved.tokens.slice(0, resolved.tokens.length - (d.palette?.length ?? 0)), unresolved: resolved.unresolved };
+}
+
+/** The refs changed (linked, unlinked, undone): read them again and look the file over. */
+export async function reloadShared() {
+	const rel = ed.path.value;
+	if (!rel) return;
+	const d = ed.doc.value;
+	const { shared, unresolved } = await resolveShared(d, rel);
+	if (ed.path.value !== rel) return;
+	const r = validate(d, { refTokens: unresolved.length ? null : shared.map((t) => t.name) });
+	batch(() => {
+		ed.shared.value = shared;
+		ed.unresolved.value = unresolved;
+		ed.tokens.value = [...shared, ...(d.palette ?? [])];
+		ed.issues.value = [...r.errors, ...r.warnings];
+		ed.rev.value++;
+	});
+}
+
+/** Draw from a palette file: a ref relative to this file, then a fresh look at the shared tokens. */
+export function linkPalette(target: string) {
+	const rel = ed.path.value;
+	if (!rel || target === rel) return;
+	const ref = relativeTo(dirname(rel), target);
+	if (doc().palette_refs?.includes(ref)) return;
+	mutate((d) => (d.palette_refs ??= []).push(ref));
+	void reloadShared();
+}
+
+export function unlinkPalette(i: number) {
+	mutate((d) => {
+		d.palette_refs?.splice(i, 1);
+		if (d.palette_refs && !d.palette_refs.length) delete d.palette_refs;
+	});
+	void reloadShared();
+}
+
+/** Copy a shared slot into this file, where it can be changed; the file's own colours win. */
+export function overrideToken(name: string) {
+	const have = palette().findIndex((t) => t.name === name);
+	if (have >= 0) {
+		ed.curTok.value = have;
+		return;
+	}
+	const src = [...ed.shared.value].reverse().find((t) => t.name === name);
+	if (!src) return;
+	mutate((d) => (d.palette ??= []).push({ name, rgb: [...src.rgb] as Rgba }));
+	ed.curTok.value = palette().length - 1;
+}
+
 export async function openFile(rel: string): Promise<boolean> {
 	if (ed.path.value) await leaveFile();
 	const text = await shell.readFile(root(), rel);
@@ -398,14 +462,13 @@ export async function openFile(rel: string): Promise<boolean> {
 		} else d = JSON.parse(text) as Doc;
 		issues = [...report.errors, ...report.warnings];
 	}
+	const isPalette = isPaletteFile(d);
 	ensureDefaults(d);
 	delete d.resolved; // an old writer's cache, not a field
-	const dir = dirname(rel);
-	const resolved = await resolvePalettes(d, (ref) => shell.readFile(root(), joinRel(dir, ref)));
-	const shared = resolved.tokens.slice(0, resolved.tokens.length - (d.palette?.length ?? 0));
+	const { shared, unresolved } = await resolveShared(d, rel);
 	if (issues.length && d.palette_refs?.length) {
 		// a second look, now that the shared tokens are known
-		const r = validate(d, { refTokens: resolved.unresolved.length ? null : shared.map((t) => t.name) });
+		const r = validate(d, { refTokens: unresolved.length ? null : shared.map((t) => t.name) });
 		issues = [...r.errors, ...r.warnings];
 	}
 
@@ -416,7 +479,9 @@ export async function openFile(rel: string): Promise<boolean> {
 	batch(() => {
 		ed.doc.value = d;
 		ed.path.value = rel;
+		ed.isPalette.value = isPalette;
 		ed.shared.value = shared;
+		ed.unresolved.value = unresolved;
 		ed.tokens.value = [...shared, ...(d.palette ?? [])];
 		ed.issues.value = issues;
 		ed.curPart.value = 0;

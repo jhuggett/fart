@@ -15,7 +15,7 @@ import { docBounds } from "@fastart/core";
 const inEditor = () => project.screen.value === "edit";
 const inProject = () => project.screen.value === "edit" || project.screen.value === "browse";
 const native = () => shell.kind === "wails";
-const setup = () => inEditor() && ed.curClip.value < 0;
+const setup = () => inEditor() && ed.curClip.value < 0 && !ed.isPalette.value;
 
 let nudgeTimer: number | undefined;
 function nudge(dx: number, dy: number) {
@@ -32,7 +32,7 @@ function tool(t: Tool) {
 
 export function initCommands() {
 	register(
-		{ id: "tool.select", title: "Select", group: "Tools", when: inEditor, run: () => tool("select") },
+		{ id: "tool.select", title: "Select", group: "Tools", when: setup, run: () => tool("select") },
 		{ id: "tool.rect", title: "Rect tool", group: "Tools", when: setup, run: () => tool("rect") },
 		{ id: "tool.circle", title: "Circle tool", group: "Tools", when: setup, run: () => tool("circle") },
 		{ id: "tool.line", title: "Line tool", group: "Tools", when: setup, run: () => tool("line") },
@@ -107,7 +107,7 @@ export function initCommands() {
 			id: "view.collision",
 			title: "Collision lens",
 			group: "View",
-			when: inEditor,
+			when: setup,
 			run: () => {
 				ed.collide.value = !ed.collide.value;
 				ed.colSel.value = -1;

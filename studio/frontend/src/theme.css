@@ -1529,3 +1529,94 @@ code,
 .row .chip {
 	margin-left: auto;
 }
+
+/* ---- a palette file: swatches, nothing else */
+.palette-view {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 22px 28px 60px;
+}
+.pal-head {
+	margin-bottom: 18px;
+}
+.pal-title {
+	font-size: 20px;
+	font-weight: 600;
+	color: var(--text);
+}
+.pal-sub {
+	margin-top: 4px;
+	color: var(--text-3);
+	font-size: var(--fs-small);
+}
+.pal-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, 148px);
+	gap: 12px;
+}
+.pal-tile {
+	position: relative;
+	height: 132px;
+	border-radius: 10px;
+	background: var(--raised);
+	border: 1px solid var(--edge);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	cursor: default;
+}
+.pal-tile.active {
+	border-color: var(--accent-line);
+	box-shadow: 0 0 0 1px var(--accent-line);
+}
+.pal-tile .pal-swatch {
+	flex: 1;
+	border: none;
+	cursor: pointer;
+	padding: 0;
+	display: block;
+}
+.pal-tile .pal-label {
+	height: 44px;
+	padding: 5px 10px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 1px;
+	min-width: 0;
+}
+.pal-tile .pal-label .name {
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.pal-tile .pal-label .hex {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+	font-variant-numeric: tabular-nums;
+}
+.pal-tile .btn.x {
+	position: absolute;
+	right: 6px;
+	bottom: 12px;
+	opacity: 0;
+}
+.pal-tile:hover .btn.x {
+	opacity: 1;
+}
+.pal-tile.add {
+	align-items: center;
+	justify-content: center;
+	flex-direction: row;
+	gap: 6px;
+	color: var(--text-3);
+	background: transparent;
+	border-style: dashed;
+	cursor: pointer;
+}
+.pal-tile.add:hover {
+	color: var(--text);
+	border-color: var(--edge-strong);
+}

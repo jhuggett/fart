@@ -50,8 +50,14 @@ import {
 	setChainBend,
 	setClipLoop,
 	freshName,
+	linkPalette,
+	unlinkPalette,
+	overrideToken,
 } from "../state/editor.ts";
-import { renaming } from "../state/menu.ts";
+import { renaming, openContextMenu, type MenuItem } from "../state/menu.ts";
+import { paletteFiles } from "../state/project.ts";
+import { askNewPalette } from "./fileMenu.ts";
+import { basename, stripExt } from "../state/paths.ts";
 
 const DEG = 180 / Math.PI;
 
@@ -375,8 +381,25 @@ function DocumentSection() {
 	const d = doc();
 	const toks = palette();
 	const shared = ed.shared.value;
+	const refs = d.palette_refs ?? [];
+	const missing = new Set(ed.unresolved.value);
+	const local = new Set(toks.map((t) => t.name));
 	const [pick, setPick] = useState<{ k: number; x: number; y: number } | null>(null);
 	const ren = renaming.value;
+	const linkMenu = (e: MouseEvent) => {
+		const cur = ed.path.value;
+		const linked = new Set(refs);
+		const items: MenuItem[] = paletteFiles()
+			.filter((f) => f !== cur)
+			.map((f) => ({ label: stripExt(f), disabled: linked.has(f), run: () => linkPalette(f) }));
+		items.push({
+			label: "New palette…",
+			sep: items.length > 0,
+			run: () => void askNewPalette("", false).then((rel) => rel && linkPalette(rel)),
+		});
+		const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		openContextMenu(r.left, r.bottom + 4, items);
+	};
 	return (
 		<>
 			<Section title="Document" hint="the file itself">
@@ -388,7 +411,7 @@ function DocumentSection() {
 					</span>
 				</div>
 			</Section>
-			<Section title="Palette" hint="named colours; shapes name tokens, never colours">
+			<Section title="Colours" hint="the file's colour slots: a shape names a slot, this says what it means today. Change one and every shape follows.">
 				{toks.map((t, k) => (
 					<div class={`row ${k === ed.curTok.value ? "active" : ""}`} onClick={() => (ed.curTok.value = k)} onDblClick={() => (renaming.value = { kind: "token", index: k })}>
 						<button
@@ -408,7 +431,7 @@ function DocumentSection() {
 						)}
 						<button
 							class="btn x"
-							title="delete token"
+							title="delete colour"
 							onClick={(e) => {
 								e.stopPropagation();
 								deleteToken(k);
@@ -421,21 +444,44 @@ function DocumentSection() {
 				<button
 					class="add-row"
 					onClick={() => {
-						addToken(freshName("token", toks.map((t) => t.name)));
+						addToken(freshName("colour", toks.map((t) => t.name)));
 						renaming.value = { kind: "token", index: palette().length - 1 };
 					}}
 				>
-					<I.plus size={11} /> token
+					<I.plus size={11} /> colour
+				</button>
+				<div class="hdr sub" title="palette files this one draws from, by slot name. The file's own colours win.">
+					Shared palettes
+				</div>
+				{refs.map((ref, i) => (
+					<div class={`row ${missing.has(ref) ? "dim" : ""}`} title={ref}>
+						<I.grid size={11} />
+						<span class="name">{stripExt(basename(ref))}</span>
+						{missing.has(ref) && <span class="chip">missing</span>}
+						<button class="btn x" title="unlink: stop drawing from it" onClick={() => unlinkPalette(i)}>
+							×
+						</button>
+					</div>
+				))}
+				<button class="add-row" onClick={linkMenu} title="draw from a palette file in this project">
+					<I.plus size={11} /> link
 				</button>
 				{shared.length > 0 && (
 					<>
-						<div class="hdr sub" title="from palette_refs: paint with them here, edit them in their own file">
-							Shared
+						<div class="hdr sub" title="slots the linked palettes supply: paint with them here, change them in their own file, or override one">
+							From shared
 						</div>
 						{shared.map((t) => (
 							<div class="row dim">
 								<span class="swatch" style={{ background: cssColor(t.rgb) }} />
 								<span class="name">{t.name}</span>
+								{local.has(t.name) ? (
+									<span class="chip" title="this file has its own colour for the slot">overridden</span>
+								) : (
+									<button class="btn small ghost" title="copy the slot into this file, so it can be changed here" onClick={() => overrideToken(t.name)}>
+										override
+									</button>
+								)}
 							</div>
 						))}
 					</>

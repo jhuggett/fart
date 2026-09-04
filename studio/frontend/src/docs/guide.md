@@ -79,15 +79,29 @@ The properties of whatever is selected, as numbers you can type:
   colour picker behind every swatch, the shared tokens, the collision
   count.
 
-## Palette
+## Colours
 
-A shape's fill is a token, picked in the inspector. The palette itself
-lives in the Document section of the inspector (nothing selected): click
-a swatch for the colour picker, double-click a name to rename it, and
-shapes follow the rename. Tokens arriving through `palette_refs` are
-listed under **Shared**, read-only: paint with them here, edit them in
-their own file. Colours are never literal: a shape names a token, the
-palette says what that means today.
+A shape never holds a colour. It names a **slot** (`skin`, `cloth`), and
+the file's Colours list says what that slot means today: change a colour
+there and every shape using it follows. Click the canvas with nothing
+selected to see the list in the inspector: **+ colour** adds a slot, a
+click on a swatch opens the picker, a double-click on a name renames it
+(shapes follow), × removes it.
+
+A **palette file** is a `.fart` with colours and no parts: a project's
+shared vocabulary of slots. **new palette** on the shelf makes one (a
+plain name lands in `palettes/`), and opening one shows only its
+swatches. Link a palette file to an art file under **Shared palettes**
+(+ link); its slots then appear under *From shared*, greyed, to paint
+with. The file's own colours win over shared ones, so **override** copies
+a shared slot into the file when one chest wants its own wood. A linked
+palette that cannot be found is marked *missing* and its slots paint
+magenta.
+
+At runtime the same slots are the recolour surface: a game lays a
+palette file over a document (`apply_palette` in the Odin loader,
+`applyPalette` in core) and the red slime and the blue one are one
+file.
 
 ## Rigs: parents
 

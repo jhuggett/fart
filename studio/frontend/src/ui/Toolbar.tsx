@@ -24,7 +24,8 @@ export function Toolbar() {
 	const dirty = ed.dirty.value;
 	const issues = ed.issues.value;
 	const errors = issues.filter((i) => !["unknown", "reserved", "unresolved"].includes(i.code)).length;
-	const posing = !!curClip();
+	const pal = ed.isPalette.value;
+	const posing = !!curClip() || pal;
 	const collide = ed.collide.value;
 	return (
 		<div class="topbar">
@@ -33,8 +34,8 @@ export function Toolbar() {
 				{TOOLS.map((t) => (
 					<button
 						class={`tool ${tool === t.tool ? "active" : ""}`}
-						disabled={posing && t.tool !== "select"}
-						title={posing && t.tool !== "select" ? "a clip is a preview; pick a state to edit" : `${t.label}  (${t.key})`}
+						disabled={pal || (posing && t.tool !== "select")}
+						title={pal ? "a palette has no shapes" : posing && t.tool !== "select" ? "a clip is a preview; pick a state to edit" : `${t.label}  (${t.key})`}
 						onClick={() => run(`tool.${t.tool}`)}
 					>
 						<t.icon />
@@ -44,10 +45,10 @@ export function Toolbar() {
 				))}
 			</div>
 			<span class="sep" />
-			<button class={`btn ${collide ? "active" : "ghost"}`} title="the collision lens  (C)" onClick={() => run("view.collision")}>
+			<button class={`btn ${collide ? "active" : "ghost"}`} disabled={pal} title="the collision lens  (C)" onClick={() => run("view.collision")}>
 				<I.collision /> Collision
 			</button>
-			<button class={`btn ghost ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
+			<button class={`btn ghost ${view.snapGrid.value ? "active" : ""}`} disabled={pal} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
 				<I.grid />
 			</button>
 			<span class="sep" />
