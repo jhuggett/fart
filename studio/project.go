@@ -87,7 +87,9 @@ func (p *ProjectService) PickFolder() (string, error) {
 	if p.win != nil {
 		dlg.AttachToWindow(p.win)
 	}
-	return dlg.PromptForSingleSelection()
+	path, err := dlg.PromptForSingleSelection()
+	log.Printf("pick folder: %q err=%v", path, err)
+	return path, err
 }
 
 func (p *ProjectService) IsDir(path string) bool {

@@ -98,8 +98,12 @@ export async function openPath(path: string): Promise<boolean> {
 }
 
 export async function pickFolder() {
-	const p = await shell.pickFolder();
-	if (p) await openProject(p);
+	try {
+		const p = await shell.pickFolder();
+		if (p) await openProject(p);
+	} catch (e) {
+		project.error.value = `the folder dialog failed: ${String(e)}`;
+	}
 }
 
 export async function forgetRecent(root: string) {

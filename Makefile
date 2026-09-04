@@ -28,8 +28,10 @@ dev: node_modules
 app: node_modules
 	cd studio && wails3 task package
 
+# a running studio would just take the launch (single instance): quit it first
 run: app
 ifeq ($(UNAME),Darwin)
+	-pkill -x studio
 	open studio/bin/studio.app
 else
 	./studio/bin/studio
