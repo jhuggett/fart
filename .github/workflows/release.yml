@@ -52,7 +52,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: studio/fastart-studio-*.zip
+          path: studio/uranus-*.zip
 
   windows:
     runs-on: windows-latest
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: studio/fastart-studio-*.zip
+          path: studio/uranus-*.zip
 
   linux:
     runs-on: ubuntu-latest
@@ -98,11 +98,11 @@ jobs:
         working-directory: studio
       - name: tar
         working-directory: studio
-        run: tar -C bin -czf "uranus-${{ github.ref_name }}-linux-amd64.tar.gz" studio
+        run: tar -C bin -czf "uranus-${{ github.ref_name }}-linux-amd64.tar.gz" Uranus
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: studio/fastart-studio-*.tar.gz
+          path: studio/uranus-*.tar.gz
 
   release:
     needs: [macos, windows, linux]
@@ -116,4 +116,10 @@ jobs:
         with:
           name: Uranus ${{ github.ref_name }}
           generate_release_notes: true
+          body: |
+            Uranus, the fastart studio. It emits farts.
+
+            The macOS build is ad-hoc signed: the first launch needs a right-click → Open
+            (or `xattr -d com.apple.quarantine Uranus.app`). Windows and Linux builds are
+            unsigned in the same way.
           files: dist/*
