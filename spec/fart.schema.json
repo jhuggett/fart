@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/jhuggett/fart/main/spec/fart.schema.json",
-  "title": "Fast Art Format (.fart), version 1.1",
+  "title": "Fast Art Format (.fart), version 1.2",
   "description": "JSON-backed vector art for games: shapes, recolorable palette tokens, re-posable parts, states. This schema checks structure; spec/FORMAT.md holds meaning, and the validator in packages/core adds the cross-reference checks a schema cannot express (names resolve, tris index the points). Unknown fields are allowed everywhere: editors preserve them, loaders ignore them.",
   "type": "object",
   "required": [
@@ -113,6 +113,11 @@
         },
         "rgb": {
           "$ref": "#/$defs/rgba"
+        },
+        "emissive": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Since 1.2: light the slot gives off; 0 or absent for none."
         }
       }
     },
@@ -254,6 +259,10 @@
         },
         "at": {
           "$ref": "#/$defs/vec2"
+        },
+        "angle": {
+          "type": "number",
+          "description": "Since 1.2: the direction an attached thing points, radians in the part's rest space."
         }
       }
     },
@@ -288,6 +297,10 @@
         "parent": {
           "$ref": "#/$defs/name",
           "description": "Since 1.1: the part this one is posed relative to. Must exist; no loops."
+        },
+        "like": {
+          "$ref": "#/$defs/name",
+          "description": "Since 1.2: this part draws that part's shapes and anchors and has none of its own."
         }
       }
     },
@@ -312,6 +325,10 @@
           "type": "number",
           "minimum": 0,
           "description": "Multiplier about the pivot. Absent or 0 means 1."
+        },
+        "mirror": {
+          "type": "boolean",
+          "description": "Since 1.2: flipped left-to-right about the pivot, before the turn."
         }
       }
     },
@@ -330,6 +347,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/state_part"
+          }
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
           }
         }
       }
@@ -364,6 +387,46 @@
             "step"
           ],
           "description": "How time approaches this key from the previous one. Absent means linear."
+        },
+        "curve": {
+          "type": "array",
+          "description": "Since 1.2: a cubic bezier's control points [x1, y1, x2, y2], x within 0..1; wins over ease.",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "events": {
+          "type": "array",
+          "description": "Since 1.2: names a runtime hears when the playhead crosses this key.",
+          "items": {
+            "$ref": "#/$defs/name"
+          }
         }
       },
       "oneOf": [
@@ -446,6 +509,22 @@
             -1
           ],
           "description": "Preferred elbow direction where a solution is ambiguous."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "description": "Since 1.2: where a chain should reach, document space.",
+      "required": [
+        "chain",
+        "at"
+      ],
+      "properties": {
+        "chain": {
+          "$ref": "#/$defs/name"
+        },
+        "at": {
+          "$ref": "#/$defs/vec2"
         }
       }
     }

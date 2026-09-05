@@ -3,7 +3,7 @@
 // The algorithms match the reference Odin loader, so every implementation
 // agrees on what a file looks like.
 
-import type { Doc, Part, Shape, State, StatePart, Vec2 } from "./types.ts";
+import type { Anchor, Doc, Part, Shape, State, StatePart, Vec2 } from "./types.ts";
 
 // ------------------------------------------------------------- transforms
 // Since 1.1 a part may have a parent; poses compose. An affine map in the
@@ -42,19 +42,33 @@ export function xfScale(T: Xf): number {
 	return Math.hypot(T[0], T[1]);
 }
 
-/** The rotation a transform applies, in radians. */
+/** The rotation a transform applies, in radians (of its x axis; a mirrored frame reads half a turn off). */
 export function xfAngle(T: Xf): number {
 	return Math.atan2(T[1], T[0]);
 }
 
-/** A part's own pose: translate(offset) · rotate · scale · translate(-pivot). */
+/** Does the transform flip handedness (an odd number of mirrors)? */
+export function xfFlipped(T: Xf): boolean {
+	return T[0] * T[3] - T[1] * T[2] < 0;
+}
+
+/**
+ * A part's own pose: translate(offset) · rotate · scale · mirror ·
+ * translate(-pivot). The mirror (1.2) flips x about the pivot before the
+ * turn, so a mirrored part still turns the way its parent does.
+ */
 export function localXf(part: Part, sp: StatePart | undefined): Xf {
-	const pv = pivotOf(part);
 	if (!sp) return [1, 0, 0, 1, 0, 0];
-	const { offset, rotate, scale } = poseOf(sp, part);
+	const pv = pivotOf(part);
+	const { offset, rotate, scale, mirror } = poseOf(sp, part);
 	const c = Math.cos(rotate) * scale;
 	const s = Math.sin(rotate) * scale;
-	return [c, s, -s, c, offset[0] - (c * pv[0] - s * pv[1]), offset[1] - (s * pv[0] + c * pv[1])];
+	// translate(offset) · [rotate·scale] · mirror · translate(-pivot)
+	const RS: Xf = [c, s, -s, c, 0, 0];
+	const M: Xf = mirror ? [-1, 0, 0, 1, 0, 0] : XF_ID; // after translate(-pivot) the pivot is the origin: reflect x there
+	const T: Xf = [1, 0, 0, 1, -pv[0], -pv[1]];
+	const L = xfMul(RS, xfMul(M, T));
+	return [L[0], L[1], L[2], L[3], L[4] + offset[0], L[5] + offset[1]];
 }
 
 /**
@@ -95,6 +109,7 @@ export interface Pose {
 	offset: Vec2;
 	rotate: number;
 	scale: number;
+	mirror: boolean;
 }
 
 /** A state entry with the spec's defaults filled in. */
@@ -103,33 +118,52 @@ export function poseOf(sp: StatePart, part: Part): Pose {
 		offset: sp.offset ?? pivotOf(part),
 		rotate: sp.rotate ?? 0,
 		scale: sp.scale === undefined || sp.scale === 0 ? 1 : sp.scale,
+		mirror: sp.mirror === true,
 	};
 }
 
 /** Rest space to posed space in the part's own frame (parents not applied). */
 export function posePoint(p: Vec2, part: Part, sp: StatePart): Vec2 {
-	const { offset, rotate, scale } = poseOf(sp, part);
-	const pv = pivotOf(part);
-	const lx = (p[0] - pv[0]) * scale;
-	const ly = (p[1] - pv[1]) * scale;
-	const ca = Math.cos(rotate);
-	const sa = Math.sin(rotate);
-	return [offset[0] + lx * ca - ly * sa, offset[1] + lx * sa + ly * ca];
+	return xfApply(localXf(part, sp), p);
 }
 
 /** Posed space back to rest space. */
 export function unposePoint(m: Vec2, part: Part, sp: StatePart): Vec2 {
-	const { offset, rotate, scale } = poseOf(sp, part);
-	const pv = pivotOf(part);
-	const ca = Math.cos(-rotate);
-	const sa = Math.sin(-rotate);
-	const dx = m[0] - offset[0];
-	const dy = m[1] - offset[1];
-	return [pv[0] + (dx * ca - dy * sa) / scale, pv[1] + (dx * sa + dy * ca) / scale];
+	return xfApply(xfInvert(localXf(part, sp)), m);
 }
 
 export function partOf(doc: Doc, name: string): Part | undefined {
 	return doc.parts?.find((p) => p.name === name);
+}
+
+/** The part whose geometry this one draws: itself, or the one it is `like` (1.2). */
+export function sourceOf(doc: Doc, part: Part): Part {
+	if (!part.like) return part;
+	const src = partOf(doc, part.like);
+	return src && src !== part && !src.like ? src : part;
+}
+
+/** A part's shapes, through `like`. The array is the source's own: edits land there. */
+export function shapesOf(doc: Doc, part: Part): Shape[] {
+	return sourceOf(doc, part).shapes ?? [];
+}
+
+/** A part's anchors, through `like`. */
+export function anchorsOf(doc: Doc, part: Part): Anchor[] {
+	return sourceOf(doc, part).anchors ?? [];
+}
+
+/**
+ * Attaching (1.2): the transform that puts an item's anchor onto a
+ * host's, positions matched and, where both have an `angle`, directions
+ * matched. Draw the item's rest space through it, then the host's world.
+ */
+export function attachXf(hostXf: Xf, host: Anchor, item: Anchor): Xf {
+	const turn = (host.angle ?? 0) - (item.angle ?? 0);
+	const c = Math.cos(turn);
+	const s = Math.sin(turn);
+	const R: Xf = [c, s, -s, c, host.at[0] - (c * item.at[0] - s * item.at[1]), host.at[1] - (s * item.at[0] + c * item.at[1])];
+	return xfMul(hostXf, R);
 }
 
 export function stateOf(doc: Doc, name: string): State | undefined {
@@ -144,6 +178,7 @@ export interface DrawEntry {
 	/** the uniform scale xf applies, for stroke widths and radii */
 	scale: number;
 }
+/** Draw entries carry the part; its geometry is shapesOf(doc, part) (through `like`). */
 
 /**
  * What to draw, in order, for a state name, a pose list (a sampled clip
@@ -167,6 +202,12 @@ export function drawList(doc: Doc, pose?: string | readonly StatePart[]): DrawEn
 		out.push({ part, sp, xf, scale: xfScale(xf) });
 	}
 	return out;
+}
+
+/** Sampled poses and where the chains should reach, together: a frame (1.2). */
+export interface Frame {
+	parts: StatePart[];
+	targets: import("./types.ts").Target[];
 }
 
 export function dist(a: Vec2, b: Vec2): number {
@@ -252,7 +293,7 @@ export function shapeBounds(sh: Shape): Bounds | null {
 export function docBounds(doc: Doc): Bounds | null {
 	let acc: Bounds | null = null;
 	for (const part of doc.parts ?? []) {
-		for (const sh of part.shapes ?? []) {
+		for (const sh of shapesOf(doc, part)) {
 			const b = shapeBounds(sh);
 			if (!b) continue;
 			if (!acc) acc = { lo: [...b.lo], hi: [...b.hi] };

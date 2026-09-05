@@ -1,4 +1,4 @@
-# Fast Art Format (.fart) — v1.1
+# Fast Art Format (.fart) — v1.2
 
 JSON-backed vector art for games. The format is the contract: any editor
 that writes it and any engine that reads it agree through this document
@@ -215,6 +215,118 @@ when they solve at runtime.
   cyclic coordinate descent; any solver that reaches the same point is
   conforming.
 
+## Mirror and reuse (1.2)
+
+```json
+{"name": "claw_r", "pivot": [5, 0], "shapes": [ ... ], "anchors": [ {"name": "tip", "at": [9, 0]} ]},
+{"name": "claw_l", "like": "claw_r", "parent": "body", "pivot": [5, 0]}
+```
+```json
+{"part": "claw_l", "mirror": true, "offset": [-5, 0]}
+```
+
+- A part with `like` draws another part's `shapes` and `anchors`, and
+  has none of its own (a validator refuses a `like` part carrying
+  either). It keeps its own `name`, `pivot`, `parent` and pose, so one
+  claw's geometry serves both sides. `like` does not chain: the source
+  draws its own geometry. A reader that predates 1.2 draws the part
+  empty.
+- `mirror` on a state entry flips the part left-to-right about its
+  pivot, before the turn, so a mirrored part still turns the way its
+  parent does:
+
+      L(part) = translate(offset) · rotate(rotate) · scale(scale) · mirror · translate(-pivot)
+
+  with `mirror` reflecting x across the pivot. It does not tween: between
+  keys the outgoing key's flip holds. A solver adjusting rotations under
+  a mirrored ancestor turns the other way (the parent's frame is
+  reflected), which is the solver's business, not the author's.
+
+## Sockets: anchors with a direction (1.2)
+
+```json
+"anchors": [ {"name": "hand", "at": [12, 1], "angle": -0.4} ]
+```
+
+An anchor may carry an `angle` (radians, in the part's rest space): the
+direction an attached thing points. Attaching one document to another is
+a runtime operation the format only makes exact: to put an item's anchor
+(a sword's `grip`) onto a host's (a hand), align the positions and, where
+both have an `angle`, the directions:
+
+    attach = W(host part) · translate(host.at) · rotate(host.angle − item.angle) · translate(−item.at)
+
+and draw the item's rest space through it. Which item sits in which hand
+is game state, so files never name each other for this.
+
+## IK targets (1.2)
+
+```json
+{"name": "reach", "parts": [ ... ], "targets": [ {"chain": "arm_l", "at": [14, -2]} ]}
+```
+
+A state, or a clip key, may carry `targets`: chains and the document-space
+points they reach. The chain parts' rotations in the pose are the solved
+result as of saving, so a reader that does not solve draws the right
+thing; an editor re-solves whenever the pose changes (the hand stays on
+the latch while the torso moves), and a runtime that solves live does so
+after sampling. Between keys, a target both keys name tweens linearly and
+the solve follows; a chain only the outgoing key targets holds its point.
+
+## Events (1.2)
+
+```json
+{"t": 0.3, "state": "plant", "events": ["footstep"]}
+```
+
+A key may carry `events`, names a runtime hears when the playhead crosses
+the key's time going forward: the footstep, the hit frame of a swing.
+Reading events from t0 to t1 yields the events of keys with a time in
+(t0, t1]; on a loop the interval wraps, and the wrap key itself (the last
+one) never fires, since the first key at 0 stands for it.
+
+## Curves (1.2)
+
+```json
+{"t": 0.4, "state": "open", "ease": "out", "curve": [0.34, 1.56, 0.64, 1]}
+```
+
+A key may carry a `curve`: a cubic bezier's two control points, [x1, y1,
+x2, y2] with x within 0..1 (the CSS `cubic-bezier` form), bending the
+fraction of time toward this key. Where present it wins over `ease`;
+authors set `ease` to the nearest name anyway, so a reader that predates
+1.2 stays close.
+
+## Emissive tokens (1.2)
+
+```json
+{"name": "flame", "rgb": [255, 140, 50, 255], "emissive": 1.5}
+```
+
+A palette token may carry `emissive`, a number from 0: how much light the
+slot gives off. The format says nothing about what light is; a game with
+lighting reads it, one without ignores it.
+
+## Blending and layering (1.2)
+
+Clips sample to pose lists, and two pose lists combine. The format
+defines the two operations so every runtime agrees, and neither needs
+anything new in a file:
+
+- `blend(a, b, w)`: every part in both lists tweens by `w` (`offset` and
+  `scale` linearly, `rotate` the short way round); which parts draw, and
+  in what order, comes from `a` while `w` is below 0.5 and from `b`
+  after. A crossfade between two clips is a blend with a ramping `w`.
+- `layer(base, over, w)`: parts `over` names tween from their base pose
+  toward the layer's by `w`; every other part keeps the base pose; the
+  base's order stands, and a part only the layer has joins the end once
+  `w` reaches 0.5. A head turn over a gait is a layer; a flinch is a
+  layer whose weight rises and falls.
+
+`mirror` and targets come from the leading side of a blend and from the
+base of a layer. Additive layers (a delta on top of any pose) are not
+defined yet; a layer with a weight envelope covers the common cases.
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -275,6 +387,8 @@ the same from any tool:
 | `ref.state` | a clip key names a state the document does not have              |
 | `chain`     | a constraint's chain is empty, or its parts are not parented in order |
 | `ref.anchor` | a constraint's `end` is not `part/anchor` on the chain's last part |
+| `like`      | a part is like itself, like a part that is itself like another, or carries its own shapes or anchors |
+| `ref.chain` | a target names a constraint the document does not have           |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -297,6 +411,11 @@ the corpus only requires it to load every valid file and refuse those two.
   adds a field.
 - 1.1 added `parent` on parts, `clips`, and `constraints`. Files that use
   none of them are byte-for-byte 1.0 files.
+- 1.2 added `like` on parts, `mirror` on state entries, `angle` on
+  anchors, `targets` on states and keys, `events` and `curve` on keys,
+  `emissive` on tokens, and defined blending, layering and attaching for
+  runtimes. Every one is optional; a 1.1 reader draws a `like` part empty
+  and eases by name, and is otherwise right.
 
 ## Reserved for later
 

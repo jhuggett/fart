@@ -18,7 +18,9 @@
     "clip": "a clip with no keys, keys out of order, or a key with neither or both of state and parts",
     "ref.state": "a clip key names a state the document does not have",
     "chain": "a constraint's chain is empty or its parts are not parented in order",
-    "ref.anchor": "a constraint's end is not part/anchor on the chain's last part"
+    "ref.anchor": "a constraint's end is not part/anchor on the chain's last part",
+    "like": "a part is like itself, like a part that is itself like another, or carries its own shapes or anchors",
+    "ref.chain": "a target names a constraint the document does not have"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
@@ -34,10 +36,7 @@
     {
       "file": "valid/palette.fart",
       "valid": true,
-      "warnings": [
-        "unknown"
-      ],
-      "note": "a palette file: tokens only, one with an additive field this version ignores"
+      "note": "a palette file: tokens only, one emissive (1.2)"
     },
     {
       "file": "valid/chest.fart",
@@ -238,6 +237,71 @@
       "file": "invalid/duplicate-clip.fart",
       "valid": false,
       "code": "dup.clip"
+    },
+    {
+      "file": "valid/mirror.fart",
+      "valid": true,
+      "note": "1.2: a claw drawn like the other and mirrored, an anchor with an angle, a curve and an event on a key"
+    },
+    {
+      "file": "valid/reach.fart",
+      "valid": true,
+      "note": "1.2: targets on a state and on an inline key, an emissive token, anchors with angles"
+    },
+    {
+      "file": "invalid/like-unknown.fart",
+      "valid": false,
+      "code": "ref.part"
+    },
+    {
+      "file": "invalid/like-with-shapes.fart",
+      "valid": false,
+      "code": "like"
+    },
+    {
+      "file": "invalid/like-chain.fart",
+      "valid": false,
+      "code": "like"
+    },
+    {
+      "file": "invalid/like-self.fart",
+      "valid": false,
+      "code": "like"
+    },
+    {
+      "file": "invalid/target-unknown-chain.fart",
+      "valid": false,
+      "code": "ref.chain"
+    },
+    {
+      "file": "invalid/curve-short.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/curve-x-out.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/mirror-not-bool.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/event-empty.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/emissive-negative.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/anchor-angle-string.fart",
+      "valid": false,
+      "code": "schema"
     }
   ]
 }

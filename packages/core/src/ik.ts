@@ -4,8 +4,8 @@
 // similarity (rotation and uniform scale), so a world-space turn about a
 // pivot is the same turn in the part's own frame.
 
-import type { Constraint, Doc, StatePart, Vec2 } from "./types.ts";
-import { partOf, pivotOf, worldTransforms, xfApply } from "./geometry.ts";
+import type { Constraint, Doc, StatePart, Target, Vec2 } from "./types.ts";
+import { anchorsOf, partOf, pivotOf, worldTransforms, xfApply, xfFlipped, XF_ID } from "./geometry.ts";
 
 export interface ChainEnd {
 	part: string;
@@ -21,7 +21,7 @@ export function chainEnd(doc: Doc, c: Constraint): ChainEnd | null {
 	const anchorName = c.end.slice(i + 1);
 	if (c.chain[c.chain.length - 1] !== partName) return null;
 	const part = partOf(doc, partName);
-	const anchor = part?.anchors?.find((a) => a.name === anchorName);
+	const anchor = part ? anchorsOf(doc, part).find((a) => a.name === anchorName) : undefined;
 	if (!part || !anchor) return null;
 	return { part: partName, anchor: anchorName, at: anchor.at };
 }
@@ -77,11 +77,27 @@ export function solveChain(doc: Doc, poses: StatePart[], c: Constraint, target: 
 			const j = xfApply(partXf, pivotOf(part));
 			const a1 = Math.atan2(e[1] - j[1], e[0] - j[0]);
 			const a2 = Math.atan2(target[1] - j[1], target[0] - j[0]);
-			entries[i].rotate = wrap((entries[i].rotate ?? 0) + (a2 - a1));
+			// a turn in the parent's frame reads backwards on screen under a mirrored ancestor
+			const parentXf = part.parent ? (W.get(part.parent) ?? XF_ID) : XF_ID;
+			const sign = xfFlipped(parentXf) ? -1 : 1;
+			entries[i].rotate = wrap((entries[i].rotate ?? 0) + sign * (a2 - a1));
 		}
 		const e = chainEndWorld(doc, poses, c);
 		dist = e ? Math.hypot(e[0] - target[0], e[1] - target[1]) : Infinity;
 		if (dist < tolerance) break;
 	}
 	return dist;
+}
+
+/**
+ * Reach every target a pose carries (1.2), in place: the chains named
+ * turn toward their points; anything else stays. Editors call this when
+ * a pose changes so the hand stays on the latch; runtimes that solve
+ * live call it after sampling a clip.
+ */
+export function solveTargets(doc: Doc, poses: StatePart[], targets: readonly Target[]): void {
+	for (const tg of targets) {
+		const c = doc.constraints?.find((k) => k.name === tg.chain);
+		if (c) solveChain(doc, poses, c, tg.at);
+	}
 }

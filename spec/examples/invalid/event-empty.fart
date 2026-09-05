@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "palette": [
+    {
+      "name": "ink",
+      "rgb": [
+        0,
+        0,
+        0,
+        255
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "a",
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "ink",
+          "at": [
+            0,
+            0
+          ],
+          "r": 1
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "s",
+      "parts": [
+        {
+          "part": "a"
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "c",
+      "keys": [
+        {
+          "t": 0,
+          "state": "s",
+          "events": [
+            ""
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -12,6 +12,8 @@ export type Rgba = [number, number, number, number];
 export interface Token {
 	name: string;
 	rgb: Rgba;
+	/** Since 1.2: light this slot gives off, 0 or absent for none. The game decides what that means. */
+	emissive?: number;
 	[extra: string]: unknown;
 }
 
@@ -49,6 +51,8 @@ export type ShapeKind = Shape["kind"];
 export interface Anchor {
 	name: string;
 	at: Vec2;
+	/** Since 1.2: the direction an attached thing points, radians in the part's rest space. */
+	angle?: number;
 	[extra: string]: unknown;
 }
 
@@ -56,8 +60,10 @@ export interface Part {
 	name: string;
 	/** Since 1.1: the part this one is posed relative to. */
 	parent?: string;
-	/** Absent means [0, 0]. */
+	/** Absent means [0, 0]; with `like`, absent means the source part's pivot. */
 	pivot?: Vec2;
+	/** Since 1.2: this part's shapes and anchors are that part's. It has none of its own. */
+	like?: string;
 	shapes?: Shape[];
 	anchors?: Anchor[];
 	meta?: Record<string, unknown>;
@@ -72,6 +78,15 @@ export interface StatePart {
 	rotate?: number;
 	/** Absent or 0 means 1. */
 	scale?: number;
+	/** Since 1.2: flipped left-to-right about the pivot, before the turn. */
+	mirror?: boolean;
+	[extra: string]: unknown;
+}
+
+/** Since 1.2: where a chain should reach in this pose, document space. */
+export interface Target {
+	chain: string;
+	at: Vec2;
 	[extra: string]: unknown;
 }
 
@@ -79,10 +94,15 @@ export interface State {
 	name: string;
 	/** Paint order. Parts left out are not drawn. */
 	parts: StatePart[];
+	/** Since 1.2: chains this pose reaches with; the parts' rotations hold the solved pose too. */
+	targets?: Target[];
 	[extra: string]: unknown;
 }
 
 export type Ease = "linear" | "in" | "out" | "in-out" | "step";
+
+/** Since 1.2: a cubic bezier's two control points, [x1, y1, x2, y2], x in 0..1. */
+export type Curve = [number, number, number, number];
 
 /** One moment in a clip: a time, and a pose named or inline. */
 export interface ClipKey {
@@ -92,6 +112,12 @@ export interface ClipKey {
 	parts?: StatePart[];
 	/** How time approaches this key from the previous one. Absent means linear. */
 	ease?: Ease;
+	/** Since 1.2: a bezier easing that wins over `ease` where a reader knows it. */
+	curve?: Curve;
+	/** Since 1.2: chains this key reaches with, tweened toward the next key's. */
+	targets?: Target[];
+	/** Since 1.2: names a runtime hears when the playhead crosses this key. */
+	events?: string[];
 	[extra: string]: unknown;
 }
 
@@ -134,7 +160,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 1;
+export const FORMAT_MINOR = 2;
 
 /** What an unresolvable token renders as: loud, on purpose. */
 export const MAGENTA: Rgba = [255, 0, 255, 255];

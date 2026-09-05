@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "name": "reacher",
+  "palette": [
+    {
+      "name": "cloth",
+      "rgb": [
+        80,
+        110,
+        170,
+        255
+      ]
+    },
+    {
+      "name": "skin",
+      "rgb": [
+        230,
+        190,
+        160,
+        255
+      ]
+    },
+    {
+      "name": "lamp",
+      "rgb": [
+        255,
+        220,
+        120,
+        255
+      ],
+      "emissive": 1.5
+    }
+  ],
+  "parts": [
+    {
+      "name": "torso",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "cloth",
+          "points": [
+            [
+              -4,
+              -8
+            ],
+            [
+              4,
+              -8
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              -4,
+              4
+            ]
+          ],
+          "tris": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3
+          ]
+        }
+      ],
+      "anchors": [
+        {
+          "name": "belt",
+          "at": [
+            3,
+            2
+          ],
+          "angle": 1.5708
+        }
+      ]
+    },
+    {
+      "name": "upper",
+      "parent": "torso",
+      "pivot": [
+        4,
+        -6
+      ],
+      "shapes": [
+        {
+          "kind": "line",
+          "color": "cloth",
+          "a": [
+            4,
+            -6
+          ],
+          "b": [
+            9,
+            -3
+          ],
+          "w": 2
+        }
+      ]
+    },
+    {
+      "name": "fore",
+      "parent": "upper",
+      "pivot": [
+        9,
+        -3
+      ],
+      "shapes": [
+        {
+          "kind": "line",
+          "color": "skin",
+          "a": [
+            9,
+            -3
+          ],
+          "b": [
+            12,
+            1
+          ],
+          "w": 1.8
+        },
+        {
+          "kind": "circle",
+          "color": "lamp",
+          "at": [
+            12,
+            1
+          ],
+          "r": 0.8
+        }
+      ],
+      "anchors": [
+        {
+          "name": "hand",
+          "at": [
+            12,
+            1
+          ],
+          "angle": 0.93
+        }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "name": "arm",
+      "chain": [
+        "upper",
+        "fore"
+      ],
+      "end": "fore/hand",
+      "bend": 1
+    }
+  ],
+  "states": [
+    {
+      "name": "rest",
+      "parts": [
+        {
+          "part": "torso"
+        },
+        {
+          "part": "upper"
+        },
+        {
+          "part": "fore"
+        }
+      ]
+    },
+    {
+      "name": "latch",
+      "parts": [
+        {
+          "part": "torso",
+          "rotate": 0.1
+        },
+        {
+          "part": "upper",
+          "rotate": -1.1
+        },
+        {
+          "part": "fore",
+          "rotate": -0.4
+        }
+      ],
+      "targets": [
+        {
+          "chain": "arm",
+          "at": [
+            13,
+            -9
+          ]
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "grab",
+      "keys": [
+        {
+          "t": 0,
+          "state": "rest"
+        },
+        {
+          "t": 0.5,
+          "state": "latch",
+          "ease": "out",
+          "events": [
+            "reach"
+          ]
+        },
+        {
+          "t": 0.8,
+          "parts": [
+            {
+              "part": "torso"
+            },
+            {
+              "part": "upper",
+              "rotate": -1.1
+            },
+            {
+              "part": "fore",
+              "rotate": -0.4
+            }
+          ],
+          "targets": [
+            {
+              "chain": "arm",
+              "at": [
+                13,
+                -6
+              ]
+            }
+          ],
+          "curve": [
+            0.42,
+            0,
+            0.58,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

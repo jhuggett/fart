@@ -26,7 +26,9 @@ export type ErrorCode =
 	| "clip"
 	| "ref.state"
 	| "chain"
-	| "ref.anchor";
+	| "ref.anchor"
+	| "like"
+	| "ref.chain";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -57,9 +59,10 @@ const RESERVED_KINDS = ["ring", "path"];
 // "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
 const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta", "resolved"];
 const RESERVED_TOP = ["space"];
-const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta"];
+const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta", "like"];
 const KNOWN_CLIP = ["name", "loop", "keys"];
-const KNOWN_KEY = ["t", "state", "parts", "ease"];
+const KNOWN_KEY = ["t", "state", "parts", "ease", "curve", "targets", "events"];
+const KNOWN_TARGET = ["chain", "at"];
 const EASES = ["linear", "in", "out", "in-out", "step"];
 const KNOWN_CONSTRAINT = ["name", "chain", "end", "bend"];
 const RESERVED_PART = ["children"];
@@ -71,10 +74,10 @@ const KNOWN_SHAPE: Record<string, string[]> = {
 	line: SHAPE_FIELDS,
 	poly: SHAPE_FIELDS,
 };
-const KNOWN_TOKEN = ["name", "rgb"];
-const KNOWN_ANCHOR = ["name", "at"];
-const KNOWN_STATE = ["name", "parts"];
-const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale"];
+const KNOWN_TOKEN = ["name", "rgb", "emissive"];
+const KNOWN_ANCHOR = ["name", "at", "angle"];
+const KNOWN_STATE = ["name", "parts", "targets"];
+const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale", "mirror"];
 
 type Obj = Record<string, unknown>;
 
@@ -202,6 +205,7 @@ function checkToken(ctx: Ctx, t: unknown, path: string): string | null {
 	if (!ctx.object(t, path)) return null;
 	const named = ctx.name(t.name, `${path}/name`);
 	if (!isRgba(t.rgb)) ctx.err("schema", `${path}/rgb`, "expected [r, g, b, a], integers 0-255");
+	if ("emissive" in t) ctx.number(t.emissive, `${path}/emissive`, 0);
 	ctx.unknown(t, KNOWN_TOKEN, [], path);
 	return named ? (t.name as string) : null;
 }
@@ -210,6 +214,12 @@ function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 	if (!ctx.object(p, path)) return null;
 	const named = ctx.name(p.name, `${path}/name`);
 	if ("parent" in p) ctx.name(p.parent, `${path}/parent`);
+	if ("like" in p) {
+		ctx.name(p.like, `${path}/like`);
+		// a part drawn like another has no geometry of its own
+		if (Array.isArray(p.shapes) && p.shapes.length) ctx.err("like", `${path}/shapes`, "a part with like draws that part's shapes; it has none of its own");
+		if (Array.isArray(p.anchors) && p.anchors.length) ctx.err("like", `${path}/anchors`, "a part with like has that part's anchors; none of its own");
+	}
 	if ("pivot" in p) ctx.vec2(p.pivot, `${path}/pivot`);
 	if ("shapes" in p && ctx.array(p.shapes, `${path}/shapes`)) {
 		p.shapes.forEach((sh, i) => checkShape(ctx, sh, `${path}/shapes/${i}`, true));
@@ -220,6 +230,7 @@ function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 			if (!ctx.object(a, ap)) return;
 			ctx.name(a.name, `${ap}/name`);
 			ctx.vec2(a.at, `${ap}/at`);
+			if ("angle" in a) ctx.number(a.angle, `${ap}/angle`);
 			ctx.unknown(a, KNOWN_ANCHOR, [], ap);
 		});
 	}
@@ -238,20 +249,34 @@ function checkStateParts(ctx: Ctx, parts: unknown[], path: string, partNames: Se
 		if ("offset" in sp) ctx.vec2(sp.offset, `${spp}/offset`);
 		if ("rotate" in sp) ctx.number(sp.rotate, `${spp}/rotate`);
 		if ("scale" in sp) ctx.number(sp.scale, `${spp}/scale`, 0);
+		if ("mirror" in sp && typeof sp.mirror !== "boolean") ctx.err("schema", `${spp}/mirror`, "expected true or false");
 		ctx.unknown(sp, KNOWN_STATE_PART, [], spp);
 	});
 }
 
-function checkState(ctx: Ctx, s: unknown, path: string, partNames: Set<string>): string | null {
+/** 1.2: where chains should reach in a pose. */
+function checkTargets(ctx: Ctx, targets: unknown, path: string, chainNames: Set<string>) {
+	if (!ctx.array(targets, path)) return;
+	targets.forEach((tg, i) => {
+		const tp = `${path}/${i}`;
+		if (!ctx.object(tg, tp)) return;
+		if (ctx.name(tg.chain, `${tp}/chain`) && !chainNames.has(tg.chain)) ctx.err("ref.chain", `${tp}/chain`, `no constraint named "${tg.chain}"`);
+		ctx.vec2(tg.at, `${tp}/at`);
+		ctx.unknown(tg, KNOWN_TARGET, [], tp);
+	});
+}
+
+function checkState(ctx: Ctx, s: unknown, path: string, partNames: Set<string>, chainNames: Set<string>): string | null {
 	if (!ctx.object(s, path)) return null;
 	const named = ctx.name(s.name, `${path}/name`);
 	if (!("parts" in s)) ctx.err("schema", `${path}/parts`, "a state lists its parts (an empty list is fine)");
 	else if (ctx.array(s.parts, `${path}/parts`)) checkStateParts(ctx, s.parts, `${path}/parts`, partNames);
+	if ("targets" in s) checkTargets(ctx, s.targets, `${path}/targets`, chainNames);
 	ctx.unknown(s, KNOWN_STATE, [], path);
 	return named ? (s.name as string) : null;
 }
 
-function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, stateNames: Set<string>): string | null {
+function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, stateNames: Set<string>, chainNames: Set<string>): string | null {
 	if (!ctx.object(c, path)) return null;
 	const named = ctx.name(c.name, `${path}/name`);
 	if ("loop" in c && typeof c.loop !== "boolean") ctx.err("schema", `${path}/loop`, "expected true or false");
@@ -274,6 +299,13 @@ function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, s
 			}
 			if (hasParts && ctx.array(k.parts, `${kp}/parts`)) checkStateParts(ctx, k.parts, `${kp}/parts`, partNames);
 			if ("ease" in k && !EASES.includes(k.ease as string)) ctx.err("schema", `${kp}/ease`, `ease must be one of ${EASES.join(", ")}`);
+			if ("curve" in k) {
+				const cv = k.curve;
+				if (!Array.isArray(cv) || cv.length !== 4 || !cv.every(isNum)) ctx.err("schema", `${kp}/curve`, "a curve is [x1, y1, x2, y2]");
+				else if (cv[0] < 0 || cv[0] > 1 || cv[2] < 0 || cv[2] > 1) ctx.err("schema", `${kp}/curve`, "a curve's x1 and x2 stay within 0..1");
+			}
+			if ("targets" in k) checkTargets(ctx, k.targets, `${kp}/targets`, chainNames);
+			if ("events" in k && ctx.array(k.events, `${kp}/events`)) k.events.forEach((ev, j) => ctx.name(ev, `${kp}/events/${j}`));
 			ctx.unknown(k, KNOWN_KEY, [], kp);
 		});
 	}
@@ -305,7 +337,8 @@ function checkConstraint(ctx: Ctx, c: unknown, path: string, parts: Map<string, 
 	else if (typeof c.end !== "string" || !/^[^/]+\/[^/]+$/.test(c.end)) ctx.err("schema", `${path}/end`, "end is part/anchor");
 	else if (chain.length) {
 		const [pn, an] = c.end.split("/");
-		const lastPart = parts.get(chain[chain.length - 1]);
+		let lastPart = parts.get(chain[chain.length - 1]);
+		if (lastPart && isName(lastPart.like) && parts.has(lastPart.like)) lastPart = parts.get(lastPart.like);
 		const anchors = Array.isArray(lastPart?.anchors) ? (lastPart!.anchors as Obj[]) : [];
 		if (pn !== chain[chain.length - 1] || !anchors.some((a) => isObj(a) && a.name === an)) {
 			ctx.err("ref.anchor", `${path}/end`, `"${c.end}" is not an anchor on the chain's last part`);
@@ -415,21 +448,35 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 	}
 	const partSet = new Set(partNames.filter((n): n is string => n !== null));
 
+	// like (1.2): the source exists, is another part, and draws its own geometry
+	if (Array.isArray(doc.parts)) {
+		doc.parts.forEach((p, i) => {
+			if (!isObj(p) || !isName(p.like)) return;
+			const src = partObjs.get(p.like);
+			if (!src) ctx.err("ref.part", `/parts/${i}/like`, `no part named "${p.like}"`);
+			else if (p.like === p.name) ctx.err("like", `/parts/${i}/like`, "a part cannot be like itself");
+			else if (isName(src.like)) ctx.err("like", `/parts/${i}/like`, `"${p.like}" is itself like another part; like does not chain`);
+		});
+	}
+
+	// constraints before states: targets name them
+	const chainNames: (string | null)[] = [];
+	if ("constraints" in doc && ctx.array(doc.constraints, "/constraints")) {
+		doc.constraints.forEach((c, i) => chainNames.push(checkConstraint(ctx, c, `/constraints/${i}`, partObjs)));
+		checkDuplicates(ctx, chainNames, "dup.constraint", "/constraints", "constraints");
+	}
+	const chainSet = new Set(chainNames.filter((n): n is string => n !== null));
+
 	const stateNames: (string | null)[] = [];
 	if ("states" in doc && ctx.array(doc.states, "/states")) {
-		doc.states.forEach((s, i) => stateNames.push(checkState(ctx, s, `/states/${i}`, partSet)));
+		doc.states.forEach((s, i) => stateNames.push(checkState(ctx, s, `/states/${i}`, partSet, chainSet)));
 		checkDuplicates(ctx, stateNames, "dup.state", "/states", "states");
 	}
 	const stateSet = new Set(stateNames.filter((n): n is string => n !== null));
 
 	if ("clips" in doc && ctx.array(doc.clips, "/clips")) {
-		const names = doc.clips.map((c, i) => checkClip(ctx, c, `/clips/${i}`, partSet, stateSet));
+		const names = doc.clips.map((c, i) => checkClip(ctx, c, `/clips/${i}`, partSet, stateSet, chainSet));
 		checkDuplicates(ctx, names, "dup.clip", "/clips", "clips");
-	}
-
-	if ("constraints" in doc && ctx.array(doc.constraints, "/constraints")) {
-		const names = doc.constraints.map((c, i) => checkConstraint(ctx, c, `/constraints/${i}`, partObjs));
-		checkDuplicates(ctx, names, "dup.constraint", "/constraints", "constraints");
 	}
 
 	if ("collision" in doc && ctx.array(doc.collision, "/collision")) {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyPalette, colorOf, isPaletteFile, resolvePalettes, type Token } from "../src/index.ts";
+import { applyPalette, colorOf, isPaletteFile, resolvePalettes, type Doc, type Token } from "../src/index.ts";
 
 const base: Token[] = [
 	{ name: "skin", rgb: [230, 190, 160, 255] },
@@ -28,7 +28,7 @@ test("applyPalette recolours the last of a repeated name, the one lookup finds",
 });
 
 test("a swap over resolved refs still lets the swap win", async () => {
-	const doc = { version: 1, palette_refs: ["base.fart"], palette: [{ name: "cloth", rgb: [0, 0, 0, 255] as [number, number, number, number] }], parts: [] };
+	const doc: Doc = { version: 1, palette_refs: ["base.fart"], palette: [{ name: "cloth", rgb: [0, 0, 0, 255] as [number, number, number, number] }], parts: [] };
 	const { tokens } = await resolvePalettes(doc, () => JSON.stringify({ version: 1, palette: base }));
 	assert.deepEqual(colorOf(tokens, "cloth"), [0, 0, 0, 255]); // local wins over the ref
 	const swapped = applyPalette(tokens, [{ name: "cloth", rgb: [5, 5, 5, 255] }]);
