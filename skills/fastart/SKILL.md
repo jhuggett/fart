@@ -92,6 +92,23 @@ validator, the loaders, the studio and a sample set.
   a CCD solver); the studio uses chains to pose, and saves ordinary states.
 - **Collision**: ordinary shapes in document space, never drawn, `color`
   optional. Rest space only: a game poses them itself if it must.
+- **1.2 additions** (all optional; older readers ignore them):
+  - `"like": "claw_r"` on a part: it draws that part's shapes and
+    anchors and has none of its own (keep its own `pivot`, `parent`).
+  - `"mirror": true` on a state entry: flipped about the pivot before
+    the turn. A child rides its parent's mirror; do not mirror twice.
+    The left claw is `{"name":"claw_l","like":"claw_r","pivot":[5,0]}`
+    posed `{"part":"claw_l","mirror":true,"offset":[-5,0]}`.
+  - `"angle"` on an anchor (radians): the direction an attached thing
+    points. A game attaches by aligning anchors: `attach_xf(host_xf,
+    &hand, &grip)`. Files never name what they hold.
+  - `"targets": [{"chain":"arm","at":[x,y]}]` on a state or key: the
+    chain reaches that document-space point. Bake the solved rotations
+    into the pose too (the studio does), so non-solving readers draw it.
+  - `"events": ["footstep"]` on a key: names a game hears crossing it.
+  - `"curve": [x1,y1,x2,y2]` on a key: a cubic bezier, wins over
+    `ease`; set `ease` to the nearest name as well.
+  - `"emissive": 1.5` on a palette token: light the slot gives off.
 - **Palettes**: `palette` is the file's slots with default colours.
   `palette_refs` are paths relative to *this file* to palette files
   (colours and no parts). Lookup is the file's own palette first, then
@@ -140,14 +157,28 @@ fastart.apply_palette(&doc, red.palette[:])     // a swap: same slot names, new 
 ```
 
 Anchors: `xf_apply(world_xf(...), anchor.at)` gives the point in the
-posed drawing. `destroy(&doc)` frees the containers; games that load
-into an arena drop the lot.
+posed drawing; use `anchors_of` / `anchor_of` so `like` parts resolve.
+`destroy(&doc)` frees the containers; games that load into an arena
+drop the lot.
+
+Runtime operations (1.2), no file changes needed:
+
+```odin
+fastart.blend_poses(&doc, a[:], b[:], w, &out)   // two clips at once: crossfades
+fastart.layer_poses(&doc, gait[:], head[:], w, &out)  // a layer over a base: head turn over a walk
+fastart.clip_events(c, t_prev, t_now, &names)     // what fired since last frame (loop-aware)
+fastart.sample_targets(&doc, c, t, &targets); fastart.solve_targets(&doc, &poses, targets[:])  // live IK
+fastart.solve_chain(&doc, &poses, constraint, point)  // reach a point now (feet on a slope)
+```
+Draw with `shapes_of(&doc, part)`, never `part.shapes`, so parts drawn
+like another show up.
 
 **TypeScript** (`@fastart/core`, zero deps; not on npm yet, import from
 `{{FASTART}}/packages/core/dist/index.js`): `parseDoc`, `validate`,
 `resolvePalettes`, `colorOf`, `applyPalette`, `worldTransforms`,
-`drawList`, `sampleClip`, `clipDuration`, `solveChain`, `bakeTris`,
-`stringifyDoc`.
+`drawList`, `sampleClip`, `sampleTargets`, `solveTargets`, `clipEvents`,
+`blendPoses`, `layerPoses`, `attachXf`, `shapesOf`, `anchorsOf`,
+`clipDuration`, `solveChain`, `bakeTris`, `stringifyDoc`.
 
 ## Mistakes that bite
 
@@ -161,4 +192,9 @@ into an arena drop the lot.
   (`../palettes/hull.fart` from `ships/`).
 - A dark shape on a dark panel disappears: check the thumbnail.
 - The version is the major: `"version": 1` (a number). Minor features
-  (`parent`, `clips`, `constraints`) need no version bump.
+  (`parent`, `clips`, `constraints`, the 1.2 fields) need no version bump.
+- A part with `like` must not carry `shapes` or `anchors`; the validator
+  refuses it (`like`). A target must name a real chain (`ref.chain`).
+- Blending and layering are runtime calls on sampled poses, not fields;
+  a "flinch on top of a walk" is `layer_poses` with a weight that rises
+  and falls.

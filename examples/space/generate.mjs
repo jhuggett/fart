@@ -1,5 +1,5 @@
 // examples/space: a top-down space set that exercises the whole format.
-import { bakeTris, stringifyDoc, validate } from "@fastart/core";
+import { bakeTris, solveTargets, stringifyDoc, validate } from "@fastart/core";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -38,9 +38,9 @@ D("palettes/hull.fart", {
 		{ name: "hull_dark", rgb: [92, 100, 114, 255] },
 		{ name: "trim", rgb: [235, 125, 60, 255] },
 		{ name: "glass", rgb: [120, 205, 235, 255] },
-		{ name: "glow", rgb: [255, 225, 130, 255] },
-		{ name: "flame", rgb: [255, 140, 50, 255] },
-		{ name: "flame_core", rgb: [255, 242, 205, 255] },
+		{ name: "glow", rgb: [255, 225, 130, 255], emissive: 1 },
+		{ name: "flame", rgb: [255, 140, 50, 255], emissive: 1.5 },
+		{ name: "flame_core", rgb: [255, 242, 205, 255], emissive: 2 },
 		{ name: "metal", rgb: [205, 210, 220, 255] },
 		{ name: "warn", rgb: [235, 75, 60, 255] },
 		{ name: "rock", rgb: [125, 110, 95, 255] },
@@ -84,22 +84,25 @@ D("palettes/alliance.fart", {
 		P("hull", [[-3.2, -1.5], [-9, 4], [-9, 6.2], [-3.2, 5.5]]),
 		L("trim", [-9.5, 4], [-9.5, 6.5], 0.7),
 		C("warn", [-9.2, 5.3], 0.55),
-	], { parent: "hull", anchors: [{ name: "gun_l", at: [-9.5, 3.5] }] });
+	], { parent: "hull", anchors: [{ name: "gun_l", at: [-9.5, 3.5], angle: -Math.PI / 2 }] });
 	const wing_r = mirrorPart(wing_l, "wing_r");
 	wing_r.shapes[3] = C("ore", [9.2, 5.3], 0.55); // green to starboard, as at sea
+	// the engines: one drawn, the other drawn like it and mirrored in every state (1.2);
+	// its flame rides the mirror, so it needs none of its own
 	const engine_l = part("engine_l", [-1.7, 8.5], [
 		P("metal", [[-2.7, 4.5], [-0.7, 4.5], [-0.7, 8.5], [-2.7, 8.5]]),
 		P("hull_dark", [[-2.4, 8.5], [-1, 8.5], [-1, 9], [-2.4, 9]]),
-	], { parent: "hull", anchors: [{ name: "exhaust_l", at: [-1.7, 9] }] });
-	const engine_r = mirrorPart(engine_l, "engine_r");
+	], { parent: "hull", anchors: [{ name: "exhaust", at: [-1.7, 9], angle: Math.PI / 2 }] });
+	const engine_r = { name: "engine_r", like: "engine_l", parent: "hull", pivot: [-1.7, 8.5] };
 	const flame_l = part("flame_l", [-1.7, 9], [
 		P("flame", [[-2.5, 9], [-0.9, 9], [-1.7, 13.5]]),
 		P("flame_core", [[-2.1, 9], [-1.3, 9], [-1.7, 11.5]]),
 	], { parent: "engine_l" });
-	const flame_r = mirrorPart(flame_l, "flame_r", { parent: "engine_r" });
+	const flame_r = { name: "flame_r", like: "flame_l", parent: "engine_r", pivot: [-1.7, 9] };
 	const body = ["hull", "wing_l", "wing_r", "engine_l", "engine_r", "cockpit"];
 	const all = ["flame_l", "flame_r", ...body];
-	const withFlames = (scale) => all.map((p) => (p.startsWith("flame") ? { part: p, scale } : { part: p }));
+	const entry = (p, extra = {}) => (p === "engine_r" ? { part: p, mirror: true, offset: [1.7, 8.5], ...extra } : { part: p, ...extra });
+	const withFlames = (scale) => all.map((p) => (p.startsWith("flame") ? entry(p, { scale }) : entry(p)));
 	D("ships/fighter.fart", {
 		name: "fighter",
 		palette_refs: REF,
@@ -110,7 +113,7 @@ D("palettes/alliance.fart", {
 				P("hull_dark", [[0, -12], [3.4, -4], [3.4, 6], [0, 8.5], [-3.4, 6], [-3.4, -4]]),
 				P("hull", [[0, -11], [2.8, -4], [2.8, 5.6], [0, 7.6], [-2.8, 5.6], [-2.8, -4]]),
 				L("trim", [0, -6], [0, 4], 0.8),
-			], { anchors: [{ name: "nose", at: [0, -12] }] }),
+			], { anchors: [{ name: "nose", at: [0, -12], angle: -Math.PI / 2 }] }),
 			wing_l,
 			wing_r,
 			engine_l,
@@ -118,16 +121,17 @@ D("palettes/alliance.fart", {
 			part("cockpit", [0, -3], [P("glass", [[0, -7.5], [1.5, -3], [0, -0.5], [-1.5, -3]])], { parent: "hull" }),
 		],
 		states: [
-			st("idle", body.map((p) => ({ part: p }))),
+			st("idle", body.map((p) => entry(p))),
 			st("thrust", withFlames(1)),
 			st("burn", withFlames(1.6)),
-			st("bank_l", body.map((p) => (p === "wing_l" ? { part: p, scale: 0.75 } : p === "wing_r" ? { part: p, scale: 1.08 } : p === "hull" ? { part: p, rotate: -0.1 } : { part: p }))),
-			st("bank_r", body.map((p) => (p === "wing_r" ? { part: p, scale: 0.75 } : p === "wing_l" ? { part: p, scale: 1.08 } : p === "hull" ? { part: p, rotate: 0.1 } : { part: p }))),
+			st("bank_l", body.map((p) => (p === "wing_l" ? entry(p, { scale: 0.75 }) : p === "wing_r" ? entry(p, { scale: 1.08 }) : p === "hull" ? entry(p, { rotate: -0.1 }) : entry(p)))),
+			st("bank_r", body.map((p) => (p === "wing_r" ? entry(p, { scale: 0.75 }) : p === "wing_l" ? entry(p, { scale: 1.08 }) : p === "hull" ? entry(p, { rotate: 0.1 }) : entry(p)))),
 		],
 		clips: [
 			clip("thrust", [k(0, "thrust"), k(0.1, "burn", "in-out"), k(0.2, "thrust", "in-out")], true),
-			clip("bank_left", [k(0, "idle"), k(0.25, "bank_l", "out")]),
-			clip("bank_right", [k(0, "idle"), k(0.25, "bank_r", "out")]),
+			// a back-out curve: the bank overshoots a touch and settles (1.2)
+			clip("bank_left", [k(0, "idle"), { ...k(0.25, "bank_l", "out"), curve: [0.34, 1.56, 0.64, 1] }]),
+			clip("bank_right", [k(0, "idle"), { ...k(0.25, "bank_r", "out"), curve: [0.34, 1.56, 0.64, 1] }]),
 		],
 		collision: [P(undefined, [[0, -12], [3.4, -4], [10, 3.5], [10, 7], [3.4, 7], [0, 8.5], [-3.4, 7], [-10, 7], [-10, 3.5], [-3.4, -4]])],
 	});
@@ -138,24 +142,25 @@ D("palettes/alliance.fart", {
 	const pod_l = part("pod_l", [-10, 26], [
 		P("metal", [[-12, 6], [-8, 6], [-8, 26], [-12, 26]]),
 		P("hull_dark", [[-11.6, 26], [-8.4, 26], [-8.4, 26.8], [-11.6, 26.8]]),
-	], { parent: "hull", anchors: [{ name: "exhaust_l", at: [-10, 26.8] }] });
-	const pod_r = mirrorPart(pod_l, "pod_r");
+	], { parent: "hull", anchors: [{ name: "exhaust", at: [-10, 26.8], angle: Math.PI / 2 }] });
+	const pod_r = { name: "pod_r", like: "pod_l", parent: "hull", pivot: [-10, 26] };
 	const flame_l = part("flame_l", [-10, 26.8], [
 		P("flame", [[-11.8, 26.8], [-8.2, 26.8], [-10, 36]]),
 		P("flame_core", [[-11, 26.8], [-9, 26.8], [-10, 32]]),
 	], { parent: "pod_l" });
-	const flame_r = mirrorPart(flame_l, "flame_r", { parent: "pod_r" });
+	const flame_r = { name: "flame_r", like: "flame_l", parent: "pod_r", pivot: [-10, 26.8] };
 	const turret = (name, y, dir) => [
 		part(name, [0, y], [C("hull_dark", [0, y], 3), C("metal", [0, y], 2.4)], { parent: "hull" }),
 		part(`barrel_${name.split("_")[1]}`, [0, y], [L("hull_dark", [0, y], [0, y + dir * 7], 1.3)], {
 			parent: name,
-			anchors: [{ name: "muzzle", at: [0, y + dir * 7] }],
+			anchors: [{ name: "muzzle", at: [0, y + dir * 7], angle: dir < 0 ? -Math.PI / 2 : Math.PI / 2 }],
 		}),
 	];
 	const body = ["pod_l", "pod_r", "hull", "bridge", "turret_fore", "barrel_fore", "turret_aft", "barrel_aft"];
 	const all = ["flame_l", "flame_r", ...body];
+	const entry = (p, extra = {}) => (p === "pod_r" ? { part: p, mirror: true, offset: [10, 26], ...extra } : { part: p, ...extra });
 	const posed = (flame, turn) =>
-		all.map((p) => (p.startsWith("flame") ? { part: p, scale: flame } : p.startsWith("turret") && turn ? { part: p, rotate: turn } : { part: p }));
+		all.map((p) => (p.startsWith("flame") ? entry(p, { scale: flame }) : p.startsWith("turret") && turn ? entry(p, { rotate: turn }) : entry(p)));
 	D("ships/cruiser.fart", {
 		name: "cruiser",
 		palette_refs: REF,
@@ -181,7 +186,7 @@ D("palettes/alliance.fart", {
 			...turret("turret_aft", 18, -1),
 		],
 		states: [
-			st("idle", body.map((p) => ({ part: p }))),
+			st("idle", body.map((p) => entry(p))),
 			st("cruise", posed(1, 0)),
 			st("cruise_hi", posed(1.35, 0)),
 			st("turrets_left", posed(1, -0.8)),
@@ -210,7 +215,7 @@ D("ships/drone.fart", {
 			C("hull_dark", [0, 9.5], 0.9),
 			L("hull_dark", [0, 14], [-1.6, 16.2], 0.9),
 			L("hull_dark", [0, 14], [1.6, 16.2], 0.9),
-		], { parent: "arm_a", anchors: [{ name: "tip", at: [0, 14] }] }),
+		], { parent: "arm_a", anchors: [{ name: "tip", at: [0, 14], angle: Math.PI / 2 }] }),
 		part("body", [0, 0], [
 			C("hull_dark", [0, 0], 4.8),
 			C("hull", [0, 0], 4.1),
@@ -224,10 +229,10 @@ D("ships/drone.fart", {
 	states: [
 		st("idle", [{ part: "arm_a" }, { part: "arm_b" }, { part: "body" }]),
 		st("folded", [{ part: "arm_a", rotate: 2.5 }, { part: "arm_b", rotate: -2.7 }, { part: "body" }]),
-		st("reach_l", [{ part: "arm_a", rotate: 1.3 }, { part: "arm_b", rotate: -0.5 }, { part: "body" }]),
+		{ ...st("reach_l", [{ part: "arm_a", rotate: 1.3 }, { part: "arm_b", rotate: -0.5 }, { part: "body" }]), targets: [{ chain: "arm", at: [-9.5, 9.5] }] },
 		st("reach_r", [{ part: "arm_a", rotate: -1.3 }, { part: "arm_b", rotate: 0.5 }, { part: "body" }]),
 	],
-	clips: [clip("grab", [k(0, "folded"), k(0.45, "idle", "out"), k(0.9, "reach_l", "in-out"), k(1.4, "folded", "in")])],
+	clips: [clip("grab", [k(0, "folded"), k(0.45, "idle", "out"), { ...k(0.9, "reach_l", "in-out"), events: ["grab"] }, k(1.4, "folded", "in")])],
 	constraints: [{ name: "arm", chain: ["arm_a", "arm_b"], end: "arm_b/tip", bend: 1 }],
 	collision: [C(undefined, [0, 0], 4.8)],
 });
@@ -250,10 +255,10 @@ D("ships/drone.fart", {
 			part("ring", [0, 0], ring, {
 				parent: "core",
 				anchors: [
-					{ name: "dock_n", at: [0, -21.5] },
-					{ name: "dock_e", at: [21.5, 0] },
-					{ name: "dock_s", at: [0, 21.5] },
-					{ name: "dock_w", at: [-21.5, 0] },
+					{ name: "dock_n", at: [0, -21.5], angle: -Math.PI / 2 },
+					{ name: "dock_e", at: [21.5, 0], angle: 0 },
+					{ name: "dock_s", at: [0, 21.5], angle: Math.PI / 2 },
+					{ name: "dock_w", at: [-21.5, 0], angle: Math.PI },
 				],
 			}),
 			part("core", [0, 0], [
@@ -273,7 +278,7 @@ D("ships/drone.fart", {
 		],
 		clips: [
 			clip("spin", [k(0, "on"), k(5, "turn_a"), k(10, "turn_b"), k(15, "on")], true),
-			clip("blink", [k(0, "on"), k(0.6, "off", "step"), k(1.2, "on", "step")], true),
+			clip("blink", [{ ...k(0, "on"), events: ["beacon"] }, k(0.6, "off", "step"), k(1.2, "on", "step")], true),
 		],
 		collision: [C(undefined, [0, 0], 19)],
 	});
@@ -371,10 +376,11 @@ D("pickups/crate.fart", {
 	collision: [P(undefined, [[-3.2, -3.2], [3.2, -3.2], [3.2, 3.2], [-3.2, 3.2]])],
 });
 
-// ---- write, baked, and look each one over
+// ---- write, baked (tris, and the rotations pinned targets solve to), and look each one over
 let bad = 0;
 for (const [rel, doc] of Object.entries(docs)) {
 	bakeTris(doc);
+	for (const st of doc.states ?? []) if (st.targets?.length) solveTargets(doc, st.parts, st.targets);
 	const full = path.join(OUT, rel);
 	fs.mkdirSync(path.dirname(full), { recursive: true });
 	fs.writeFileSync(full, stringifyDoc(doc));

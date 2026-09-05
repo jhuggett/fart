@@ -39,7 +39,7 @@ function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
 
 const hex = (rgb: Rgba) => "#" + rgb.slice(0, 3).map((c) => c.toString(16).padStart(2, "0")).join("");
 
-export function ColorPicker(props: { rgb: Rgba; onChange: (rgb: Rgba) => void; onClose: () => void; x: number; y: number }) {
+export function ColorPicker(props: { rgb: Rgba; onChange: (rgb: Rgba) => void; onClose: () => void; x: number; y: number; emissive?: number; onEmissive?: (v: number) => void }) {
 	const [hsv, setHsv] = useState<[number, number, number]>(() => rgbToHsv(props.rgb));
 	const [h, s, v] = hsv;
 	const a = props.rgb[3];
@@ -117,6 +117,24 @@ export function ColorPicker(props: { rgb: Rgba; onChange: (rgb: Rgba) => void; o
 					/>
 				))}
 			</div>
+			{props.onEmissive && (
+				<div class="chan" style="margin-top:6px" title="emissive: how much light the slot gives off, for games with lighting; 0 is none">
+					<span class="k" style="flex:1">glow</span>
+					<input
+						class="num"
+						type="number"
+						min={0}
+						step={0.1}
+						value={props.emissive ?? 0}
+						onInput={(e) => {
+							const n = Number((e.target as HTMLInputElement).value);
+							if (Number.isFinite(n)) props.onEmissive!(Math.max(0, n));
+						}}
+						onBlur={endGesture}
+						onKeyDown={(e) => e.stopPropagation()}
+					/>
+				</div>
+			)}
 			<button class="btn small ghost" style="width:100%;margin-top:6px" onClick={props.onClose}>
 				done
 			</button>

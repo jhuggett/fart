@@ -6,7 +6,7 @@ import { cssColor, type Rgba } from "@fastart/core";
 import { I } from "./Icons.tsx";
 import { InlineName } from "./Rename.tsx";
 import { ColorPicker } from "./ColorPicker.tsx";
-import { ed, palette, addToken, deleteToken, renameToken, setTokenColor, freshName } from "../state/editor.ts";
+import { ed, palette, addToken, deleteToken, renameToken, setTokenColor, setTokenEmissive, freshName } from "../state/editor.ts";
 import { linkedBy } from "../state/project.ts";
 import { renaming, openContextMenu } from "../state/menu.ts";
 import { basename, stripExt } from "../state/paths.ts";
@@ -67,7 +67,10 @@ export function PaletteView() {
 							) : (
 								<span class="name">{t.name}</span>
 							)}
-							<span class="hex">{hex(t.rgb)}</span>
+							<span class="hex">
+								{hex(t.rgb)}
+								{(t.emissive ?? 0) > 0 ? ` · ☀ ${t.emissive}` : ""}
+							</span>
 						</div>
 						<button
 							class="btn x"
@@ -86,7 +89,7 @@ export function PaletteView() {
 				</button>
 			</div>
 			{pick && toks[pick.k] && (
-				<ColorPicker rgb={toks[pick.k].rgb} x={pick.x} y={pick.y} onChange={(rgb: Rgba) => setTokenColor(pick.k, rgb)} onClose={() => setPick(null)} />
+				<ColorPicker rgb={toks[pick.k].rgb} emissive={toks[pick.k].emissive ?? 0} onEmissive={(v) => setTokenEmissive(pick.k, v)} x={pick.x} y={pick.y} onChange={(rgb: Rgba) => setTokenColor(pick.k, rgb)} onClose={() => setPick(null)} />
 			)}
 		</div>
 	);

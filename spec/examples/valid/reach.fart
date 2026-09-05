@@ -182,11 +182,11 @@
         },
         {
           "part": "upper",
-          "rotate": -1.1
+          "rotate": -1.546
         },
         {
           "part": "fore",
-          "rotate": -0.4
+          "rotate": 0.748
         }
       ],
       "targets": [

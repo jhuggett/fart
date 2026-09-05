@@ -14,6 +14,7 @@ import {
 	xfScale,
 	pivotOf,
 	chainEndWorld,
+	shapesOf,
 	XF_ID,
 	type Constraint,
 	type Shape,
@@ -40,6 +41,9 @@ import {
 	selAdd,
 	moveShape,
 	scaleShape,
+	shapesIn,
+	settleTargets,
+	targetOf,
 	setPivot,
 	addAnchor,
 	poseOfCur,
@@ -164,7 +168,7 @@ export function selBounds(): { lo: Vec2; hi: Vec2 } | null {
 	const ps = parts();
 	let acc: { lo: Vec2; hi: Vec2 } | null = null;
 	for (const r of ed.sel.value) {
-		const sh = ps[r.p]?.shapes?.[r.s];
+		const sh = ps[r.p] ? shapesIn(ps[r.p])[r.s] : undefined;
 		if (!sh) continue;
 		const b = shapeWorldBounds(r.p, sh, w);
 		if (!b) continue;
@@ -225,7 +229,7 @@ export function pick(at: Vec2): Ref | null {
 		const inv = xfInvert(xf);
 		const s = xfScale(xf) || 1;
 		const local = xfApply(inv, at);
-		(ps[p].shapes ?? []).forEach((sh, si) => {
+		shapesIn(ps[p]).forEach((sh, si) => {
 			const d = shapeDistance(sh, local) * s;
 			if (d <= bd) {
 				bd = d;
@@ -246,7 +250,7 @@ function snapCandidates(exclude: Set<string>): Vec2[] {
 	const w = frameW();
 	for (const p of pickableParts()) {
 		const xf = partXf(p, w);
-		(ps[p].shapes ?? []).forEach((sh, s) => {
+		shapesIn(ps[p]).forEach((sh, s) => {
 			if (exclude.has(`${p}:${s}`)) return;
 			switch (sh.kind) {
 				case "circle":
@@ -398,8 +402,8 @@ function addShape(sh: Shape) {
 		return;
 	}
 	const pi = ed.curPart.value;
-	mutate((d) => d.parts![pi].shapes!.push(sh));
-	selOnly({ p: pi, s: parts()[pi].shapes!.length - 1 });
+	mutate((d) => shapesOf(d, d.parts![pi]).push(sh));
+	selOnly({ p: pi, s: shapesIn(parts()[pi]).length - 1 });
 }
 
 // ------------------------------------------------------------- the part
@@ -416,14 +420,15 @@ export function poseLever(): Vec2 | null {
 	return [o[0] + Math.cos(ang) * l, o[1] + Math.sin(ang) * l];
 }
 
-/** Every chain's reach point in the world, for grabbing. */
-export function chainGrabs(): { c: Constraint; at: Vec2 }[] {
+/** Every chain's reach point in the world, for grabbing; a pinned chain (1.2) shows its pin. */
+export function chainGrabs(): { c: Constraint; at: Vec2; pinned: boolean }[] {
 	const fr = frame();
 	if (!fr) return [];
-	const out: { c: Constraint; at: Vec2 }[] = [];
+	const out: { c: Constraint; at: Vec2; pinned: boolean }[] = [];
 	for (const c of constraints()) {
-		const at = chainEndWorld(doc(), fr, c);
-		if (at) out.push({ c, at });
+		const pin = mode() === "state" ? targetOf(c.name) : undefined;
+		const at = pin ? pin.at : chainEndWorld(doc(), fr, c);
+		if (at) out.push({ c, at, pinned: !!pin });
 	}
 	return out;
 }
@@ -605,9 +610,9 @@ export function onMove(wm: Vec2, mods: Mods) {
 			const f = d / ix.scaleD;
 			const w = frameW();
 			const ps = parts();
-			const refs = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+			const refs = ed.sel.value.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s]);
 			mutate(() => {
-				for (const r of refs) scaleShape(ps[r.p].shapes![r.s], f, toLocal(r.p, ix.scaleAnchor, w));
+				for (const r of refs) scaleShape(shapesIn(ps[r.p])[r.s], f, toLocal(r.p, ix.scaleAnchor, w));
 			}, "scale");
 			ix.scaleD = d;
 		}
@@ -621,9 +626,9 @@ export function onMove(wm: Vec2, mods: Mods) {
 			} else {
 				const w = frameW();
 				const ps = parts();
-				const refs = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+				const refs = ed.sel.value.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s]);
 				mutate(() => {
-					for (const r of refs) moveShape(ps[r.p].shapes![r.s], localDelta(r.p, d, w));
+					for (const r of refs) moveShape(shapesIn(ps[r.p])[r.s], localDelta(r.p, d, w));
 				}, "drag");
 			}
 			ix.dragOff = at;
@@ -637,8 +642,9 @@ export function onMove(wm: Vec2, mods: Mods) {
 			// a turn about the pivot on screen is the same turn in the part's own frame
 			const o = worldPivot(part.name) ?? [0, 0];
 			const a = Math.atan2(wm[1] - o[1], wm[0] - o[0]);
-			mutate(() => {
+			mutate((d) => {
 				sp.rotate = ix.poseRot0 + (a - ix.poseAng0);
+				settleTargets(d);
 			}, "pose");
 		}
 	} else if (ix.poseDrag) {
@@ -650,8 +656,9 @@ export function onMove(wm: Vec2, mods: Mods) {
 			const parentXf = part.parent ? (W.get(part.parent) ?? XF_ID) : XF_ID;
 			const want: Vec2 = [wm[0] - ix.poseGrab[0], wm[1] - ix.poseGrab[1]];
 			const local = xfApply(xfInvert(parentXf), want);
-			mutate(() => {
+			mutate((d) => {
 				sp.offset = local;
+				settleTargets(d);
 			}, "pose");
 		}
 	} else {
@@ -672,7 +679,7 @@ export function onUp(wm: Vec2, mods: Mods) {
 			const ps = parts();
 			const w = frameW();
 			for (const p of pickableParts()) {
-				(ps[p].shapes ?? []).forEach((sh, s) => {
+				shapesIn(ps[p]).forEach((sh, s) => {
 					const b = shapeWorldBounds(p, sh, w);
 					if (b && b.lo[0] <= hi[0] && b.hi[0] >= lo[0] && b.lo[1] <= hi[1] && b.hi[1] >= lo[1]) found.push({ p, s });
 				});
@@ -724,10 +731,10 @@ export function cancelGesture() {
 export function nudgeWorld(d: Vec2) {
 	const ps = parts();
 	const w = frameW();
-	const refs = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+	const refs = ed.sel.value.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s]);
 	if (!refs.length) return;
 	mutate(() => {
-		for (const r of refs) moveShape(ps[r.p].shapes![r.s], localDelta(r.p, d, w));
+		for (const r of refs) moveShape(shapesIn(ps[r.p])[r.s], localDelta(r.p, d, w));
 	}, "nudge");
 }
 

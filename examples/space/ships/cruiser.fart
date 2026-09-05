@@ -63,59 +63,12 @@
     },
     {
       "name": "flame_r",
+      "like": "flame_l",
+      "parent": "pod_r",
       "pivot": [
-        10,
+        -10,
         26.8
-      ],
-      "shapes": [
-        {
-          "kind": "poly",
-          "color": "flame",
-          "points": [
-            [
-              10,
-              36
-            ],
-            [
-              8.2,
-              26.8
-            ],
-            [
-              11.8,
-              26.8
-            ]
-          ],
-          "tris": [
-            0,
-            1,
-            2
-          ]
-        },
-        {
-          "kind": "poly",
-          "color": "flame_core",
-          "points": [
-            [
-              10,
-              32
-            ],
-            [
-              9,
-              26.8
-            ],
-            [
-              11,
-              26.8
-            ]
-          ],
-          "tris": [
-            0,
-            1,
-            2
-          ]
-        }
-      ],
-      "parent": "pod_r"
+      ]
     },
     {
       "name": "pod_l",
@@ -188,91 +141,22 @@
       "parent": "hull",
       "anchors": [
         {
-          "name": "exhaust_l",
+          "name": "exhaust",
           "at": [
             -10,
             26.8
-          ]
+          ],
+          "angle": 1.5707963267948966
         }
       ]
     },
     {
       "name": "pod_r",
-      "pivot": [
-        10,
-        26
-      ],
-      "shapes": [
-        {
-          "kind": "poly",
-          "color": "metal",
-          "points": [
-            [
-              12,
-              26
-            ],
-            [
-              8,
-              26
-            ],
-            [
-              8,
-              6
-            ],
-            [
-              12,
-              6
-            ]
-          ],
-          "tris": [
-            3,
-            0,
-            1,
-            1,
-            2,
-            3
-          ]
-        },
-        {
-          "kind": "poly",
-          "color": "hull_dark",
-          "points": [
-            [
-              11.6,
-              26.8
-            ],
-            [
-              8.4,
-              26.8
-            ],
-            [
-              8.4,
-              26
-            ],
-            [
-              11.6,
-              26
-            ]
-          ],
-          "tris": [
-            3,
-            0,
-            1,
-            1,
-            2,
-            3
-          ]
-        }
-      ],
+      "like": "pod_l",
       "parent": "hull",
-      "anchors": [
-        {
-          "name": "exhaust_r",
-          "at": [
-            10,
-            26.8
-          ]
-        }
+      "pivot": [
+        -10,
+        26
       ]
     },
     {
@@ -671,7 +555,8 @@
           "at": [
             0,
             -27
-          ]
+          ],
+          "angle": -1.5707963267948966
         }
       ]
     },
@@ -731,7 +616,8 @@
           "at": [
             0,
             11
-          ]
+          ],
+          "angle": -1.5707963267948966
         }
       ]
     }
@@ -744,7 +630,12 @@
           "part": "pod_l"
         },
         {
-          "part": "pod_r"
+          "part": "pod_r",
+          "mirror": true,
+          "offset": [
+            10,
+            26
+          ]
         },
         {
           "part": "hull"
@@ -781,7 +672,12 @@
           "part": "pod_l"
         },
         {
-          "part": "pod_r"
+          "part": "pod_r",
+          "mirror": true,
+          "offset": [
+            10,
+            26
+          ]
         },
         {
           "part": "hull"
@@ -818,7 +714,12 @@
           "part": "pod_l"
         },
         {
-          "part": "pod_r"
+          "part": "pod_r",
+          "mirror": true,
+          "offset": [
+            10,
+            26
+          ]
         },
         {
           "part": "hull"
@@ -855,7 +756,12 @@
           "part": "pod_l"
         },
         {
-          "part": "pod_r"
+          "part": "pod_r",
+          "mirror": true,
+          "offset": [
+            10,
+            26
+          ]
         },
         {
           "part": "hull"
@@ -894,7 +800,12 @@
           "part": "pod_l"
         },
         {
-          "part": "pod_r"
+          "part": "pod_r",
+          "mirror": true,
+          "offset": [
+            10,
+            26
+          ]
         },
         {
           "part": "hull"
@@ -1087,17 +998,6 @@
         1,
         2,
         3
-      ]
-    }
-  ],
-  "palette": [
-    {
-      "name": "ink",
-      "rgb": [
-        200,
-        195,
-        185,
-        255
       ]
     }
   ]

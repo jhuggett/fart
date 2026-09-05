@@ -7,7 +7,7 @@ import { cssColor, colorOf, xfApply, xfScale, pivotOf, type Shape, type Vec2 } f
 import { view } from "./view.ts";
 import { drawDoc, fillShape, outlineShape, tracePoly, ident } from "./draw.ts";
 import { ix, handlesOf, worldHandles, scaleGrips, poseLever, frameW, partXf, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
-import { ed, curPart, curClip, curTokName, selShape, shapeAt, colShape, poseOfCur, frame, parts } from "../state/editor.ts";
+import { ed, curPart, curClip, curTokName, selShape, shapeAt, colShape, poseOfCur, frame, parts, shapesIn, anchorsIn } from "../state/editor.ts";
 import { canvasColors } from "../state/theme.ts";
 
 export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr: number) {
@@ -78,7 +78,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 			}
 			const ps = parts();
 			for (const r of ed.sel.value) {
-				const sh = ps[r.p]?.shapes?.[r.s];
+				const sh = ps[r.p] ? shapesIn(ps[r.p])[r.s] : undefined;
 				if (!sh) continue;
 				const xf = partXf(r.p, W);
 				outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom, (q) => xfApply(xf, q), xfScale(xf));
@@ -136,8 +136,22 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 						ctx.fill();
 					}
 				} else crosshair(ctx, o, C.text3);
-				for (const a of part.anchors ?? []) {
+				for (const a of anchorsIn(part)) {
 					const s = toS(xfApply(xf, a.at));
+					if (a.angle !== undefined) {
+						// the direction an attached thing points
+						const tip = toS(xfApply(xf, [a.at[0] + Math.cos(a.angle) * (14 / zoom), a.at[1] + Math.sin(a.angle) * (14 / zoom)]));
+						ctx.strokeStyle = TEAL;
+						ctx.lineWidth = 1.5 * LW;
+						ctx.beginPath();
+						ctx.moveTo(s[0], s[1]);
+						ctx.lineTo(tip[0], tip[1]);
+						ctx.stroke();
+						ctx.fillStyle = TEAL;
+						ctx.beginPath();
+						ctx.arc(tip[0], tip[1], 2.5, 0, Math.PI * 2);
+						ctx.fill();
+					}
 					diamond(ctx, s, TEAL);
 					ctx.fillStyle = TEAL;
 					ctx.font = "11px system-ui, sans-serif";
@@ -154,6 +168,13 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 				ctx.beginPath();
 				ctx.arc(s[0], s[1], 7, 0, Math.PI * 2);
 				ctx.stroke();
+				if (g.pinned) {
+					// pinned: the chain keeps reaching here while the pose changes
+					ctx.fillStyle = TEAL;
+					ctx.beginPath();
+					ctx.arc(s[0], s[1], 3, 0, Math.PI * 2);
+					ctx.fill();
+				}
 				ctx.fillStyle = TEAL;
 				ctx.font = "11px system-ui, sans-serif";
 				ctx.fillText(g.c.name, s[0] + 10, s[1] + 14);

@@ -43,6 +43,13 @@ definition each, and the tooltips repeat them.
 |------------|-----------------|-------------------------------------------------------------|
 | shape      | `shapes[]`      | a circle, a line, a poly; paints one token                  |
 | colour     | `palette[]`     | a named slot; shapes name slots, never colours. A palette file is a map of slots other files draw from |
+| drawn like | `like`          | a part showing another's shapes and anchors, with its own pivot and pose (1.2) |
+| mirror     | `mirror`        | a pose flag: flipped about the pivot before the turn (1.2)   |
+| direction  | `angle` on an anchor | which way an attached thing points; anchors with one are sockets (1.2) |
+| pin        | `targets`       | a point a chain keeps reaching while the pose changes (1.2)  |
+| event      | `events` on a key | a name a game hears crossing the key (1.2)                  |
+| curve      | `curve` on a key | a bezier toward the key, over the named ease (1.2)          |
+| glow       | `emissive`      | light a slot gives off, for games that have light (1.2)      |
 | part       | `parts[]`       | a layer with a pivot; the unit that poses; may ride a parent |
 | pivot      | `pivot`         | the point a part turns about and is placed by               |
 | anchor     | `anchors[]`     | a named point on a part a game or a chain reaches for       |

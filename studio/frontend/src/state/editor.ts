@@ -29,6 +29,14 @@ import {
 	sampleClip,
 	solveChain,
 	isPaletteFile,
+	shapesOf,
+	anchorsOf,
+	sourceOf,
+	sampleTargets,
+	solveTargets,
+	type Target,
+	type Curve,
+	type Anchor,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
 import { project } from "./project.ts";
@@ -133,7 +141,13 @@ export function curClip(): Clip | undefined {
 /** The pose list the canvas draws: a clip frame, else the current state's parts. */
 export function frame(): StatePart[] | undefined {
 	const c = curClip();
-	if (c) return sampleClip(doc(), c, ed.clipTime.value);
+	if (c) {
+		const d = doc();
+		const poses = sampleClip(d, c, ed.clipTime.value);
+		const targets = sampleTargets(d, c, ed.clipTime.value);
+		if (targets.length) solveTargets(d, poses, targets);
+		return poses;
+	}
 	return curState()?.parts;
 }
 
@@ -154,7 +168,16 @@ export function curTokName(): string {
 }
 export function shapeAt(r: Ref | null): Shape | undefined {
 	if (!r) return undefined;
-	return parts()[r.p]?.shapes?.[r.s];
+	const p = parts()[r.p];
+	return p ? shapesOf(doc(), p)[r.s] : undefined;
+}
+
+/** A part's shapes as drawn: its own, or its `like` source's (the same array, so edits land there). */
+export function shapesIn(p: Part): Shape[] {
+	return shapesOf(doc(), p);
+}
+export function anchorsIn(p: Part): Anchor[] {
+	return anchorsOf(doc(), p);
 }
 export function primary(): Ref | null {
 	const s = ed.sel.value;
@@ -212,7 +235,7 @@ export function nudgeSel(d: Vec2) {
 export function selectAll() {
 	const ps = parts();
 	const refs: Ref[] = [];
-	for (const p of pickableParts()) (ps[p].shapes ?? []).forEach((_, s) => refs.push({ p, s }));
+	for (const p of pickableParts()) shapesOf(doc(), ps[p]).forEach((_, s) => refs.push({ p, s }));
 	ed.sel.value = refs;
 }
 
@@ -377,7 +400,7 @@ function ensureDefaults(d: Doc) {
 	if (!d.parts?.length) d.parts = [{ name: "body", pivot: [0, 0], shapes: [] }];
 	if (!d.palette?.length) d.palette = [{ name: "ink", rgb: [200, 195, 185, 255] }];
 	for (const p of d.parts) {
-		p.shapes ??= [];
+		if (!p.like) p.shapes ??= []; // a part drawn like another has no shapes of its own
 		p.pivot ??= [0, 0];
 	}
 	d.states ??= [];
@@ -587,7 +610,10 @@ export function deleteSel() {
 	mutate((d) => {
 		// highest indices first so the rest stay valid
 		const order = [...sel].sort((a, b) => (a.p - b.p) || (b.s - a.s));
-		for (const r of order) d.parts?.[r.p]?.shapes?.splice(r.s, 1);
+		for (const r of order) {
+			const p = d.parts?.[r.p];
+			if (p) shapesOf(d, p).splice(r.s, 1);
+		}
 	});
 	ed.sel.value = [];
 	ed.hover.value = null;
@@ -612,9 +638,9 @@ export function selToPart() {
 		const ps = d.parts!;
 		const taken: Shape[] = [];
 		const order = [...sel].sort((a, b) => (a.p - b.p) || (a.s - b.s));
-		for (const r of order) taken.push(ps[r.p].shapes![r.s]);
-		for (const r of [...order].sort((a, b) => (a.p - b.p) || (b.s - a.s))) ps[r.p].shapes!.splice(r.s, 1);
-		const dst = ps[target].shapes!;
+		for (const r of order) taken.push(shapesOf(d, ps[r.p])[r.s]);
+		for (const r of [...order].sort((a, b) => (a.p - b.p) || (b.s - a.s))) shapesOf(d, ps[r.p]).splice(r.s, 1);
+		const dst = shapesOf(d, ps[target]);
 		for (const sh of taken) {
 			dst.push(sh);
 			moved.push({ p: target, s: dst.length - 1 });
@@ -632,8 +658,9 @@ export function selOrder(up: boolean) {
 		const byPart = new Map<number, number[]>();
 		for (const r of sel) byPart.set(r.p, [...(byPart.get(r.p) ?? []), r.s]);
 		for (const [p, idxs] of byPart) {
-			const shapes = d.parts?.[p]?.shapes;
-			if (!shapes) continue;
+			const part = d.parts?.[p];
+			if (!part) continue;
+			const shapes = shapesOf(d, part);
 			const set = new Set(idxs);
 			const n = shapes.length;
 			// walk from the leading edge; a member swaps with a non-member neighbour
@@ -672,8 +699,8 @@ let pasteN = 0;
 export function copySel() {
 	const ps = parts();
 	clipboard = ed.sel.value
-		.filter((r) => ps[r.p]?.shapes?.[r.s])
-		.map((r) => ({ part: ps[r.p].name, sh: cloneShape(ps[r.p].shapes![r.s]) }));
+		.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s])
+		.map((r) => ({ part: ps[r.p].name, sh: cloneShape(shapesIn(ps[r.p])[r.s]) }));
 	pasteN = 0;
 }
 
@@ -689,8 +716,9 @@ export function pasteClip() {
 			if (pi < 0) pi = ed.curPart.value;
 			const sh = cloneShape(c.sh);
 			moveShape(sh, [nudge, nudge]);
-			ps[pi].shapes!.push(sh);
-			landed.push({ p: pi, s: ps[pi].shapes!.length - 1 });
+			const dst = shapesOf(d, ps[pi]);
+			dst.push(sh);
+			landed.push({ p: pi, s: dst.length - 1 });
 		}
 	});
 	ed.sel.value = landed;
@@ -703,12 +731,12 @@ export function cutSel() {
 
 export function dupSel() {
 	const ps = parts();
-	const src = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+	const src = ed.sel.value.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s]);
 	if (!src.length) return;
 	const landed: Ref[] = [];
 	mutate((d) => {
 		for (const r of src) {
-			const shapes = d.parts![r.p].shapes!;
+			const shapes = shapesOf(d, d.parts![r.p]);
 			const sh = cloneShape(shapes[r.s]);
 			moveShape(sh, [0.8, 0.8]);
 			shapes.push(sh);
@@ -745,12 +773,12 @@ export function movePartInState(name: string, up: boolean) {
 /** Duplicate the selection exactly in place (an Alt-drag begins with this). */
 export function dupSelInPlace() {
 	const ps = parts();
-	const src = ed.sel.value.filter((r) => ps[r.p]?.shapes?.[r.s]);
+	const src = ed.sel.value.filter((r) => ps[r.p] && shapesIn(ps[r.p])[r.s]);
 	if (!src.length) return;
 	const landed: Ref[] = [];
 	mutate((d) => {
 		for (const r of src) {
-			const shapes = d.parts![r.p].shapes!;
+			const shapes = shapesOf(d, d.parts![r.p]);
 			shapes.push(cloneShape(shapes[r.s]));
 			landed.push({ p: r.p, s: shapes.length - 1 });
 		}
@@ -786,20 +814,35 @@ export function setPivotNumber(k: number, sub: 0 | 1, value: number) {
 export function setAnchorNumber(k: number, i: number, sub: 0 | 1, value: number) {
 	if (!Number.isFinite(value)) return;
 	mutate((d) => {
-		const a = d.parts![k].anchors![i];
+		const a = anchorsOf(d, d.parts![k])[i];
 		const at: Vec2 = [...a.at];
 		at[sub] = value;
 		a.at = at;
 	}, `anchor-${i}-${sub}`);
 }
 
+/** The direction an attached thing points (1.2); undefined drops it. */
+export function setAnchorAngle(k: number, i: number, angle: number | undefined, merge?: string) {
+	mutate((d) => {
+		const a = anchorsOf(d, d.parts![k])[i];
+		if (!a) return;
+		if (angle === undefined) delete a.angle;
+		else a.angle = angle;
+	}, merge);
+}
+
 export function renameAnchor(k: number, i: number, name: string) {
 	const p = parts()[k];
-	const old = p?.anchors?.[i]?.name;
-	if (old === undefined || old === name) return;
+	const old = p ? anchorsIn(p)[i]?.name : undefined;
+	if (!p || old === undefined || old === name) return;
+	const owner = sourceOf(doc(), p).name;
 	mutate((d) => {
-		d.parts![k].anchors![i].name = name;
-		for (const c of d.constraints ?? []) if (c.end === `${p.name}/${old}`) c.end = `${p.name}/${name}`;
+		anchorsOf(d, d.parts![k])[i].name = name;
+		// every part drawn like the owner shares the anchor
+		for (const q of d.parts!) {
+			if (q.name !== owner && q.like !== owner) continue;
+			for (const c of d.constraints ?? []) if (c.end === `${q.name}/${old}`) c.end = `${q.name}/${name}`;
+		}
 	});
 }
 
@@ -814,6 +857,14 @@ export function deletePart(k: number) {
 	const name = parts()[k]?.name;
 	if (name === undefined) return;
 	mutate((d) => {
+		// parts drawn like this one keep a copy of its geometry
+		const gone = d.parts![k];
+		for (const p of d.parts!) {
+			if (p.like !== name) continue;
+			delete p.like;
+			p.shapes = (gone.shapes ?? []).map(cloneShape);
+			if (gone.anchors?.length) p.anchors = gone.anchors.map((a) => ({ ...a, at: [a.at[0], a.at[1]] as Vec2 }));
+		}
 		d.parts!.splice(k, 1);
 		for (const st of d.states ?? []) st.parts = st.parts.filter((sp) => sp.part !== name);
 		// children lose their parent; chains through it go with it
@@ -834,7 +885,10 @@ export function renamePart(k: number, name: string) {
 	mutate((d) => {
 		d.parts![k].name = name;
 		for (const st of d.states ?? []) for (const sp of st.parts) if (sp.part === old) sp.part = name;
-		for (const p of d.parts!) if (p.parent === old) p.parent = name;
+		for (const p of d.parts!) {
+			if (p.parent === old) p.parent = name;
+			if (p.like === old) p.like = name;
+		}
 		for (const c of d.clips ?? []) for (const key of c.keys) for (const sp of key.parts ?? []) if (sp.part === old) sp.part = name;
 		for (const c of d.constraints ?? []) {
 			c.chain = c.chain.map((n) => (n === old ? name : n));
@@ -859,6 +913,41 @@ export function parentCandidates(k: number): string[] {
 		return false;
 	};
 	return ps.filter((p) => p.name !== me && !isDescendant(p.name)).map((p) => p.name);
+}
+
+/** Parts this one may draw like: others with geometry of their own that are not drawn like it. */
+export function likeCandidates(k: number): string[] {
+	const ps = parts();
+	const me = ps[k]?.name;
+	if (me === undefined) return [];
+	return ps.filter((p) => p.name !== me && !p.like).map((p) => p.name);
+}
+
+/** Draw this part like another (1.2), or give it its own copy of the geometry again. */
+export function setLike(k: number, like: string | undefined) {
+	const p = parts()[k];
+	if (!p) return;
+	if (like !== undefined && !likeCandidates(k).includes(like)) return;
+	if (like !== undefined && (p.shapes?.length || p.anchors?.length)) return; // the UI gates this: shapes would be lost
+	const src = like === undefined ? sourceOf(doc(), p) : undefined;
+	mutate((d) => {
+		const q = d.parts![k];
+		if (like === undefined) {
+			delete q.like;
+			q.shapes = (src?.shapes ?? []).map(cloneShape);
+			if (src?.anchors?.length) q.anchors = src.anchors.map((a) => ({ ...a, at: [a.at[0], a.at[1]] as Vec2 }));
+		} else {
+			q.like = like;
+			delete q.shapes;
+			delete q.anchors;
+			// every part drawn like another has no shapes of its own, so nothing may be like this one
+			for (const o of d.parts!) if (o.like === q.name) delete o.like;
+		}
+	});
+	batch(() => {
+		ed.sel.value = [];
+		ed.hover.value = null;
+	});
 }
 
 export function setParent(k: number, parent: string | undefined) {
@@ -892,13 +981,13 @@ export function setPivot(k: number, at: Vec2) {
 
 export function addAnchor(k: number, name: string, at: Vec2) {
 	mutate((d) => {
-		const p = d.parts![k];
+		const p = sourceOf(d, d.parts![k]);
 		(p.anchors ??= []).push({ name, at });
 	});
 }
 
 export function deleteAnchor(k: number, i: number) {
-	mutate((d) => d.parts![k].anchors?.splice(i, 1));
+	mutate((d) => sourceOf(d, d.parts![k]).anchors?.splice(i, 1));
 }
 
 /** Whether a part is drawn by a state; toggling adds it (at rest) or drops it. */
@@ -1067,6 +1156,27 @@ export function setKeyEase(i: number, e: Ease | undefined) {
 	});
 }
 
+/** A bezier toward this key (1.2), which wins over its ease; undefined drops it. */
+export function setKeyCurve(i: number, curve: Curve | undefined, merge?: string) {
+	const c = curClip();
+	if (!c?.keys[i]) return;
+	mutate(() => {
+		if (curve) c.keys[i].curve = [Math.min(1, Math.max(0, curve[0])), curve[1], Math.min(1, Math.max(0, curve[2])), curve[3]];
+		else delete c.keys[i].curve;
+	}, merge);
+}
+
+/** The names a runtime hears crossing this key (1.2). */
+export function setKeyEvents(i: number, events: string[]) {
+	const c = curClip();
+	if (!c?.keys[i]) return;
+	const clean = events.map((e) => e.trim()).filter(Boolean);
+	mutate(() => {
+		if (clean.length) c.keys[i].events = clean;
+		else delete c.keys[i].events;
+	});
+}
+
 /** Seek the preview; the key under the playhead becomes current. */
 export function seek(t: number) {
 	const c = curClip();
@@ -1083,13 +1193,43 @@ export function addChain(name: string, chain: string[], end: string) {
 }
 
 export function deleteChain(k: number) {
-	mutate((d) => d.constraints!.splice(k, 1));
+	const name = constraints()[k]?.name;
+	mutate((d) => {
+		d.constraints!.splice(k, 1);
+		for (const st of d.states ?? []) if (st.targets) st.targets = st.targets.filter((t) => t.chain !== name);
+		for (const c of d.clips ?? []) for (const key of c.keys) if (key.targets) key.targets = key.targets.filter((t) => t.chain !== name);
+	});
 }
 
 export function renameChain(k: number, name: string) {
+	const old = constraints()[k]?.name;
 	mutate((d) => {
 		d.constraints![k].name = name;
+		for (const st of d.states ?? []) for (const t of st.targets ?? []) if (t.chain === old) t.chain = name;
+		for (const c of d.clips ?? []) for (const key of c.keys) for (const t of key.targets ?? []) if (t.chain === old) t.chain = name;
 	});
+}
+
+/** The current state's pinned point for a chain (1.2), if any. */
+export function targetOf(chain: string): Target | undefined {
+	return curState()?.targets?.find((t) => t.chain === chain);
+}
+
+/** Let a chain go: its rotations stay where they are, the pin is gone. */
+export function clearTarget(chain: string) {
+	const st = curState();
+	if (!st?.targets) return;
+	mutate(() => {
+		st.targets = st.targets!.filter((t) => t.chain !== chain);
+		if (!st.targets.length) delete st.targets;
+	});
+}
+
+/** After a pose changed: every pinned chain in the state reaches again. Call inside a mutate. */
+export function settleTargets(d: Doc = doc()) {
+	const st = curState();
+	if (!st?.targets?.length) return;
+	solveTargets(d, st.parts, st.targets);
 }
 
 export function setChain(k: number, chain: string[], end: string) {
@@ -1106,25 +1246,39 @@ export function setChainBend(k: number, bend: 1 | -1 | undefined) {
 	});
 }
 
-/** Pull a chain's end to a point in the current state; only rotations move. */
+/**
+ * Pull a chain's end to a point in the current state: only rotations
+ * move, and the point is pinned (1.2) so the chain keeps reaching it
+ * while the rest of the pose changes. clearTarget lets go.
+ */
 export function ikTo(c: Constraint, target: Vec2) {
 	const st = curState();
 	if (!st) return;
 	mutate((d) => {
 		solveChain(d, st.parts, c, target);
+		const at: Vec2 = [Math.round(target[0] * 100) / 100, Math.round(target[1] * 100) / 100];
+		const tg = (st.targets ??= []).find((t) => t.chain === c.name);
+		if (tg) tg.at = at;
+		else st.targets.push({ chain: c.name, at });
 	}, "ik");
 }
 
 export function setPose(sp: StatePart, patch: Partial<StatePart>, merge?: string) {
-	mutate(() => Object.assign(sp, patch), merge);
+	mutate((d) => {
+		Object.assign(sp, patch);
+		if (sp.mirror === false) delete sp.mirror;
+		settleTargets(d);
+	}, merge);
 }
 
 export function resetPose(sp: StatePart) {
 	const part = parts().find((p) => p.name === sp.part);
-	mutate(() => {
+	mutate((d) => {
 		sp.offset = part?.pivot ?? [0, 0];
 		delete sp.rotate;
 		delete sp.scale;
+		delete sp.mirror;
+		settleTargets(d);
 	});
 }
 
@@ -1148,6 +1302,16 @@ export function renameToken(k: number, name: string) {
 		for (const p of d.parts ?? []) for (const sh of p.shapes ?? []) if (sh.color === old) sh.color = name;
 		for (const sh of d.collision ?? []) if (sh.color === old) sh.color = name;
 	});
+}
+
+/** How much light a slot gives off (1.2); 0 drops the field. */
+export function setTokenEmissive(k: number, v: number) {
+	mutate((d) => {
+		const t = d.palette![k];
+		if (!t) return;
+		if (v > 0) t.emissive = Math.round(v * 100) / 100;
+		else delete t.emissive;
+	}, `emissive-${k}`);
 }
 
 export function setTokenColor(k: number, rgb: Rgba) {

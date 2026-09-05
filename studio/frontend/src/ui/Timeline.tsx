@@ -3,10 +3,19 @@
 // time. Keys name states; posing happens in the state.
 
 import { useEffect, useRef } from "preact/hooks";
-import { clipDuration, type Ease } from "@fastart/core";
-import { ed, curClip, states, addKey, deleteKey, setKeyTime, setKeyState, setKeyEase, seek, endGesture } from "../state/editor.ts";
+import { clipDuration, type Curve, type Ease } from "@fastart/core";
+import { ed, curClip, states, addKey, deleteKey, setKeyTime, setKeyState, setKeyEase, setKeyCurve, setKeyEvents, seek, endGesture } from "../state/editor.ts";
 
 const EASES: Ease[] = ["linear", "in", "out", "in-out", "step"];
+/** Curves worth a name (1.2); "custom" keeps whatever the numbers say. */
+const CURVES: { name: string; curve: Curve; ease: Ease }[] = [
+	{ name: "back out", curve: [0.34, 1.56, 0.64, 1], ease: "out" },
+	{ name: "back in", curve: [0.36, 0, 0.66, -0.56], ease: "in" },
+	{ name: "quint out", curve: [0.22, 1, 0.36, 1], ease: "out" },
+	{ name: "quint in", curve: [0.64, 0, 0.78, 0], ease: "in" },
+	{ name: "sine in-out", curve: [0.37, 0, 0.63, 1], ease: "in-out" },
+];
+const curveName = (c: Curve | undefined) => (c ? (CURVES.find((k) => k.curve.every((v, i) => Math.abs(v - c[i]) < 1e-6))?.name ?? "custom") : "");
 const PAD = 14;
 
 export function Timeline() {
@@ -57,7 +66,11 @@ export function Timeline() {
 
 	const scrub = (e: PointerEvent) => {
 		const el = e.currentTarget as HTMLElement;
-		el.setPointerCapture(e.pointerId);
+		try {
+			el.setPointerCapture(e.pointerId);
+		} catch {
+			// no live pointer to capture: the click still counts
+		}
 		ed.playing.value = false;
 		seek(toT(e.clientX));
 		const move = (ev: PointerEvent) => seek(toT(ev.clientX));
@@ -71,7 +84,11 @@ export function Timeline() {
 	const dragKey = (i: number, e: PointerEvent) => {
 		e.stopPropagation();
 		const el = e.currentTarget as HTMLElement;
-		el.setPointerCapture(e.pointerId);
+		try {
+			el.setPointerCapture(e.pointerId);
+		} catch {
+			// as above
+		}
 		ed.playing.value = false;
 		ed.curKey.value = i;
 		ed.clipTime.value = clip.keys[i].t; // picking a key is also going there
@@ -107,7 +124,12 @@ export function Timeline() {
 					</span>
 				))}
 				{clip.keys.map((k, i) => (
-					<span class={`key ${i === ki ? "active" : ""}`} style={{ left: left(k.t) }} title={`${k.state ?? "inline"} @ ${k.t}s`} onPointerDown={(e) => dragKey(i, e)} />
+					<span
+						class={`key ${i === ki ? "active" : ""} ${k.events?.length ? "ev" : ""}`}
+						style={{ left: left(k.t) }}
+						title={`${k.state ?? "inline"} @ ${k.t}s${k.events?.length ? ` · ${k.events.join(", ")}` : ""}`}
+						onPointerDown={(e) => dragKey(i, e)}
+					/>
 				))}
 				<span class="playhead" style={{ left: left(t) }} />
 			</div>
@@ -122,11 +144,58 @@ export function Timeline() {
 							<option value={s.name}>{s.name}</option>
 						))}
 					</select>
-					<select class="picker" value={key.ease ?? "linear"} onChange={(e) => setKeyEase(ki, (e.target as HTMLSelectElement).value as Ease)} title="how time approaches this key">
+					<select class="picker" value={key.ease ?? "linear"} onChange={(e) => setKeyEase(ki, (e.target as HTMLSelectElement).value as Ease)} title="how time approaches this key" disabled={!!key.curve}>
 						{EASES.map((e) => (
 							<option value={e}>{e}</option>
 						))}
 					</select>
+					<select
+						class="picker"
+						value={curveName(key.curve)}
+						title="a bezier curve toward this key; it wins over the ease, which stays as the nearest name for older readers"
+						onChange={(e) => {
+							const v = (e.target as HTMLSelectElement).value;
+							if (!v) return setKeyCurve(ki, undefined);
+							const preset = CURVES.find((c) => c.name === v);
+							if (preset) {
+								setKeyCurve(ki, preset.curve);
+								setKeyEase(ki, preset.ease);
+							} else setKeyCurve(ki, key.curve ?? [0.42, 0, 0.58, 1]);
+						}}
+					>
+						<option value="">no curve</option>
+						{CURVES.map((c) => (
+							<option value={c.name}>{c.name}</option>
+						))}
+						<option value="custom">custom…</option>
+					</select>
+					{key.curve &&
+						key.curve.map((v, j) => (
+							<input
+								class="num"
+								type="number"
+								step={0.01}
+								value={v}
+								title={["x1", "y1", "x2", "y2"][j]}
+								onInput={(e) => {
+									const n = Number((e.target as HTMLInputElement).value);
+									if (!Number.isFinite(n)) return;
+									const c = [...key.curve!] as Curve;
+									c[j] = n;
+									setKeyCurve(ki, c, `curve-${ki}`);
+								}}
+								onBlur={endGesture}
+								onKeyDown={(e) => e.stopPropagation()}
+							/>
+						))}
+					<input
+						class="text"
+						placeholder="events"
+						value={key.events?.join(", ") ?? ""}
+						title="names a game hears when the playhead crosses this key: footstep, hit, …  (comma-separated)"
+						onChange={(e) => setKeyEvents(ki, (e.target as HTMLInputElement).value.split(","))}
+						onKeyDown={(e) => e.stopPropagation()}
+					/>
 					<input
 						class="num"
 						type="number"

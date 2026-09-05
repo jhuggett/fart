@@ -100,7 +100,8 @@
           "at": [
             0,
             14
-          ]
+          ],
+          "angle": 1.5707963267948966
         }
       ]
     },
@@ -255,14 +256,23 @@
       "parts": [
         {
           "part": "arm_a",
-          "rotate": 1.3
+          "rotate": 1.0662134479337169
         },
         {
           "part": "arm_b",
-          "rotate": -0.5
+          "rotate": -0.13707966888874967
         },
         {
           "part": "body"
+        }
+      ],
+      "targets": [
+        {
+          "chain": "arm",
+          "at": [
+            -9.5,
+            9.5
+          ]
         }
       ]
     },
@@ -300,7 +310,10 @@
         {
           "t": 0.9,
           "state": "reach_l",
-          "ease": "in-out"
+          "ease": "in-out",
+          "events": [
+            "grab"
+          ]
         },
         {
           "t": 1.4,

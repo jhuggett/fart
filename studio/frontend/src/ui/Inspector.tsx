@@ -53,6 +53,13 @@ import {
 	linkPalette,
 	unlinkPalette,
 	overrideToken,
+	anchorsIn,
+	setAnchorAngle,
+	likeCandidates,
+	setLike,
+	targetOf,
+	clearTarget,
+	setTokenEmissive,
 } from "../state/editor.ts";
 import { renaming, openContextMenu, type MenuItem } from "../state/menu.ts";
 import { paletteFiles } from "../state/project.ts";
@@ -195,6 +202,10 @@ function PoseBlock() {
 					<Slider label="turn" value={(sp.rotate ?? 0) * DEG} min={-180} max={180} step={1} show={(v) => `${Math.round(v)}°`} onInput={(v) => setPose(sp, { rotate: v / DEG }, "pose-turn")} />
 					<Slider label="size" value={sp.scale === undefined || sp.scale === 0 ? 1 : sp.scale} min={0.1} max={3} step={0.05} show={(v) => `${v.toFixed(2)}×`} onInput={(v) => setPose(sp, { scale: v }, "pose-size")} />
 					<div class="line">
+						<span class={`check ${sp.mirror ? "on" : ""}`} title="flipped left-to-right about the pivot, before the turn" onClick={() => setPose(sp, { mirror: !sp.mirror })} />
+						<span>mirror</span>
+					</div>
+					<div class="line">
 						<button class="btn small ghost" onClick={() => resetPose(sp)}>
 							reset
 						</button>
@@ -221,11 +232,13 @@ function ChainRows({ k }: { k: number }) {
 	const part = ps[k];
 	const mine = cs.map((c, i) => ({ c, i })).filter(({ c }) => c.chain[c.chain.length - 1] === part.name);
 	const ren = renaming.value;
-	const canStart = (part.anchors?.length ?? 0) > 0;
+	const anchors = anchorsIn(part);
+	const canStart = anchors.length > 0;
 	return (
 		<>
 			{mine.map(({ c, i }) => {
 				const root = ps.find((p) => p.name === c.chain[0]);
+				const pin = targetOf(c.name);
 				return (
 					<div class="card" style="margin-top:4px">
 						<div class="line">
@@ -247,7 +260,7 @@ function ChainRows({ k }: { k: number }) {
 								shorter
 							</button>
 							<select class="picker" value={c.end} onChange={(e) => setChain(i, c.chain, (e.target as HTMLSelectElement).value)} title="the anchor it reaches with">
-								{(part.anchors ?? []).map((a) => (
+								{anchors.map((a) => (
 									<option value={`${part.name}/${a.name}`}>{a.name}</option>
 								))}
 							</select>
@@ -265,6 +278,16 @@ function ChainRows({ k }: { k: number }) {
 								<option value={-1}>bend ccw</option>
 							</select>
 						</div>
+						{pin && (
+							<div class="line">
+								<span class="chip" style="margin:0" title="the chain keeps reaching this point while the pose changes; drag the ring to move it">
+									pinned at {pin.at[0]}, {pin.at[1]}
+								</span>
+								<button class="btn small ghost" title="let go: the rotations stay, the pin is gone" onClick={() => clearTarget(c.name)}>
+									release
+								</button>
+							</div>
+						)}
 					</div>
 				);
 			})}
@@ -274,7 +297,7 @@ function ChainRows({ k }: { k: number }) {
 				title={canStart ? "an IK chain reaching with this part's anchor" : "give the part an anchor first: that is what a chain reaches with"}
 				onClick={() => {
 					const chain = part.parent ? [part.parent, part.name] : [part.name];
-					addChain(freshName(`${part.name} reach`, cs.map((c) => c.name)), chain, `${part.name}/${part.anchors![0].name}`);
+					addChain(freshName(`${part.name} reach`, cs.map((c) => c.name)), chain, `${part.name}/${anchors[0].name}`);
 					renaming.value = { kind: "chain", index: constraints().length - 1 };
 				}}
 			>
@@ -309,6 +332,26 @@ function PartSection() {
 					))}
 				</select>
 			</div>
+			<div class="line">
+				<span class="k">drawn like</span>
+				<select
+					class="picker"
+					style="flex:1"
+					value={part.like ?? ""}
+					disabled={!part.like && (!!part.shapes?.length || !!part.anchors?.length) ? true : likeCandidates(k).length === 0}
+					title={
+						!part.like && (part.shapes?.length || part.anchors?.length)
+							? "a part drawn like another has no shapes of its own: empty this one first"
+							: "draw another part's shapes and anchors (the left claw is the right one, mirrored in the state)"
+					}
+					onChange={(e) => setLike(k, (e.target as HTMLSelectElement).value || undefined)}
+				>
+					<option value="">itself</option>
+					{likeCandidates(k).map((n) => (
+						<option value={n}>{n}</option>
+					))}
+				</select>
+			</div>
 			{!preview && (
 				<div class="line" style="gap:6px">
 					<button class={`btn small ghost ${ed.pending.value === "pivot" ? "active" : ""}`} title="the next canvas click places the pivot" onClick={() => (ed.pending.value = ed.pending.value === "pivot" ? "none" : "pivot")}>
@@ -327,12 +370,12 @@ function PartSection() {
 				</div>
 			)}
 			{!preview && <PoseBlock />}
-			{(part.anchors?.length ?? 0) > 0 && (
+			{anchorsIn(part).length > 0 && (
 				<>
-					<div class="hdr sub" title="named points a game or a chain reaches for">
-						Anchors
+					<div class="hdr sub" title="named points a game or a chain reaches for; a direction makes one a socket">
+						Anchors{part.like ? ` (${part.like}'s)` : ""}
 					</div>
-					{part.anchors!.map((a, i) => (
+					{anchorsIn(part).map((a, i) => (
 						<div class="line">
 							{ren?.kind === "anchor" && ren.index === k && ren.sub === i ? (
 								<InlineName value={a.name} onCommit={(n) => (renameAnchor(k, i, n), (renaming.value = null))} onCancel={() => (renaming.value = null)} />
@@ -343,7 +386,14 @@ function PartSection() {
 							)}
 							<Num label="x" value={a.at[0]} onChange={(v) => setAnchorNumber(k, i, 0, v)} />
 							<Num label="y" value={a.at[1]} onChange={(v) => setAnchorNumber(k, i, 1, v)} />
-							<button class="btn x" onClick={() => deleteAnchor(k, i)}>
+							{a.angle === undefined ? (
+								<button class="btn x" title="give it a direction: what attaches here points this way" onClick={() => setAnchorAngle(k, i, 0)}>
+									↗
+								</button>
+							) : (
+								<Num label="dir°" value={Math.round(a.angle * DEG)} onChange={(v) => setAnchorAngle(k, i, v / DEG, `angle-${i}`)} title="the direction an attached thing points; clear with the ×" />
+							)}
+							<button class="btn x" title={a.angle === undefined ? "delete anchor" : "drop the direction"} onClick={() => (a.angle === undefined ? deleteAnchor(k, i) : setAnchorAngle(k, i, undefined))}>
 								×
 							</button>
 						</div>
@@ -429,6 +479,11 @@ function DocumentSection() {
 						) : (
 							<span class="name">{t.name}</span>
 						)}
+						{(t.emissive ?? 0) > 0 && (
+							<span class="chip" title="emissive: gives off light in a game that has it">
+								☀ {t.emissive}
+							</span>
+						)}
 						<button
 							class="btn x"
 							title="delete colour"
@@ -488,7 +543,7 @@ function DocumentSection() {
 				)}
 			</Section>
 			{pick && toks[pick.k] && (
-				<ColorPicker rgb={toks[pick.k].rgb} x={pick.x} y={pick.y} onChange={(rgb: Rgba) => setTokenColor(pick.k, rgb)} onClose={() => setPick(null)} />
+				<ColorPicker rgb={toks[pick.k].rgb} emissive={toks[pick.k].emissive ?? 0} onEmissive={(v) => setTokenEmissive(pick.k, v)} x={pick.x} y={pick.y} onChange={(rgb: Rgba) => setTokenColor(pick.k, rgb)} onClose={() => setPick(null)} />
 			)}
 		</>
 	);

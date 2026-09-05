@@ -156,6 +156,49 @@ order, switch at the key. **loop** wraps time at the last key. Keys name
 states, so to change what a key looks like you pose that state; a clip
 never carries its own pose.
 
+## Mirror and reuse
+
+A part can be **drawn like** another (the select under its parent): it
+shows that part's shapes and anchors and has none of its own, with its
+own pivot, parent and pose. The left claw is the right claw's geometry.
+Then **mirror** in the part's pose block flips it left-to-right about
+its pivot, before the turn, so it still turns the way its parent does.
+Editing shapes on a part drawn like another edits the source. A child of
+a mirrored part rides the flip, so the flame on a mirrored engine needs
+no mirror of its own.
+
+## Sockets: anchors with a direction
+
+An anchor may point somewhere: the ↗ on its row gives it a direction
+(degrees), drawn as a short line on the canvas. A game attaches things
+by aligning anchors, the cutlass's `grip` onto the hand's `hand`, and
+where both have a direction the item turns to match. Which item sits in
+which hand is the game's business; the file only says where and which way.
+
+## Pinned reach
+
+Dragging a chain's ring now **pins** the point: the chain keeps reaching
+it while the rest of the pose changes, so the hand stays on the latch
+when the torso leans. The ring shows a filled centre when pinned, the
+chain's card says where, and **release** lets go, leaving the rotations
+as they are. Pins are saved with the state (`targets`), and a clip
+tweens them between keys, re-solving as it plays.
+
+## Events and curves
+
+A key can carry **events**, names typed into the field beside its time:
+`footstep`, `hit`. A game hears them when the playhead crosses the key;
+the timeline marks such keys with a dot. A key can also carry a
+**curve**, a bezier picked from presets (back out, quint in, …) or
+tuned as four numbers; it wins over the named ease, which stays set to
+the nearest name so older readers stay close.
+
+## Glow
+
+A colour slot can be **emissive**: the glow field in the colour picker,
+from 0. The studio only marks it (☀ on the row); a game with lighting
+reads it, one without ignores it.
+
 ## Chains: reaching with IK
 
 Give a part an anchor (a hand, a foot), then **+ chain** in the Chains

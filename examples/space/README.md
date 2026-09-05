@@ -11,9 +11,9 @@ adds its own heading.
 | --- | --- |
 | `palettes/hull.fart` | the slots every file names: hull, trim, glass, flame, rock, ore… |
 | `palettes/pirate.fart`, `palettes/alliance.fart` | the same slots in other colours: a swap, for `apply_palette` at load |
-| `ships/fighter.fart` | wings and engines riding a hull, flames that come and go with the state, a throttled `thrust` loop, `bank_left`/`bank_right` |
+| `ships/fighter.fart` | wings and engines riding a hull, flames that come and go with the state, a throttled `thrust` loop, `bank_left`/`bank_right` with a back-out curve; the right engine is drawn `like` the left and mirrored, its flame riding along |
 | `ships/cruiser.fart` | turrets parented to the hull with barrels parented to the turrets, muzzle anchors, a `sweep` that turns them |
-| `ships/drone.fart` | a two-bone arm with a chain (`arm`, reaching with `arm_b/tip`) and a `grab` clip |
+| `ships/drone.fart` | a two-bone arm with a chain (`arm`, reaching with `arm_b/tip`), a pinned target in `reach_l`, a `grab` clip with a `grab` event |
 | `structures/station.fart` | a ring that `spin`s with docks (and their anchors) riding it, a `blink` done with membership and `step` |
 | `rocks/asteroid_*.fart` | lumpy polys with craters and ore, a slow `tumble` |
 | `projectiles/laser.fart`, `projectiles/missile.fart` | small things with a `tip` anchor; the missile's flame flickers |
@@ -27,9 +27,11 @@ fleet, a game lays `pirate.fart` over any of them at load:
     red, _ := fastart.load_bytes(pirate_bytes)
     fastart.apply_palette(&fighter, red.palette[:])
 
-Anchors are where a game hooks in: `nose`, `gun_l`/`gun_r`, `exhaust_*`,
+Anchors are where a game hooks in: `nose`, `gun_l`/`gun_r`, `exhaust`,
 `muzzle`, `tip`, `dock_n`… Query them through the part's world transform
-and they follow the pose.
+and they follow the pose. Most carry a direction (`angle`), so attaching
+a thing to them turns it the right way. `glow`, `flame` and `flame_core`
+are emissive slots for games with lighting.
 
 `generate.mjs` wrote these files (`node examples/space/generate.mjs`
 from the repo root); edit them in the studio or regenerate, as you like.

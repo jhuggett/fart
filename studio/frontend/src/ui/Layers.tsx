@@ -91,6 +91,11 @@ function LayerRow({ i, depth }: { i: number; depth: number }) {
 				) : (
 					<span class="name">{p.name}</span>
 				)}
+				{p.like && (
+					<span class="chip" title={`drawn like ${p.like}: its shapes and anchors, this part's pivot and pose`}>
+						like {p.like}
+					</span>
+				)}
 				<span class="tail">
 					<button
 						class={`ico ${off ? "on" : ""}`}
