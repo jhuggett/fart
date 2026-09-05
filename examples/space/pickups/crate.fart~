@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "name": "crate",
+  "palette_refs": [
+    "../palettes/hull.fart"
+  ],
+  "parts": [
+    {
+      "name": "box",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              -3.2,
+              -3.2
+            ],
+            [
+              3.2,
+              -3.2
+            ],
+            [
+              3.2,
+              3.2
+            ],
+            [
+              -3.2,
+              3.2
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull",
+          "points": [
+            [
+              -2.6,
+              -2.6
+            ],
+            [
+              2.6,
+              -2.6
+            ],
+            [
+              2.6,
+              2.6
+            ],
+            [
+              -2.6,
+              2.6
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "line",
+          "color": "trim",
+          "a": [
+            -3.2,
+            0
+          ],
+          "b": [
+            3.2,
+            0
+          ],
+          "w": 0.8
+        },
+        {
+          "kind": "line",
+          "color": "trim",
+          "a": [
+            0,
+            -3.2
+          ],
+          "b": [
+            0,
+            3.2
+          ],
+          "w": 0.8
+        },
+        {
+          "kind": "circle",
+          "color": "glow",
+          "at": [
+            0,
+            0
+          ],
+          "r": 0.9
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "rest",
+      "parts": [
+        {
+          "part": "box"
+        }
+      ]
+    },
+    {
+      "name": "up",
+      "parts": [
+        {
+          "part": "box",
+          "offset": [
+            0,
+            -1.2
+          ]
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "bob",
+      "loop": true,
+      "keys": [
+        {
+          "t": 0,
+          "state": "rest"
+        },
+        {
+          "t": 0.7,
+          "state": "up",
+          "ease": "in-out"
+        },
+        {
+          "t": 1.4,
+          "state": "rest",
+          "ease": "in-out"
+        }
+      ]
+    }
+  ],
+  "collision": [
+    {
+      "kind": "poly",
+      "points": [
+        [
+          -3.2,
+          -3.2
+        ],
+        [
+          3.2,
+          -3.2
+        ],
+        [
+          3.2,
+          3.2
+        ],
+        [
+          -3.2,
+          3.2
+        ]
+      ],
+      "tris": [
+        3,
+        0,
+        1,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "palette": [
+    {
+      "name": "ink",
+      "rgb": [
+        200,
+        195,
+        185,
+        255
+      ]
+    }
+  ]
+}

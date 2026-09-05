@@ -7,13 +7,14 @@
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make validate DIR=path/to/art   fart validate
+#   make skill      install the fastart skill for Claude Code (~/.claude/skills)
 
 SHELL := /bin/sh
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate clean
+.PHONY: help setup dev app run serve test validate skill clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -51,6 +52,12 @@ test: node_modules
 
 validate: node_modules
 	node packages/core/src/cli.ts validate $(DIR)
+
+# the skill names this checkout, so agents in other projects find the tools
+skill:
+	mkdir -p $(HOME)/.claude/skills/fastart
+	sed 's#{{FASTART}}#$(CURDIR)#g' skills/fastart/SKILL.md > $(HOME)/.claude/skills/fastart/SKILL.md
+	@echo "installed ~/.claude/skills/fastart (run again after pulling)"
 
 clean:
 	rm -rf studio/bin studio/frontend/dist packages/core/dist

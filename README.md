@@ -15,6 +15,7 @@ like.
     loaders/odin     the reference Odin loader (and its corpus test)
     studio/          fastart studio: the editor as a desktop app (Wails 3 + web)
     examples/space   a sample project: ships, a station, rocks, palettes to swap
+    skills/fastart   how an agent writes and loads .fart files (make skill installs it)
 
 ## The format
 

@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "name": "drone",
+  "palette_refs": [
+    "../palettes/hull.fart"
+  ],
+  "parts": [
+    {
+      "name": "arm_a",
+      "pivot": [
+        0,
+        3.5
+      ],
+      "shapes": [
+        {
+          "kind": "line",
+          "color": "metal",
+          "a": [
+            0,
+            3.5
+          ],
+          "b": [
+            0,
+            9.5
+          ],
+          "w": 1.7
+        },
+        {
+          "kind": "circle",
+          "color": "hull_dark",
+          "at": [
+            0,
+            3.5
+          ],
+          "r": 1.1
+        }
+      ],
+      "parent": "body"
+    },
+    {
+      "name": "arm_b",
+      "pivot": [
+        0,
+        9.5
+      ],
+      "shapes": [
+        {
+          "kind": "line",
+          "color": "metal",
+          "a": [
+            0,
+            9.5
+          ],
+          "b": [
+            0,
+            14
+          ],
+          "w": 1.4
+        },
+        {
+          "kind": "circle",
+          "color": "hull_dark",
+          "at": [
+            0,
+            9.5
+          ],
+          "r": 0.9
+        },
+        {
+          "kind": "line",
+          "color": "hull_dark",
+          "a": [
+            0,
+            14
+          ],
+          "b": [
+            -1.6,
+            16.2
+          ],
+          "w": 0.9
+        },
+        {
+          "kind": "line",
+          "color": "hull_dark",
+          "a": [
+            0,
+            14
+          ],
+          "b": [
+            1.6,
+            16.2
+          ],
+          "w": 0.9
+        }
+      ],
+      "parent": "arm_a",
+      "anchors": [
+        {
+          "name": "tip",
+          "at": [
+            0,
+            14
+          ]
+        }
+      ]
+    },
+    {
+      "name": "body",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "hull_dark",
+          "at": [
+            0,
+            0
+          ],
+          "r": 4.8
+        },
+        {
+          "kind": "circle",
+          "color": "hull",
+          "at": [
+            0,
+            0
+          ],
+          "r": 4.1
+        },
+        {
+          "kind": "poly",
+          "color": "metal",
+          "points": [
+            [
+              -6.5,
+              -1.5
+            ],
+            [
+              -4.5,
+              -1.5
+            ],
+            [
+              -4.5,
+              2
+            ],
+            [
+              -6.5,
+              2
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "metal",
+          "points": [
+            [
+              4.5,
+              -1.5
+            ],
+            [
+              6.5,
+              -1.5
+            ],
+            [
+              6.5,
+              2
+            ],
+            [
+              4.5,
+              2
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "circle",
+          "color": "glass",
+          "at": [
+            0,
+            -1.4
+          ],
+          "r": 1.5
+        },
+        {
+          "kind": "circle",
+          "color": "glow",
+          "at": [
+            -2.6,
+            2.4
+          ],
+          "r": 0.5
+        },
+        {
+          "kind": "circle",
+          "color": "glow",
+          "at": [
+            2.6,
+            2.4
+          ],
+          "r": 0.5
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "idle",
+      "parts": [
+        {
+          "part": "arm_a"
+        },
+        {
+          "part": "arm_b"
+        },
+        {
+          "part": "body"
+        }
+      ]
+    },
+    {
+      "name": "folded",
+      "parts": [
+        {
+          "part": "arm_a",
+          "rotate": 2.5
+        },
+        {
+          "part": "arm_b",
+          "rotate": -2.7
+        },
+        {
+          "part": "body"
+        }
+      ]
+    },
+    {
+      "name": "reach_l",
+      "parts": [
+        {
+          "part": "arm_a",
+          "rotate": 1.3
+        },
+        {
+          "part": "arm_b",
+          "rotate": -0.5
+        },
+        {
+          "part": "body"
+        }
+      ]
+    },
+    {
+      "name": "reach_r",
+      "parts": [
+        {
+          "part": "arm_a",
+          "rotate": -1.3
+        },
+        {
+          "part": "arm_b",
+          "rotate": 0.5
+        },
+        {
+          "part": "body"
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "grab",
+      "loop": false,
+      "keys": [
+        {
+          "t": 0,
+          "state": "folded"
+        },
+        {
+          "t": 0.45,
+          "state": "idle",
+          "ease": "out"
+        },
+        {
+          "t": 0.9,
+          "state": "reach_l",
+          "ease": "in-out"
+        },
+        {
+          "t": 1.4,
+          "state": "folded",
+          "ease": "in"
+        }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "name": "arm",
+      "chain": [
+        "arm_a",
+        "arm_b"
+      ],
+      "end": "arm_b/tip",
+      "bend": 1
+    }
+  ],
+  "collision": [
+    {
+      "kind": "circle",
+      "at": [
+        0,
+        0
+      ],
+      "r": 4.8
+    }
+  ],
+  "palette": [
+    {
+      "name": "ink",
+      "rgb": [
+        200,
+        195,
+        185,
+        255
+      ]
+    }
+  ]
+}
