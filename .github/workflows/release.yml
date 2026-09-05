@@ -8,6 +8,7 @@ name: studio release
 on:
   push:
     tags: ["studio-v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,6 +31,7 @@ jobs:
           cache-dependency-path: studio/go.sum
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
       - run: npm ci
+      - run: npm run build -w @fastart/core
       - run: wails3 task darwin:package:universal
         working-directory: studio
       - name: sign and notarize
@@ -68,6 +70,7 @@ jobs:
           cache-dependency-path: studio/go.sum
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
       - run: npm ci
+      - run: npm run build -w @fastart/core
       - run: wails3 task windows:build
         working-directory: studio
       - name: zip
@@ -94,6 +97,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
       - run: npm ci
+      - run: npm run build -w @fastart/core
       - run: wails3 task linux:build
         working-directory: studio
       - name: tar
