@@ -5,13 +5,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "studio"
+    !define INFO_PROJECTNAME "Uranus"
 !endif
 !ifndef INFO_COMPANYNAME
     !define INFO_COMPANYNAME "fastart"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "fastart studio"
+    !define INFO_PRODUCTNAME "Uranus"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.2.0"

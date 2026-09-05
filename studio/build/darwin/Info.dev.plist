@@ -20,7 +20,7 @@
 			</dict>
 		</array>
 		<key>CFBundleExecutable</key>
-		<string>studio</string>
+		<string>Uranus</string>
 		<key>CFBundleGetInfoString</key>
 		<string>It is called .fart on purpose.</string>
 		<key>CFBundleIconFile</key>
@@ -30,7 +30,7 @@
 		<key>CFBundleIdentifier</key>
 		<string>com.fastart.studio</string>
 		<key>CFBundleName</key>
-		<string>fastart studio</string>
+		<string>Uranus</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

@@ -47,7 +47,7 @@ export function Browse() {
 		<div class="app">
 			<div class="topbar">
 				<ExplorerButton />
-				<span class="brand">fastart</span>
+				<span class="brand">Uranus</span>
 				<span class="title">{project.name.value}</span>
 				<span class="sub">
 					{native ? pretty(root, project.home.value) : "served"} · {files.length} file{files.length === 1 ? "" : "s"}

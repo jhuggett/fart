@@ -2,9 +2,9 @@
 #
 #   make setup      once: npm deps + the Wails CLI
 #   make dev        the studio with live reload
-#   make app        build studio/bin/studio.app (or bin/studio elsewhere)
+#   make app        build studio/bin/Uranus.app (or bin/Uranus elsewhere)
 #   make run        build it, then open it
-#   make install    build it into ~/Applications/fastart studio.app (pin that to the Dock; every install replaces it in place)
+#   make install    build it into ~/Applications/Uranus.app (pin that to the Dock; every install replaces it in place)
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make validate DIR=path/to/art   fart validate
@@ -33,29 +33,29 @@ app: node_modules
 # a running studio would just take the launch (single instance): quit it first
 run: app
 ifeq ($(UNAME),Darwin)
-	-pkill -x studio
-	open studio/bin/studio.app
+	-pkill -x Uranus
+	open studio/bin/Uranus.app
 else
-	./studio/bin/studio
+	./studio/bin/Uranus
 endif
 
 # the bundle lands at one stable path, updated in place, so a Dock pin
 # and the Finder's "open with" keep pointing at the newest build
-INSTALLED := $(HOME)/Applications/fastart studio.app
+INSTALLED := $(HOME)/Applications/Uranus.app
 install: app
 ifeq ($(UNAME),Darwin)
 	mkdir -p "$(HOME)/Applications"
-	-pkill -x studio
-	rsync -a --delete studio/bin/studio.app/ "$(INSTALLED)/"
+	-pkill -x Uranus
+	rsync -a --delete studio/bin/Uranus.app/ "$(INSTALLED)/"
 	touch "$(INSTALLED)"
 	@echo "installed: $(INSTALLED)  (drag it to the Dock once; make install again to update)"
 else
-	@echo "install is for macOS; the binary is studio/bin/studio"
+	@echo "install is for macOS; the binary is studio/bin/Uranus"
 endif
 
 serve: node_modules
 	cd studio && wails3 task build
-	./studio/bin/studio --serve $(DIR)
+	./studio/bin/Uranus --serve $(DIR)
 
 test: node_modules
 	npm run check -w @fastart/core

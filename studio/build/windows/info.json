@@ -6,9 +6,9 @@
 		"0000": {
 			"ProductVersion": "0.2.0",
 			"CompanyName": "fastart",
-			"FileDescription": "the Fast Art Format editor",
+			"FileDescription": "the fastart studio. It emits farts.",
 			"LegalCopyright": "(c) 2026 Joel Huggett",
-			"ProductName": "fastart studio",
+			"ProductName": "Uranus",
 			"Comments": "It is called .fart on purpose."
 		}
 	}

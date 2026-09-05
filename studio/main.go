@@ -1,6 +1,6 @@
 package main
 
-// fastart studio: the Fast Art Format editor as a desktop app. The shell
+// Uranus, the fastart studio: the Fast Art Format editor as a desktop app. The shell
 // is deliberately thin: a window, a folder dialog, file IO rooted at one
 // project, recents, the OS handing us documents, and a LAN server so a
 // tablet can draw into the same folder. Everything else is the frontend.
@@ -42,7 +42,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("fastart studio serving %s\n  %s\n", root, info.URL)
+		fmt.Printf("Uranus serving %s\n  %s\n", root, info.URL)
 		select {}
 	}
 
@@ -66,8 +66,8 @@ func main() {
 	}
 
 	app := application.New(application.Options{
-		Name:        "fastart studio",
-		Description: "the Fast Art Format editor",
+		Name:        "Uranus",
+		Description: "the fastart studio. It emits farts.",
 		Services: []application.Service{
 			application.NewService(proj),
 		},
@@ -95,7 +95,7 @@ func main() {
 	proj.queueArgs(os.Args[1:], cwd)
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "fastart studio",
+		Title:            "Uranus",
 		Width:            1360,
 		Height:           860,
 		MinWidth:         900,

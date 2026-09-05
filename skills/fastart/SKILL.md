@@ -128,7 +128,7 @@ validator, the loaders, the studio and a sample set.
    are yours to judge.
 3. Look at it: `cd {{FASTART}} && make serve DIR=/path/to/art` and open
    `http://localhost:4747` (headless Playwright works against it too), or
-   open the folder in fastart studio. Pick a clip and scrub. A tour
+   open the folder in Uranus (the fastart studio app). Pick a clip and scrub. A tour
    script can read `globalThis.fastart` (the store, `frameW()` world
    transforms) to assert poses.
 4. Use it in the game (below). Ignore `*.fart~` files: they are the

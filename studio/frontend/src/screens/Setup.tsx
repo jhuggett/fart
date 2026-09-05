@@ -12,7 +12,7 @@ export function Setup() {
 	return (
 		<div class="app">
 			<div class="topbar">
-				<span class="brand">fastart</span>
+				<span class="brand">Uranus</span>
 				<span class="title">Setup</span>
 				<div class="spacer" />
 				<ThemeButton />

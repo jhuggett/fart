@@ -44,11 +44,11 @@ jobs:
         run: |
           echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
           xcrun notarytool store-credentials fastart --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
-          wails3 tool sign -input bin/studio.app -certificate cert.p12 -password "$MACOS_CERT_PASSWORD" -notarize -keychain-profile fastart
+          wails3 tool sign -input bin/Uranus.app -certificate cert.p12 -password "$MACOS_CERT_PASSWORD" -notarize -keychain-profile fastart
           rm -f cert.p12
       - name: zip
         working-directory: studio
-        run: ditto -c -k --keepParent bin/studio.app "fastart-studio-${{ github.ref_name }}-macos-universal.zip"
+        run: ditto -c -k --keepParent bin/Uranus.app "uranus-${{ github.ref_name }}-macos-universal.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -73,7 +73,7 @@ jobs:
       - name: zip
         working-directory: studio
         shell: pwsh
-        run: Compress-Archive -Path bin/studio.exe -DestinationPath "fastart-studio-${{ github.ref_name }}-windows-amd64.zip"
+        run: Compress-Archive -Path bin/Uranus.exe -DestinationPath "uranus-${{ github.ref_name }}-windows-amd64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -98,7 +98,7 @@ jobs:
         working-directory: studio
       - name: tar
         working-directory: studio
-        run: tar -C bin -czf "fastart-studio-${{ github.ref_name }}-linux-amd64.tar.gz" studio
+        run: tar -C bin -czf "uranus-${{ github.ref_name }}-linux-amd64.tar.gz" studio
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -114,6 +114,6 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          name: fastart studio ${{ github.ref_name }}
+          name: Uranus ${{ github.ref_name }}
           generate_release_notes: true
           files: dist/*

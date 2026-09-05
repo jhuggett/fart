@@ -1,4 +1,6 @@
-# fastart studio
+# Uranus
+
+The fastart studio. It emits farts.
 
 The Fast Art Format editor as a desktop app: a thin Go shell (Wails 3)
 around a web frontend (Preact + a canvas). The same frontend also runs
@@ -15,8 +17,8 @@ folder.
       src/ui       panels; src/screens: welcome, browse, editor, docs
 
     wails3 dev                      # live reload
-    wails3 task package             # bin/studio.app (macOS) / bin/studio (elsewhere)
-    ./bin/studio --serve some/dir   # no window: the LAN server only
+    wails3 task package             # bin/Uranus.app (macOS) / bin/Uranus (elsewhere)
+    ./bin/Uranus --serve some/dir   # no window: the LAN server only
 
 Needs Go, Node (the repo root's `npm install` covers the frontend), and
 the Wails CLI: `go install github.com/wailsapp/wails/v3/cmd/wails3@latest`.

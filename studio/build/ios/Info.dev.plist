@@ -3,15 +3,15 @@
 <plist version="1.0">
 	<dict>
 		<key>CFBundleDisplayName</key>
-		<string>fastart studio (Dev)</string>
+		<string>Uranus (Dev)</string>
 		<key>CFBundleExecutable</key>
-		<string>studio</string>
+		<string>Uranus</string>
 		<key>CFBundleGetInfoString</key>
 		<string>It is called .fart on purpose.</string>
 		<key>CFBundleIdentifier</key>
 		<string>com.fastart.studio.dev</string>
 		<key>CFBundleName</key>
-		<string>fastart studio (Dev)</string>
+		<string>Uranus (Dev)</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

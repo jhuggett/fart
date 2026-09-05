@@ -10,7 +10,7 @@ follow the spec, never the other way round.
 - `loaders/odin`: the reference loader; `odin test loaders/odin/test`.
   A copy lives in the user's game (qftebl2/fastart): copy it over after
   changing the loader and build the game.
-- `studio/`: Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
+- `studio/`: Uranus, the app ("the fastart studio. It emits farts."): Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
   serve) + Preact frontend. `studio/DESIGN.md` governs the UI language;
   `frontend/src/state/actions.ts` is the one command registry. Every
   canvas view is a state (there is no separate draw mode); a clip is a

@@ -13,7 +13,7 @@ like.
     spec/            the format: FORMAT.md, fart.schema.json, the conformance corpus
     packages/core    @fastart/core: the format as a TypeScript library + `fart` CLI
     loaders/odin     the reference Odin loader (and its corpus test)
-    studio/          fastart studio: the editor as a desktop app (Wails 3 + web)
+    studio/          Uranus, the fastart studio: the editor as a desktop app (Wails 3 + web). It emits farts.
     examples/space   a sample project: ships, a station, rocks, palettes to swap
     skills/fastart   how an agent writes and loads .fart files (make skill installs it)
 
@@ -37,7 +37,7 @@ major, and readers refuse majors they don't know.
 
 ## The studio
 
-`make install` builds the app into `~/Applications/fastart studio.app` and
+`make install` builds the app into `~/Applications/Uranus.app` and
 replaces it there on every run, so pin that one to the Dock.
 
 `studio/` is the editor as a real application: a folder is a project,
@@ -49,7 +49,7 @@ shell (Wails 3); the same frontend runs from the shell's LAN server.
 
     make setup                    # once: npm deps + the Wails CLI
     make dev                      # live-reload development
-    make run                      # build studio/bin/studio.app and open it
+    make run                      # build studio/bin/Uranus.app and open it
     make serve DIR=path/to/art    # headless: just the LAN server
     make                          # the rest
 

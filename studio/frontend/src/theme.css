@@ -1,4 +1,4 @@
-/* fastart studio, themed. Every colour is a token on :root (Graphite, the
+/* Uranus, the fastart studio, themed. Every colour is a token on :root (Graphite, the
    default), and each [data-theme] overrides the tokens, nothing else. The
    canvas reads the same tokens (state/theme.ts), so the grid, selection
    and handles follow the panels. */

@@ -6,9 +6,9 @@ version: '3'
 # This information is used to generate the build assets.
 info:
   companyName: "fastart" # The name of the company
-  productName: "fastart studio" # The name of the application
+  productName: "Uranus" # The name of the application: the fastart studio. It emits farts.
   productIdentifier: "com.fastart.studio" # The unique product identifier
-  description: "the Fast Art Format editor" # The application description
+  description: "the fastart studio. It emits farts." # The application description
   copyright: "(c) 2026 Joel Huggett" # Copyright text
   comments: "It is called .fart on purpose." # Comments
   version: "0.2.0" # The application version

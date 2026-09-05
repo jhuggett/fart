@@ -1,4 +1,6 @@
-# fastart studio
+# Uranus
+
+The fastart studio. It emits farts.
 
 The editor for Fast Art Format files. It edits `.fart` files; that is all
 it does. It knows nothing about any game or engine, and it is called
