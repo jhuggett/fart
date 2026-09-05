@@ -4,7 +4,7 @@
 #   make dev        the studio with live reload
 #   make app        build studio/bin/studio.app (or bin/studio elsewhere)
 #   make run        build it, then open it
-#   make serve DIR=path/to/art      the LAN server only, no window
+#   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make validate DIR=path/to/art   fart validate
 

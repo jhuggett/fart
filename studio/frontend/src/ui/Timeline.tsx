@@ -74,6 +74,7 @@ export function Timeline() {
 		el.setPointerCapture(e.pointerId);
 		ed.playing.value = false;
 		ed.curKey.value = i;
+		ed.clipTime.value = clip.keys[i].t; // picking a key is also going there
 		let idx = i;
 		const move = (ev: PointerEvent) => {
 			const nt = Math.round(toT(ev.clientX) * 100) / 100;

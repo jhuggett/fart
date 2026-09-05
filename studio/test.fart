@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "test",
+  "parts": [
+    {
+      "name": "body",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": []
+    }
+  ],
+  "palette": [
+    {
+      "name": "ink",
+      "rgb": [
+        200,
+        195,
+        185,
+        255
+      ]
+    },
+    {
+      "name": "blue",
+      "rgb": [
+        180,
+        180,
+        180,
+        255
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "default",
+      "parts": [
+        {
+          "part": "body",
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

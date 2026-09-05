@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "name": "explosion",
+  "palette_refs": [
+    "../palettes/hull.fart"
+  ],
+  "parts": [
+    {
+      "name": "blast",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "flame",
+          "at": [
+            0,
+            0
+          ],
+          "r": 5.5
+        }
+      ]
+    },
+    {
+      "name": "shards",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            5.08,
+            2.1
+          ],
+          "b": [
+            8.31,
+            3.44
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            2.1,
+            5.08
+          ],
+          "b": [
+            3.44,
+            8.31
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            -2.1,
+            5.08
+          ],
+          "b": [
+            -3.44,
+            8.31
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            -5.08,
+            2.1
+          ],
+          "b": [
+            -8.31,
+            3.44
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            -5.08,
+            -2.1
+          ],
+          "b": [
+            -8.31,
+            -3.44
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            -2.1,
+            -5.08
+          ],
+          "b": [
+            -3.44,
+            -8.31
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            2.1,
+            -5.08
+          ],
+          "b": [
+            3.44,
+            -8.31
+          ],
+          "w": 1.1
+        },
+        {
+          "kind": "line",
+          "color": "glow",
+          "a": [
+            5.08,
+            -2.1
+          ],
+          "b": [
+            8.31,
+            -3.44
+          ],
+          "w": 1.1
+        }
+      ]
+    },
+    {
+      "name": "core",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "flame_core",
+          "at": [
+            0,
+            0
+          ],
+          "r": 3
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "mid",
+      "parts": [
+        {
+          "part": "blast",
+          "scale": 1.1
+        },
+        {
+          "part": "shards"
+        },
+        {
+          "part": "core"
+        }
+      ]
+    },
+    {
+      "name": "start",
+      "parts": [
+        {
+          "part": "blast",
+          "scale": 0.15
+        },
+        {
+          "part": "shards",
+          "scale": 0.1
+        },
+        {
+          "part": "core",
+          "scale": 0.2
+        }
+      ]
+    },
+    {
+      "name": "end",
+      "parts": [
+        {
+          "part": "blast",
+          "scale": 2.2
+        },
+        {
+          "part": "shards",
+          "scale": 2.6
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "boom",
+      "loop": false,
+      "keys": [
+        {
+          "t": 0,
+          "state": "start"
+        },
+        {
+          "t": 0.16,
+          "state": "mid",
+          "ease": "out"
+        },
+        {
+          "t": 0.55,
+          "state": "end",
+          "ease": "in"
+        }
+      ]
+    }
+  ]
+}

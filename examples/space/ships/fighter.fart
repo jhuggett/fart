@@ -1,0 +1,904 @@
+{
+  "version": 1,
+  "name": "fighter",
+  "palette_refs": [
+    "../palettes/hull.fart"
+  ],
+  "parts": [
+    {
+      "name": "flame_l",
+      "pivot": [
+        -1.7,
+        9
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "flame",
+          "points": [
+            [
+              -2.5,
+              9
+            ],
+            [
+              -0.9,
+              9
+            ],
+            [
+              -1.7,
+              13.5
+            ]
+          ],
+          "tris": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "flame_core",
+          "points": [
+            [
+              -2.1,
+              9
+            ],
+            [
+              -1.3,
+              9
+            ],
+            [
+              -1.7,
+              11.5
+            ]
+          ],
+          "tris": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "parent": "engine_l"
+    },
+    {
+      "name": "flame_r",
+      "pivot": [
+        1.7,
+        9
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "flame",
+          "points": [
+            [
+              1.7,
+              13.5
+            ],
+            [
+              0.9,
+              9
+            ],
+            [
+              2.5,
+              9
+            ]
+          ],
+          "tris": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "flame_core",
+          "points": [
+            [
+              1.7,
+              11.5
+            ],
+            [
+              1.3,
+              9
+            ],
+            [
+              2.1,
+              9
+            ]
+          ],
+          "tris": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "parent": "engine_r"
+    },
+    {
+      "name": "hull",
+      "pivot": [
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              0,
+              -12
+            ],
+            [
+              3.4,
+              -4
+            ],
+            [
+              3.4,
+              6
+            ],
+            [
+              0,
+              8.5
+            ],
+            [
+              -3.4,
+              6
+            ],
+            [
+              -3.4,
+              -4
+            ]
+          ],
+          "tris": [
+            5,
+            0,
+            1,
+            5,
+            1,
+            2,
+            5,
+            2,
+            3,
+            3,
+            4,
+            5
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull",
+          "points": [
+            [
+              0,
+              -11
+            ],
+            [
+              2.8,
+              -4
+            ],
+            [
+              2.8,
+              5.6
+            ],
+            [
+              0,
+              7.6
+            ],
+            [
+              -2.8,
+              5.6
+            ],
+            [
+              -2.8,
+              -4
+            ]
+          ],
+          "tris": [
+            5,
+            0,
+            1,
+            5,
+            1,
+            2,
+            5,
+            2,
+            3,
+            3,
+            4,
+            5
+          ]
+        },
+        {
+          "kind": "line",
+          "color": "trim",
+          "a": [
+            0,
+            -6
+          ],
+          "b": [
+            0,
+            4
+          ],
+          "w": 0.8
+        }
+      ],
+      "anchors": [
+        {
+          "name": "nose",
+          "at": [
+            0,
+            -12
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wing_l",
+      "pivot": [
+        -3,
+        1
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              -3,
+              -3
+            ],
+            [
+              -10,
+              3.5
+            ],
+            [
+              -10,
+              7
+            ],
+            [
+              -3,
+              6.5
+            ]
+          ],
+          "tris": [
+            0,
+            3,
+            2,
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull",
+          "points": [
+            [
+              -3.2,
+              -1.5
+            ],
+            [
+              -9,
+              4
+            ],
+            [
+              -9,
+              6.2
+            ],
+            [
+              -3.2,
+              5.5
+            ]
+          ],
+          "tris": [
+            0,
+            3,
+            2,
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "kind": "line",
+          "color": "trim",
+          "a": [
+            -9.5,
+            4
+          ],
+          "b": [
+            -9.5,
+            6.5
+          ],
+          "w": 0.7
+        },
+        {
+          "kind": "circle",
+          "color": "warn",
+          "at": [
+            -9.2,
+            5.3
+          ],
+          "r": 0.55
+        }
+      ],
+      "parent": "hull",
+      "anchors": [
+        {
+          "name": "gun_l",
+          "at": [
+            -9.5,
+            3.5
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wing_r",
+      "pivot": [
+        3,
+        1
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              3,
+              6.5
+            ],
+            [
+              10,
+              7
+            ],
+            [
+              10,
+              3.5
+            ],
+            [
+              3,
+              -3
+            ]
+          ],
+          "tris": [
+            0,
+            3,
+            2,
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull",
+          "points": [
+            [
+              3.2,
+              5.5
+            ],
+            [
+              9,
+              6.2
+            ],
+            [
+              9,
+              4
+            ],
+            [
+              3.2,
+              -1.5
+            ]
+          ],
+          "tris": [
+            0,
+            3,
+            2,
+            2,
+            1,
+            0
+          ]
+        },
+        {
+          "kind": "line",
+          "color": "trim",
+          "a": [
+            9.5,
+            4
+          ],
+          "b": [
+            9.5,
+            6.5
+          ],
+          "w": 0.7
+        },
+        {
+          "kind": "circle",
+          "color": "ore",
+          "at": [
+            9.2,
+            5.3
+          ],
+          "r": 0.55
+        }
+      ],
+      "parent": "hull",
+      "anchors": [
+        {
+          "name": "gun_r",
+          "at": [
+            9.5,
+            3.5
+          ]
+        }
+      ]
+    },
+    {
+      "name": "engine_l",
+      "pivot": [
+        -1.7,
+        8.5
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "metal",
+          "points": [
+            [
+              -2.7,
+              4.5
+            ],
+            [
+              -0.7,
+              4.5
+            ],
+            [
+              -0.7,
+              8.5
+            ],
+            [
+              -2.7,
+              8.5
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              -2.4,
+              8.5
+            ],
+            [
+              -1,
+              8.5
+            ],
+            [
+              -1,
+              9
+            ],
+            [
+              -2.4,
+              9
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "parent": "hull",
+      "anchors": [
+        {
+          "name": "exhaust_l",
+          "at": [
+            -1.7,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "name": "engine_r",
+      "pivot": [
+        1.7,
+        8.5
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "metal",
+          "points": [
+            [
+              2.7,
+              8.5
+            ],
+            [
+              0.7,
+              8.5
+            ],
+            [
+              0.7,
+              4.5
+            ],
+            [
+              2.7,
+              4.5
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        },
+        {
+          "kind": "poly",
+          "color": "hull_dark",
+          "points": [
+            [
+              2.4,
+              9
+            ],
+            [
+              1,
+              9
+            ],
+            [
+              1,
+              8.5
+            ],
+            [
+              2.4,
+              8.5
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "parent": "hull",
+      "anchors": [
+        {
+          "name": "exhaust_r",
+          "at": [
+            1.7,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cockpit",
+      "pivot": [
+        0,
+        -3
+      ],
+      "shapes": [
+        {
+          "kind": "poly",
+          "color": "glass",
+          "points": [
+            [
+              0,
+              -7.5
+            ],
+            [
+              1.5,
+              -3
+            ],
+            [
+              0,
+              -0.5
+            ],
+            [
+              -1.5,
+              -3
+            ]
+          ],
+          "tris": [
+            3,
+            0,
+            1,
+            1,
+            2,
+            3
+          ]
+        }
+      ],
+      "parent": "hull"
+    }
+  ],
+  "states": [
+    {
+      "name": "idle",
+      "parts": [
+        {
+          "part": "hull"
+        },
+        {
+          "part": "wing_l"
+        },
+        {
+          "part": "wing_r"
+        },
+        {
+          "part": "engine_l"
+        },
+        {
+          "part": "engine_r"
+        },
+        {
+          "part": "cockpit"
+        }
+      ]
+    },
+    {
+      "name": "thrust",
+      "parts": [
+        {
+          "part": "flame_l",
+          "scale": 1
+        },
+        {
+          "part": "flame_r",
+          "scale": 1
+        },
+        {
+          "part": "hull"
+        },
+        {
+          "part": "wing_l"
+        },
+        {
+          "part": "wing_r"
+        },
+        {
+          "part": "engine_l"
+        },
+        {
+          "part": "engine_r"
+        },
+        {
+          "part": "cockpit"
+        }
+      ]
+    },
+    {
+      "name": "burn",
+      "parts": [
+        {
+          "part": "flame_l",
+          "scale": 1.6
+        },
+        {
+          "part": "flame_r",
+          "scale": 1.6
+        },
+        {
+          "part": "hull"
+        },
+        {
+          "part": "wing_l"
+        },
+        {
+          "part": "wing_r"
+        },
+        {
+          "part": "engine_l"
+        },
+        {
+          "part": "engine_r"
+        },
+        {
+          "part": "cockpit"
+        }
+      ]
+    },
+    {
+      "name": "bank_l",
+      "parts": [
+        {
+          "part": "hull",
+          "rotate": -0.1
+        },
+        {
+          "part": "wing_l",
+          "scale": 0.75
+        },
+        {
+          "part": "wing_r",
+          "scale": 1.08
+        },
+        {
+          "part": "engine_l"
+        },
+        {
+          "part": "engine_r"
+        },
+        {
+          "part": "cockpit"
+        }
+      ]
+    },
+    {
+      "name": "bank_r",
+      "parts": [
+        {
+          "part": "hull",
+          "rotate": 0.1
+        },
+        {
+          "part": "wing_l",
+          "scale": 1.08
+        },
+        {
+          "part": "wing_r",
+          "scale": 0.75
+        },
+        {
+          "part": "engine_l"
+        },
+        {
+          "part": "engine_r"
+        },
+        {
+          "part": "cockpit"
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "thrust",
+      "loop": true,
+      "keys": [
+        {
+          "t": 0,
+          "state": "thrust"
+        },
+        {
+          "t": 0.1,
+          "state": "burn",
+          "ease": "in-out"
+        },
+        {
+          "t": 0.2,
+          "state": "thrust",
+          "ease": "in-out"
+        }
+      ]
+    },
+    {
+      "name": "bank_left",
+      "loop": false,
+      "keys": [
+        {
+          "t": 0,
+          "state": "idle"
+        },
+        {
+          "t": 0.25,
+          "state": "bank_l",
+          "ease": "out"
+        }
+      ]
+    },
+    {
+      "name": "bank_right",
+      "loop": false,
+      "keys": [
+        {
+          "t": 0,
+          "state": "idle"
+        },
+        {
+          "t": 0.25,
+          "state": "bank_r",
+          "ease": "out"
+        }
+      ]
+    }
+  ],
+  "collision": [
+    {
+      "kind": "poly",
+      "points": [
+        [
+          0,
+          -12
+        ],
+        [
+          3.4,
+          -4
+        ],
+        [
+          10,
+          3.5
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          3.4,
+          7
+        ],
+        [
+          0,
+          8.5
+        ],
+        [
+          -3.4,
+          7
+        ],
+        [
+          -10,
+          7
+        ],
+        [
+          -10,
+          3.5
+        ],
+        [
+          -3.4,
+          -4
+        ]
+      ],
+      "tris": [
+        9,
+        0,
+        1,
+        9,
+        1,
+        2,
+        9,
+        2,
+        3,
+        9,
+        3,
+        4,
+        9,
+        4,
+        5,
+        9,
+        5,
+        6,
+        9,
+        6,
+        7,
+        7,
+        8,
+        9
+      ]
+    }
+  ]
+}

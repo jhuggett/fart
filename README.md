@@ -14,6 +14,7 @@ like.
     packages/core    @fastart/core: the format as a TypeScript library + `fart` CLI
     loaders/odin     the reference Odin loader (and its corpus test)
     studio/          fastart studio: the editor as a desktop app (Wails 3 + web)
+    examples/space   a sample project: ships, a station, rocks, palettes to swap
 
 ## The format
 
