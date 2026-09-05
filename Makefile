@@ -4,6 +4,7 @@
 #   make dev        the studio with live reload
 #   make app        build studio/bin/studio.app (or bin/studio elsewhere)
 #   make run        build it, then open it
+#   make install    build it into ~/Applications/fastart studio.app (pin that to the Dock; every install replaces it in place)
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make validate DIR=path/to/art   fart validate
@@ -14,7 +15,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate skill clean
+.PHONY: help setup dev app run serve test validate skill install clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -36,6 +37,20 @@ ifeq ($(UNAME),Darwin)
 	open studio/bin/studio.app
 else
 	./studio/bin/studio
+endif
+
+# the bundle lands at one stable path, updated in place, so a Dock pin
+# and the Finder's "open with" keep pointing at the newest build
+INSTALLED := $(HOME)/Applications/fastart studio.app
+install: app
+ifeq ($(UNAME),Darwin)
+	mkdir -p "$(HOME)/Applications"
+	-pkill -x studio
+	rsync -a --delete studio/bin/studio.app/ "$(INSTALLED)/"
+	touch "$(INSTALLED)"
+	@echo "installed: $(INSTALLED)  (drag it to the Dock once; make install again to update)"
+else
+	@echo "install is for macOS; the binary is studio/bin/studio"
 endif
 
 serve: node_modules

@@ -37,6 +37,9 @@ major, and readers refuse majors they don't know.
 
 ## The studio
 
+`make install` builds the app into `~/Applications/fastart studio.app` and
+replaces it there on every run, so pin that one to the Dock.
+
 `studio/` is the editor as a real application: a folder is a project,
 recent projects on a welcome screen, drag-and-drop, double-click a
 `.fart` in the Finder, docs inside the app, and a **Serve** button that
