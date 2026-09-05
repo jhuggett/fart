@@ -263,6 +263,14 @@ back unless you Save." The checkpoint also lives beside the file as
 `<name>.fart~`, rewritten at every open and save, so even a crash can't
 lose the last saved state.
 
+The studio watches the open file. When another tool writes it (a game's
+build step, Claude in a terminal) and you have nothing pending, the
+studio reloads it and says so; the reload is an undo step. When you do
+have an edit pending, it asks before writing: Reload takes the file's
+version and keeps your edit one ⌘Z away, Cancel keeps yours. It never
+writes over a change it has not shown you. `meta` and any field the
+studio does not know ride along untouched, load to save.
+
 ## Serve: the tablet workflow
 
 **Serve** on the shelf puts this same editor on your network (port 4747)
