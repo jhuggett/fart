@@ -57,6 +57,7 @@ func buildMenu(app *application.App) *application.Menu {
 	menu.AddRole(application.WindowMenu)
 
 	help := menu.AddSubmenu("Help")
+	help.Add("Ask Claude").SetAccelerator("CmdOrCtrl+J").OnClick(send("chat.toggle"))
 	help.Add("Uranus Docs").OnClick(send("app.docs"))
 	help.Add("The Format").OnClick(send("app.docsFormat"))
 

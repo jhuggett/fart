@@ -28,10 +28,21 @@ func init() {
 	// the frontend listens for these: a path that arrived, a menu item chosen
 	application.RegisterEvent[string]("open-files")
 	application.RegisterEvent[string]("menu")
+	application.RegisterEvent[ChatEvent]("chat")
+	application.RegisterEvent[ToolCall]("tool")
 }
 
 func main() {
 	server := NewServer(assets)
+	// Claude, inside: the tool relay and the chat live in both modes
+	hub := newBus()
+	mcp, err := startMCP(hub)
+	if err != nil {
+		log.Fatal(err)
+	}
+	chat := newChat(hub, mcp)
+	server.chat = chat
+	server.bus = hub
 
 	if len(os.Args) >= 3 && os.Args[1] == "--serve" {
 		root, err := filepath.Abs(os.Args[2])
@@ -46,7 +57,7 @@ func main() {
 		select {}
 	}
 
-	proj := &ProjectService{server: server}
+	proj := &ProjectService{server: server, chat: chat}
 	cwd, _ := os.Getwd()
 
 	// a second launch (a double-click, `studio other.fart`) hands its
@@ -81,6 +92,7 @@ func main() {
 		},
 	})
 	proj.app = app
+	hub.app = app
 
 	app.Event.OnApplicationEvent(events.Common.ApplicationOpenedWithFile, func(ev *application.ApplicationEvent) {
 		ctx := ev.Context()

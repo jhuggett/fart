@@ -35,6 +35,8 @@ type Server struct {
 	mu     sync.Mutex
 	srv    *http.Server
 	info   ServeInfo
+	chat   *Chat
+	bus    *bus
 }
 
 func NewServer(assets embed.FS) *Server {
@@ -238,6 +240,76 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.Error(w, "method", 405)
+		}
+	}))
+
+	// the chat, for a page on this machine: Claude Code runs here, so only
+	// here may ask it; events reach the page as server-sent events
+	mux.HandleFunc("/api/chat/status", local(func(w http.ResponseWriter, r *http.Request) {
+		if s.chat == nil {
+			writeJSON(w, ChatInfo{})
+			return
+		}
+		writeJSON(w, s.chat.status())
+	}))
+	mux.HandleFunc("/api/chat/ask", local(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || s.chat == nil {
+			http.Error(w, "method", 405)
+			return
+		}
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err := s.chat.ask(root, string(body)); err != nil {
+			http.Error(w, err.Error(), 409)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	mux.HandleFunc("/api/chat/stop", local(func(w http.ResponseWriter, r *http.Request) {
+		if s.chat != nil {
+			s.chat.stop()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/chat/reset", local(func(w http.ResponseWriter, r *http.Request) {
+		if s.chat != nil {
+			s.chat.reset(root)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/chat/tool", local(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || s.chat == nil {
+			http.Error(w, "method", 405)
+			return
+		}
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<20))
+		s.chat.mcp.relay.reply(r.URL.Query().Get("id"), string(body))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/chat/events", local(func(w http.ResponseWriter, r *http.Request) {
+		if s.bus == nil {
+			http.Error(w, "no bus", 500)
+			return
+		}
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "no streaming", 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Connection", "keep-alive")
+		ch, done := s.bus.subscribe()
+		defer done()
+		_, _ = fmt.Fprint(w, ": hello\n\n")
+		fl.Flush()
+		for {
+			select {
+			case msg := <-ch:
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", msg)
+				fl.Flush()
+			case <-r.Context().Done():
+				return
+			}
 		}
 	}))
 

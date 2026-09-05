@@ -180,6 +180,24 @@ like another show up.
 `blendPoses`, `layerPoses`, `attachXf`, `shapesOf`, `anchorsOf`,
 `clipDuration`, `solveChain`, `bakeTris`, `stringifyDoc`.
 
+## Inside Uranus
+
+When the `uranus` tools are present (mcp__uranus__*), you are in the
+studio's Ask panel and the user is looking at the canvas. Work through
+the editor, not the file system:
+
+1. `get_document`: the open file, what is selected, which state or clip
+   is on the canvas, the shared slot names, the project's files.
+2. Change the document in memory, then `apply_document` with the whole
+   document and a one-line `note`; it is validated and applied as one
+   undo step. A refusal returns the errors: fix and apply again.
+3. `render` a state or a clip frame to see what you did; `validate` a
+   document you are unsure of before applying.
+4. `open_file` to move to another file of the project.
+
+Reply in a sentence or two: what changed. The user sees each tool use
+and the note.
+
 ## Mistakes that bite
 
 - `offset` is where the pivot *lands*, not a nudge. To draw as authored,

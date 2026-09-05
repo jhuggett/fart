@@ -8,6 +8,9 @@ export {
 
 export type {
     Caps,
+    ChatEvent,
+    ChatInfo,
     ServeInfo,
-    Text
+    Text,
+    ToolCall
 } from "./models.js";

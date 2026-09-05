@@ -5,11 +5,17 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as main$0 from "../../../../../studio/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "chat": main$0.ChatEvent;
             "menu": string;
             "open-files": string;
+            "tool": main$0.ToolCall;
         }
     }
 }

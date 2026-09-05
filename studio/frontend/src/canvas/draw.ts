@@ -111,6 +111,58 @@ export function drawDoc(ctx: CanvasRenderingContext2D, doc: Doc, tokens: readonl
 }
 
 /**
+ * A PNG of the document (a state, a clip frame, or all parts at rest),
+ * fitted, on the theme's ground: what Claude sees when it asks to look.
+ * Returns base64 without the data-URL prefix.
+ */
+export function renderPNG(doc: Doc, tokens: readonly Token[], pose: string | readonly StatePart[] | undefined, size = 512): string {
+	// bounds of what will be drawn, through each part's transform
+	let lo: Vec2 = [Infinity, Infinity];
+	let hi: Vec2 = [-Infinity, -Infinity];
+	const take = (p: Vec2) => {
+		lo = [Math.min(lo[0], p[0]), Math.min(lo[1], p[1])];
+		hi = [Math.max(hi[0], p[0]), Math.max(hi[1], p[1])];
+	};
+	for (const { part, xf, scale } of drawList(doc, pose)) {
+		for (const sh of shapesOf(doc, part)) {
+			if (sh.kind === "circle") {
+				const c = xfApply(xf, sh.at);
+				take([c[0] - sh.r * scale, c[1] - sh.r * scale]);
+				take([c[0] + sh.r * scale, c[1] + sh.r * scale]);
+			} else if (sh.kind === "line") {
+				for (const q of [sh.a, sh.b]) {
+					const c = xfApply(xf, q);
+					take([c[0] - sh.w * scale, c[1] - sh.w * scale]);
+					take([c[0] + sh.w * scale, c[1] + sh.w * scale]);
+				}
+			} else for (const q of sh.points) take(xfApply(xf, q));
+		}
+	}
+	if (!Number.isFinite(lo[0])) {
+		lo = [-10, -10];
+		hi = [10, 10];
+	}
+	const w = Math.max(hi[0] - lo[0], 1);
+	const h = Math.max(hi[1] - lo[1], 1);
+	const pad = 0.12;
+	const zoom = (size * (1 - 2 * pad)) / Math.max(w, h);
+	const W = Math.round(w * zoom + size * 2 * pad);
+	const H = Math.round(h * zoom + size * 2 * pad);
+	const canvas = document.createElement("canvas");
+	canvas.width = W;
+	canvas.height = H;
+	const ctx = canvas.getContext("2d")!;
+	ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--canvas").trim() || "#1a1a1c";
+	ctx.fillRect(0, 0, W, H);
+	ctx.save();
+	ctx.translate(W / 2 - ((lo[0] + hi[0]) / 2) * zoom, H / 2 - ((lo[1] + hi[1]) / 2) * zoom);
+	ctx.scale(zoom, zoom);
+	drawDoc(ctx, doc, tokens, { pose });
+	ctx.restore();
+	return canvas.toDataURL("image/png").split(",")[1];
+}
+
+/**
  * A thumbnail: the art fitted into the canvas, wearing its first state
  * (all-parts overlays lit-and-out, item-and-prop at once). A rig with no
  * art yet lists the parts it wants; a palette shows its swatches.

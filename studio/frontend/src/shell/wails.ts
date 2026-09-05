@@ -3,7 +3,7 @@
 
 import * as Project from "../../bindings/studio/projectservice.js";
 import { Events } from "@wailsio/runtime";
-import type { Shell } from "./shell.ts";
+import type { Shell, ChatEvent, ToolCall } from "./shell.ts";
 
 export class WailsShell implements Shell {
 	readonly kind = "wails" as const;
@@ -65,6 +65,29 @@ export class WailsShell implements Shell {
 	}
 	async findNamed(base: string, name: string) {
 		return (await Project.FindNamed(base, name)) ?? [];
+	}
+	readonly chat = true;
+	async chatStatus() {
+		const s = await Project.ChatStatus();
+		return { found: !!s.found, path: s.path ?? "", busy: !!s.busy };
+	}
+	chatAsk(root: string, prompt: string) {
+		return Project.ChatAsk(root, prompt);
+	}
+	chatStop() {
+		return Project.ChatStop();
+	}
+	chatReset(root: string) {
+		return Project.ChatReset(root);
+	}
+	toolReply(id: string, result: string) {
+		return Project.ToolReply(id, result);
+	}
+	onChat(cb: (e: ChatEvent) => void) {
+		Events.On("chat", (ev) => cb(ev.data as unknown as ChatEvent));
+	}
+	onTool(cb: (t: ToolCall) => void) {
+		Events.On("tool", (ev) => cb(ev.data as unknown as ToolCall));
 	}
 	async recents() {
 		return (await Project.Recents()) ?? [];

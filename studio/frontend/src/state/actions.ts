@@ -6,6 +6,7 @@ import { ed, save, undo, redo, copySel, pasteClip, cutSel, dupSel, deleteSel, se
 import { project, goBrowse, goWelcome, goDocs, pickFolder, newFile, toggleServe } from "./project.ts";
 import { view, fitBounds, zoomBy } from "../canvas/view.ts";
 import { escape, polyEnter, selBounds, nudgeWorld } from "../canvas/interact.ts";
+import { toggleChat } from "./chat.ts";
 import { toggleExplorer } from "./explorer.ts";
 import { openPalette, renaming } from "./menu.ts";
 import { ask } from "./prompt.ts";
@@ -38,6 +39,7 @@ export function initCommands() {
 		{ id: "tool.line", title: "Line tool", group: "Tools", when: setup, run: () => tool("line") },
 		{ id: "tool.poly", title: "Poly tool", group: "Tools", when: setup, run: () => tool("poly") },
 
+		{ id: "chat.toggle", title: "Ask Claude", group: "File", when: () => shell.chat && inProject(), run: toggleChat },
 		{ id: "file.save", title: "Save", group: "File", when: inEditor, run: () => void save() },
 		{ id: "file.new", title: "New file…", group: "File", when: inProject, run: () => void ask("Name the new file").then((n) => { if (n) void newFile(n); }) },
 		{ id: "file.browse", title: "Browse the shelf", group: "File", when: inEditor, run: () => void goBrowse() },

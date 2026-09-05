@@ -143,6 +143,13 @@ export async function refreshSetup() {
 		}
 	}
 
+	// Claude Code: the Ask panel runs it
+	if (shell.chat) {
+		const info = await shell.chatStatus();
+		if (info.found) checks.push({ id: "claude", title: "Claude Code", status: "ok", detail: `found at ${info.path}; ⌘J asks it to change the open file` });
+		else checks.push({ id: "claude", title: "Claude Code", status: "warn", detail: "not found: install Claude Code and sign in once in a terminal, then the Ask panel works" });
+	}
+
 	// the sample project, when the checkout is at hand
 	if (checkout) {
 		checks.push({ id: "sample", title: "Sample project", status: "ok", detail: `${checkout}/examples/space: ships, a station, rocks, palettes to swap`, action: "Open", run: () => openProject(`${checkout}/examples/space`) });

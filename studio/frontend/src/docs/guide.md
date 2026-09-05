@@ -105,6 +105,22 @@ palette file over a document (`apply_palette` in the Odin loader,
 `applyPalette` in core) and the red slime and the blue one are one
 file.
 
+## Ask Claude
+
+**⌘J** opens a panel where you tell Claude what to change: "make the
+left arm longer", "add a blink clip that shuts the eyes for a frame",
+"give this a burnt palette variant". It runs your own Claude Code (the
+one installed on this machine, with the fastart skill), and works
+*through the editor*: it reads the open file and what you have selected,
+changes the document as one undo step, so ⌘Z takes it back, looks at a
+state or a clip frame to check its work, and validates before applying.
+The transcript shows what it did (read, looked, changed, with a note)
+and what it said. A conversation continues per project; the + starts a
+fresh one. Each turn takes a few seconds and costs what a Claude Code
+turn costs; the panel keeps a running total. On the shelf, with no file
+open, it can open files and talk about the project. Setup says whether
+Claude Code was found.
+
 ## Setup: agents and loaders
 
 **Setup** (on the welcome screen, and in the shelf's top bar) checks

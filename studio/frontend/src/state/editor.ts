@@ -440,6 +440,55 @@ export async function reloadShared() {
 	});
 }
 
+/**
+ * A whole document arriving from outside (Claude, through the chat): one
+ * undo step, the canvas updates, the shared palettes are read again.
+ * Returns a line on what changed, by name.
+ */
+export function applyExternalDoc(next: Doc): string {
+	const before = ed.doc.value;
+	const d = JSON.parse(JSON.stringify(next)) as Doc;
+	delete d.resolved;
+	ensureDefaults(d);
+	pushUndo();
+	mergeKey = null;
+	batch(() => {
+		ed.doc.value = d;
+		clampCursors();
+		ed.sel.value = [];
+		ed.hover.value = null;
+		ed.polyPts.value = [];
+		ed.pending.value = "none";
+	});
+	touch();
+	void reloadShared();
+	return describeChange(before, d);
+}
+
+function describeChange(a: Doc, b: Doc): string {
+	const bits: string[] = [];
+	const diff = (what: string, xs: { name: string }[] | undefined, ys: { name: string }[] | undefined) => {
+		const A = new Map((xs ?? []).map((x) => [x.name, JSON.stringify(x)]));
+		const B = new Map((ys ?? []).map((y) => [y.name, JSON.stringify(y)]));
+		const added = [...B.keys()].filter((k) => !A.has(k));
+		const gone = [...A.keys()].filter((k) => !B.has(k));
+		const changed = [...B.keys()].filter((k) => A.has(k) && A.get(k) !== B.get(k));
+		const parts: string[] = [];
+		if (added.length) parts.push(`+${added.join(", ")}`);
+		if (gone.length) parts.push(`−${gone.join(", ")}`);
+		if (changed.length) parts.push(`~${changed.join(", ")}`);
+		if (parts.length) bits.push(`${what}: ${parts.join(" ")}`);
+	};
+	diff("parts", a.parts, b.parts);
+	diff("states", a.states, b.states);
+	diff("clips", a.clips, b.clips);
+	diff("chains", a.constraints, b.constraints);
+	diff("colours", a.palette, b.palette);
+	if (JSON.stringify(a.collision ?? []) !== JSON.stringify(b.collision ?? [])) bits.push("collision");
+	if (JSON.stringify(a.palette_refs ?? []) !== JSON.stringify(b.palette_refs ?? [])) bits.push("shared palettes");
+	return bits.length ? bits.join(" · ") : "nothing changed";
+}
+
 /** Draw from a palette file: a ref relative to this file, then a fresh look at the shared tokens. */
 export function linkPalette(target: string) {
 	const rel = ed.path.value;

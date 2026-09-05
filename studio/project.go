@@ -25,6 +25,7 @@ type ProjectService struct {
 	app    *application.App
 	win    application.Window
 	server *Server
+	chat   *Chat
 	mu     sync.Mutex
 	queue  []string // paths the OS asked us to open, drained by the frontend
 }

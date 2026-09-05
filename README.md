@@ -38,7 +38,9 @@ major, and readers refuse majors they don't know.
 ## The studio
 
 `make install` builds the app into `~/Applications/Uranus.app` and
-replaces it there on every run, so pin that one to the Dock.
+replaces it there on every run, so pin that one to the Dock. ⌘J in the
+app asks your own Claude Code to change the open file: it reads, edits
+(one undo step), renders and validates through the editor itself.
 
 `studio/` is the editor as a real application: a folder is a project,
 recent projects on a welcome screen, drag-and-drop, double-click a

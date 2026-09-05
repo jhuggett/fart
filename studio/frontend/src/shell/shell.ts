@@ -17,6 +17,27 @@ export interface Caps {
 	reveal: string;
 }
 
+/** One thing Claude did or said, relayed as it happens. */
+export interface ChatEvent {
+	kind: "init" | "text" | "tool" | "result" | "error" | "done" | "log";
+	text?: string;
+	name?: string;
+	input?: string;
+	session?: string;
+	cost?: number;
+}
+/** A tool call the editor must answer (see state/tools.ts). */
+export interface ToolCall {
+	id: string;
+	name: string;
+	args: Record<string, unknown>;
+}
+export interface ChatInfo {
+	found: boolean;
+	path: string;
+	busy: boolean;
+}
+
 export interface Shell {
 	readonly kind: "wails" | "http";
 	pickFolder(): Promise<string | null>;
@@ -43,6 +64,16 @@ export interface Shell {
 	writeAt(base: string, rel: string, text: string): Promise<void>;
 	/** files named so below base ("*.odin" for a suffix) */
 	findNamed(base: string, name: string): Promise<string[]>;
+	/** Claude, inside: only on the machine that runs Claude Code */
+	readonly chat: boolean;
+	chatStatus(): Promise<ChatInfo>;
+	chatAsk(root: string, prompt: string): Promise<void>;
+	chatStop(): Promise<void>;
+	chatReset(root: string): Promise<void>;
+	/** the editor's answer to a relayed tool call: an MCP result, as JSON text */
+	toolReply(id: string, result: string): Promise<void>;
+	onChat(cb: (e: ChatEvent) => void): void;
+	onTool(cb: (t: ToolCall) => void): void;
 	recents(): Promise<string[]>;
 	pushRecent(root: string): Promise<string[]>;
 	forgetRecent(root: string): Promise<string[]>;
@@ -130,6 +161,45 @@ class HttpShell implements Shell {
 	async findNamed(base: string, name: string) {
 		const r = await fetch(`api/setup/find?base=${encodeURIComponent(base)}&name=${encodeURIComponent(name)}`);
 		return r.ok ? ((await r.json()) as string[]) : [];
+	}
+	readonly chat = this.setup;
+	private events?: EventSource;
+	private chatCbs: ((e: ChatEvent) => void)[] = [];
+	private toolCbs: ((t: ToolCall) => void)[] = [];
+	private listen() {
+		if (this.events) return;
+		this.events = new EventSource("api/chat/events");
+		this.events.onmessage = (m) => {
+			const { name, data } = JSON.parse(m.data) as { name: string; data: unknown };
+			if (name === "chat") for (const cb of this.chatCbs) cb(data as ChatEvent);
+			if (name === "tool") for (const cb of this.toolCbs) cb(data as ToolCall);
+		};
+	}
+	async chatStatus() {
+		const r = await fetch("api/chat/status");
+		return r.ok ? ((await r.json()) as ChatInfo) : { found: false, path: "", busy: false };
+	}
+	async chatAsk(_root: string, prompt: string) {
+		this.listen();
+		const r = await fetch("api/chat/ask", { method: "POST", body: prompt });
+		if (!r.ok) throw new Error((await r.text()).trim());
+	}
+	async chatStop() {
+		await fetch("api/chat/stop", { method: "POST" });
+	}
+	async chatReset() {
+		await fetch("api/chat/reset", { method: "POST" });
+	}
+	async toolReply(id: string, result: string) {
+		await fetch(`api/chat/tool?id=${encodeURIComponent(id)}`, { method: "POST", body: result });
+	}
+	onChat(cb: (e: ChatEvent) => void) {
+		this.chatCbs.push(cb);
+		if (this.chat) this.listen();
+	}
+	onTool(cb: (t: ToolCall) => void) {
+		this.toolCbs.push(cb);
+		if (this.chat) this.listen();
 	}
 	async recents() {
 		return [];

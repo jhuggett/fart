@@ -16,6 +16,22 @@ export function Caps(): $CancellablePromise<$models.Caps> {
     return $Call.ByID(2879812873);
 }
 
+export function ChatAsk(root: string, prompt: string): $CancellablePromise<void> {
+    return $Call.ByID(1709244691, root, prompt);
+}
+
+export function ChatReset(root: string): $CancellablePromise<void> {
+    return $Call.ByID(4107291937, root);
+}
+
+export function ChatStatus(): $CancellablePromise<$models.ChatInfo> {
+    return $Call.ByID(1432761136);
+}
+
+export function ChatStop(): $CancellablePromise<void> {
+    return $Call.ByID(861300774);
+}
+
 export function Checkout(): $CancellablePromise<string> {
     return $Call.ByID(100392916);
 }
@@ -133,6 +149,13 @@ export function ServeStatus(): $CancellablePromise<$models.ServeInfo> {
 
 export function ServeStop(): $CancellablePromise<void> {
     return $Call.ByID(935075611);
+}
+
+/**
+ * ToolReply is the page answering a tool call the MCP server relayed to it.
+ */
+export function ToolReply(id: string, result: string): $CancellablePromise<void> {
+    return $Call.ByID(4119343630, id, result);
 }
 
 /**

@@ -1717,3 +1717,129 @@ code,
 	padding: 0 6px;
 	font-size: var(--fs-small);
 }
+
+/* ---- Ask Claude: a drawer on the right */
+.chat {
+	position: fixed;
+	top: var(--tb);
+	right: 0;
+	bottom: 0;
+	width: 380px;
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	background: var(--panel);
+	border-left: 1px solid var(--edge-strong);
+	box-shadow: var(--shadow);
+}
+.chat-hdr {
+	height: 36px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 10px;
+	border-bottom: 1px solid var(--edge);
+	font-size: var(--fs-small);
+}
+.chat-hdr .hint {
+	color: var(--text-3);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.chat-hdr .dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--text-3);
+}
+.chat-hdr .dot.ok {
+	background: var(--teal, #4cc0a8);
+}
+.chat-hdr .dot.busy {
+	background: var(--accent);
+	animation: chat-pulse 1s ease-in-out infinite;
+}
+@keyframes chat-pulse {
+	50% {
+		opacity: 0.3;
+	}
+}
+.chat-lines {
+	flex: 1;
+	overflow: auto;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.chat-lines .line {
+	max-width: 100%;
+	line-height: 1.45;
+	word-break: break-word;
+}
+.chat-lines .line.user {
+	align-self: flex-end;
+	background: var(--accent-dim);
+	border: 1px solid var(--accent-line);
+	border-radius: 10px 10px 2px 10px;
+	padding: 6px 10px;
+	white-space: pre-wrap;
+}
+.chat-lines .line.claude {
+	background: var(--raised);
+	border: 1px solid var(--edge);
+	border-radius: 10px 10px 10px 2px;
+	padding: 6px 10px;
+}
+.chat-lines .line.claude p {
+	margin: 0 0 6px;
+}
+.chat-lines .line.claude p:last-child {
+	margin-bottom: 0;
+}
+.chat-lines .line.claude code {
+	font-size: 12px;
+	background: var(--inset);
+	padding: 0 4px;
+	border-radius: 3px;
+}
+.chat-lines .line.tool,
+.chat-lines .line.note {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+	padding: 0 4px;
+}
+.chat-lines .line.note {
+	color: var(--teal, #4cc0a8);
+}
+.chat-lines .line.error {
+	color: var(--danger);
+	font-size: var(--fs-small);
+	padding: 0 4px;
+}
+.chat-lines .line.thinking {
+	animation: chat-pulse 1.2s ease-in-out infinite;
+}
+.chat-input {
+	display: flex;
+	gap: 6px;
+	padding: 8px;
+	border-top: 1px solid var(--edge);
+	align-items: flex-end;
+}
+.chat-input textarea {
+	flex: 1;
+	resize: none;
+	background: var(--inset);
+	border: 1px solid var(--edge-strong);
+	border-radius: 8px;
+	padding: 6px 8px;
+	font: inherit;
+	color: var(--text);
+	min-height: 40px;
+}
+.chat-input textarea:focus {
+	outline: none;
+	border-color: var(--accent-line);
+}

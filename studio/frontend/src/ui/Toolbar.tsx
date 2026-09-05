@@ -7,6 +7,8 @@ import { ThemeButton } from "./ThemeMenu.tsx";
 import { ExplorerButton } from "./Explorer.tsx";
 import { run } from "../state/commands.ts";
 import { signal } from "@preact/signals";
+import { shell } from "../shell/shell.ts";
+import { chat, toggleChat } from "../state/chat.ts";
 
 export const showIssues = signal(false);
 
@@ -55,6 +57,11 @@ export function Toolbar() {
 			<button class={`btn ${dirty ? "" : "ghost"}`} title="the checkpoint  (⌘ S)" onClick={() => void save()}>
 				Save
 			</button>
+			{shell.chat && (
+				<button class={`btn ghost ${chat.open.value ? "active" : ""}`} title="ask Claude to change this file  (⌘ J)" onClick={toggleChat}>
+					Ask
+				</button>
+			)}
 			<div class="spacer" />
 			{issues.length > 0 && (
 				<button
