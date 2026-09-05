@@ -16,6 +16,10 @@ export function Caps(): $CancellablePromise<$models.Caps> {
     return $Call.ByID(2879812873);
 }
 
+export function Checkout(): $CancellablePromise<string> {
+    return $Call.ByID(100392916);
+}
+
 /**
  * DefaultRoot is the terminal's directory when the studio was launched
  * from one; launched from the Finder (cwd / or the home folder) it is "",
@@ -40,8 +44,16 @@ export function Exists(root: string, rel: string): $CancellablePromise<boolean> 
     return $Call.ByID(3095028904, root, rel);
 }
 
+export function FindNamed(base: string, name: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3276632228, base, name);
+}
+
 export function ForgetRecent(root: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(1309726106, root);
+}
+
+export function GitRoot(dir: string): $CancellablePromise<string> {
+    return $Call.ByID(151827472, dir);
 }
 
 export function Home(): $CancellablePromise<string> {
@@ -72,6 +84,13 @@ export function PickFolder(): $CancellablePromise<string> {
 
 export function PushRecent(root: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(150194679, root);
+}
+
+/**
+ * ReadAt reads rel under an absolute base folder (the home folder, a repo root).
+ */
+export function ReadAt(base: string, rel: string): $CancellablePromise<$models.Text> {
+    return $Call.ByID(2325224713, base, rel);
 }
 
 export function ReadFile(root: string, rel: string): $CancellablePromise<string> {
@@ -114,6 +133,13 @@ export function ServeStatus(): $CancellablePromise<$models.ServeInfo> {
 
 export function ServeStop(): $CancellablePromise<void> {
     return $Call.ByID(935075611);
+}
+
+/**
+ * WriteAt writes rel under an absolute base folder, making folders on the way.
+ */
+export function WriteAt(base: string, rel: string, text: string): $CancellablePromise<void> {
+    return $Call.ByID(1466586722, base, rel, text);
 }
 
 /**

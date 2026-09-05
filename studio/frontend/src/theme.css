@@ -1620,3 +1620,78 @@ code,
 	color: var(--text);
 	border-color: var(--edge-strong);
 }
+
+/* ---- setup: a checklist with one-click fixes */
+.setup {
+	flex: 1;
+	overflow: auto;
+	padding: 36px 48px 60px;
+	max-width: 820px;
+}
+.setup-lead p {
+	color: var(--text-2);
+	margin: 6px 0;
+	line-height: 1.5;
+}
+.setup .dim {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+}
+.setup .check {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px 14px;
+	margin-top: 8px;
+	border-radius: 10px;
+	background: var(--raised);
+	border: 1px solid var(--edge);
+}
+.setup .check:first-of-type {
+	margin-top: 16px;
+}
+.setup .check .dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex: none;
+	background: var(--text-3);
+}
+.setup .check.ok .dot {
+	background: var(--teal, #4cc0a8);
+}
+.setup .check.warn .dot {
+	background: var(--accent);
+}
+.setup .check.missing .dot {
+	background: var(--danger);
+}
+.setup .check.na {
+	opacity: 0.6;
+}
+.setup .check .body {
+	flex: 1;
+	min-width: 0;
+}
+.setup .check .t {
+	font-weight: 500;
+}
+.setup .check .d {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+	margin-top: 2px;
+	word-break: break-word;
+}
+.btn.attention {
+	position: relative;
+}
+.btn.attention::after {
+	content: "";
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--accent);
+}

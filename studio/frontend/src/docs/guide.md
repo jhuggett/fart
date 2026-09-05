@@ -103,6 +103,19 @@ palette file over a document (`apply_palette` in the Odin loader,
 `applyPalette` in core) and the red slime and the blue one are one
 file.
 
+## Setup: agents and loaders
+
+**Setup** (on the welcome screen, and in the shelf's top bar) checks
+what this machine and the open project's repository have in place for
+fastart, and installs what is missing with one click: the Claude Code
+skill in `~/.claude/skills/fastart` (the format in one page, so Claude
+in any project can write and check `.fart` files; `/fastart` invokes
+it), a fastart section in the repository's `CLAUDE.md`, a `.gitignore`
+line for the studio's `*.fart~` checkpoints, and, in an Odin project,
+the reference loader copied in or brought up to date. The rows are
+facts the studio just checked, so the screen doubles as a health check
+after pulling a new studio. It writes only those four files.
+
 ## Rigs: parents
 
 A part may have a **parent** (the select under the parts list). A child

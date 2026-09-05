@@ -34,6 +34,15 @@ export interface Shell {
 	duplicateFile(root: string, rel: string): Promise<string>;
 	/** show it in the file browser; "" is the project folder */
 	revealFile(root: string, rel: string): Promise<void>;
+	/** the setup probes reach the home folder and the repo root: only on the machine itself */
+	readonly setup: boolean;
+	gitRoot(dir: string): Promise<string>;
+	/** the fastart checkout this studio came from, "" if unknown */
+	checkout(): Promise<string>;
+	readAt(base: string, rel: string): Promise<string | null>;
+	writeAt(base: string, rel: string, text: string): Promise<void>;
+	/** files named so below base ("*.odin" for a suffix) */
+	findNamed(base: string, name: string): Promise<string[]>;
 	recents(): Promise<string[]>;
 	pushRecent(root: string): Promise<string[]>;
 	forgetRecent(root: string): Promise<string[]>;
@@ -42,8 +51,8 @@ export interface Shell {
 	serve(root: string): Promise<ServeInfo>;
 	serveStatus(): Promise<ServeInfo>;
 	serveStop(): Promise<void>;
-	/** http mode only: what the server is serving */
-	info(): Promise<{ name: string }>;
+	/** http mode only: what the server is serving, and where (an absolute path, for setup) */
+	info(): Promise<{ name: string; root?: string }>;
 	/** a line into the shell's log, for debugging */
 	log(msg: string): void;
 	/** the menu bar chose a command (by id) */
@@ -61,7 +70,9 @@ class HttpShell implements Shell {
 		return false;
 	}
 	async home() {
-		return "";
+		if (!this.setup) return "";
+		const r = await fetch("api/setup/home");
+		return r.ok ? ((await r.json()) as string) : "";
 	}
 	async defaultRoot() {
 		return "";
@@ -97,6 +108,29 @@ class HttpShell implements Shell {
 		return (await r.json()) as string;
 	}
 	async revealFile() {}
+	readonly setup = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+	async gitRoot(dir: string) {
+		const r = await fetch(`api/setup/gitroot?dir=${encodeURIComponent(dir)}`);
+		return r.ok ? ((await r.json()) as string) : "";
+	}
+	async checkout() {
+		const r = await fetch("api/setup/checkout");
+		return r.ok ? ((await r.json()) as string) : "";
+	}
+	async readAt(base: string, rel: string) {
+		const r = await fetch(`api/setup/file?base=${encodeURIComponent(base)}&rel=${encodeURIComponent(rel)}`);
+		if (!r.ok) return null;
+		const t = (await r.json()) as { text: string; found: boolean };
+		return t.found ? t.text : null;
+	}
+	async writeAt(base: string, rel: string, text: string) {
+		const r = await fetch(`api/setup/file?base=${encodeURIComponent(base)}&rel=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
+		if (!r.ok) throw new Error((await r.text()).trim());
+	}
+	async findNamed(base: string, name: string) {
+		const r = await fetch(`api/setup/find?base=${encodeURIComponent(base)}&name=${encodeURIComponent(name)}`);
+		return r.ok ? ((await r.json()) as string[]) : [];
+	}
 	async recents() {
 		return [];
 	}
@@ -119,7 +153,7 @@ class HttpShell implements Shell {
 	async serveStop() {}
 	async info() {
 		const r = await fetch("api/info");
-		return r.ok ? ((await r.json()) as { name: string }) : { name: "" };
+		return r.ok ? ((await r.json()) as { name: string; root?: string }) : { name: "" };
 	}
 	log(msg: string) {
 		console.log(msg);

@@ -8,8 +8,9 @@ import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
 import { ask, confirm } from "./prompt.ts";
 import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
+import { refreshSetup } from "./setup.ts";
 
-export type Screen = "welcome" | "browse" | "edit" | "docs";
+export type Screen = "welcome" | "browse" | "edit" | "docs" | "setup";
 
 export interface Thumb {
 	doc: Doc;
@@ -26,11 +27,14 @@ export const project = {
 	serve: signal<ServeInfo | null>(null),
 	screen: signal<Screen>("welcome"),
 	docsBack: signal<Screen>("welcome"),
+	setupBack: signal<Screen>("welcome"),
 	docsPage: signal<string>("guide"),
 	error: signal<string | null>(null),
 	busy: signal(false),
 	/** what the machine can do with files; the menus read it */
 	caps: signal<Caps>({ trash: false, reveal: "" }),
+	/** served mode: the folder's absolute path on the machine, for setup only */
+	servedRoot: signal(""),
 };
 
 let errorTimer: number | undefined;
@@ -47,12 +51,16 @@ export async function boot() {
 		batch(() => {
 			project.root.value = "";
 			project.name.value = info.name;
+			project.servedRoot.value = info.root ?? "";
 		});
+		project.home.value = await shell.home();
 		await goBrowse();
+		void refreshSetup();
 		return;
 	}
 	project.home.value = await shell.home();
 	project.recents.value = await shell.recents();
+	void refreshSetup();
 	shell.onOpenFiles(() => void drainOpens());
 	shell.log(`boot: shell=${shell.kind} url=${location.href}`);
 	// anything the page drops on the floor lands in the shell's log too
@@ -81,6 +89,7 @@ export async function openProject(root: string) {
 	});
 	project.recents.value = await shell.pushRecent(r);
 	await goBrowse();
+	void refreshSetup();
 }
 
 /**
@@ -139,6 +148,15 @@ export function goDocs(page?: string) {
 
 export function leaveDocs() {
 	project.screen.value = project.docsBack.value;
+}
+
+export function goSetup() {
+	if (project.screen.value !== "setup") project.setupBack.value = project.screen.value === "edit" ? "browse" : project.screen.value;
+	project.screen.value = "setup";
+}
+
+export function leaveSetup() {
+	project.screen.value = project.setupBack.value;
 }
 
 export async function refreshFiles() {

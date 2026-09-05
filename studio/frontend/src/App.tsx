@@ -1,5 +1,5 @@
 import { useEffect } from "preact/hooks";
-import { project, leaveDocs } from "./state/project.ts";
+import { project, leaveDocs, leaveSetup } from "./state/project.ts";
 import { curClip } from "./state/editor.ts";
 import { ix } from "./canvas/interact.ts";
 import { prompt } from "./state/prompt.ts";
@@ -11,6 +11,7 @@ import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
 import { Editor } from "./screens/Editor.tsx";
 import { Docs } from "./screens/Docs.tsx";
+import { Setup } from "./screens/Setup.tsx";
 import { Prompt, Confirm } from "./ui/Prompt.tsx";
 import { ContextMenu } from "./ui/ContextMenu.tsx";
 import { CommandPalette } from "./ui/CommandPalette.tsx";
@@ -27,6 +28,7 @@ function onKey(e: KeyboardEvent) {
 	if (typing(e) && e.key !== "Escape") return;
 	const screen = project.screen.value;
 	if (screen === "docs" && e.key === "Escape") return leaveDocs();
+	if (screen === "setup" && e.key === "Escape") return leaveSetup();
 	const k = keyOf(e);
 	// the space bar: play a clip, or hold to pan
 	if (k === "space") {
@@ -63,6 +65,7 @@ export function App() {
 			{screen === "browse" && <Browse />}
 			{screen === "edit" && <Editor />}
 			{screen === "docs" && <Docs />}
+			{screen === "setup" && <Setup />}
 			<Prompt />
 			<Confirm />
 			<ContextMenu />

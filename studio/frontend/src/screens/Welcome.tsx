@@ -1,4 +1,5 @@
-import { project, pickFolder, openProject, forgetRecent, goDocs } from "../state/project.ts";
+import { project, pickFolder, openProject, forgetRecent, goDocs, goSetup } from "../state/project.ts";
+import { setup } from "../state/setup.ts";
 import { shell } from "../shell/shell.ts";
 import { basename, pretty } from "../state/paths.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
@@ -32,6 +33,10 @@ export function Welcome() {
 					</p>
 					<p style="margin-top:22px">
 						New here? The <a onClick={() => goDocs("guide")}>docs</a> live inside the app: the guide, and the format itself.
+					</p>
+					<p>
+						Working with Claude, or an Odin game? <a onClick={goSetup}>Setup</a> checks what this machine has in place and installs the rest
+						{setup.attention.value ? " (something is missing)" : ""}.
 					</p>
 				</div>
 				<div class="recent">

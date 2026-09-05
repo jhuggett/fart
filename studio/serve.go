@@ -79,7 +79,7 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 	mux.Handle("/", http.FileServer(http.FS(dist)))
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
-		writeJSON(w, map[string]any{"name": filepath.Base(root), "serve": true, "trash": caps().Trash})
+		writeJSON(w, map[string]any{"name": filepath.Base(root), "serve": true, "trash": caps().Trash, "root": root})
 	})
 	mux.HandleFunc("/api/list", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
@@ -178,6 +178,68 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 		}
 		writeJSON(w, filepath.ToSlash(rel))
 	})
+
+	// the setup probes reach outside the project (the home folder, the
+	// repo root), so only the machine itself may call them
+	local := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			noStore(w)
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil || !net.ParseIP(host).IsLoopback() {
+				http.Error(w, "setup is for the machine running the studio", 403)
+				return
+			}
+			h(w, r)
+		}
+	}
+	mux.HandleFunc("/api/setup/home", local(func(w http.ResponseWriter, r *http.Request) {
+		h, _ := os.UserHomeDir()
+		writeJSON(w, h)
+	}))
+	mux.HandleFunc("/api/setup/gitroot", local(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, gitRoot(r.URL.Query().Get("dir")))
+	}))
+	mux.HandleFunc("/api/setup/checkout", local(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, checkout())
+	}))
+	mux.HandleFunc("/api/setup/find", local(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		writeJSON(w, findNamed(q.Get("base"), q.Get("name"), 20))
+	}))
+	mux.HandleFunc("/api/setup/file", local(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		full, err := rooted(q.Get("base"), q.Get("rel"))
+		if err != nil || !filepath.IsAbs(q.Get("base")) {
+			http.Error(w, "bad path", 400)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			data, err := os.ReadFile(full)
+			if err != nil {
+				writeJSON(w, Text{})
+				return
+			}
+			writeJSON(w, Text{Text: string(data), Found: true})
+		case http.MethodPut:
+			body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+			if err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			if err := os.WriteFile(full, body, 0o644); err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method", 405)
+		}
+	}))
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", servePort))
 	if err != nil {

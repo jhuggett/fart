@@ -27,3 +27,11 @@ export interface ServeInfo {
      */
     "qr": string;
 }
+
+/**
+ * Text is a file's content and whether there was one.
+ */
+export interface Text {
+    "text": string;
+    "found": boolean;
+}

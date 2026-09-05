@@ -49,6 +49,23 @@ export class WailsShell implements Shell {
 	revealFile(root: string, rel: string) {
 		return Project.Reveal(root, rel);
 	}
+	readonly setup = true;
+	gitRoot(dir: string) {
+		return Project.GitRoot(dir);
+	}
+	checkout() {
+		return Project.Checkout();
+	}
+	async readAt(base: string, rel: string) {
+		const t = await Project.ReadAt(base, rel);
+		return t.found ? t.text : null;
+	}
+	writeAt(base: string, rel: string, text: string) {
+		return Project.WriteAt(base, rel, text);
+	}
+	async findNamed(base: string, name: string) {
+		return (await Project.FindNamed(base, name)) ?? [];
+	}
 	async recents() {
 		return (await Project.Recents()) ?? [];
 	}

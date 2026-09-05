@@ -8,5 +8,6 @@ export {
 
 export type {
     Caps,
-    ServeInfo
+    ServeInfo,
+    Text
 } from "./models.js";

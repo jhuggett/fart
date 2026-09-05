@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
-import { project, openDoc, pickFolder, goWelcome, goDocs, toggleServe, type Thumb } from "../state/project.ts";
+import { project, openDoc, pickFolder, goWelcome, goDocs, goSetup, toggleServe, type Thumb } from "../state/project.ts";
+import { setup } from "../state/setup.ts";
 import { shell } from "../shell/shell.ts";
 import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
@@ -78,6 +79,11 @@ export function Browse() {
 					new palette
 				</button>
 				<ThemeButton />
+				{shell.setup && (
+					<button class={`btn ghost ${setup.attention.value ? "attention" : ""}`} title="agents and loaders: what is in place, what to install" onClick={goSetup}>
+						Setup
+					</button>
+				)}
 				<button class="btn ghost" onClick={() => goDocs("guide")}>
 					Docs
 				</button>
