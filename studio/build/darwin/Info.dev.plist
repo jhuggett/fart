@@ -25,8 +25,6 @@
 		<string>It is called .fart on purpose.</string>
 		<key>CFBundleIconFile</key>
 		<string>icons</string>
-		<key>CFBundleIconName</key>
-		<string>appicon</string>
 		<key>CFBundleIdentifier</key>
 		<string>com.fastart.studio</string>
 		<key>CFBundleName</key>
