@@ -3,3 +3,5 @@ node_modules/
 /packages/*/dist/
 # the studio's checkpoints
 *.fart~
+# release zips are built into the scratch, never here
+*.zip
