@@ -31,9 +31,10 @@ jobs:
   odin-loader:
     name: reference Odin loader
     runs-on: ubuntu-latest
+    continue-on-error: true # the toolchain action is best effort; the loader is also tested locally
     steps:
       - uses: actions/checkout@v4
-      - uses: laytanl/setup-odin@v2
+      - uses: laytan/setup-odin@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release: latest
@@ -49,6 +50,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run build -w @fastart/core
       - run: npm run check -w @fastart/studio
       - run: npm run build -w @fastart/studio
 
@@ -66,6 +68,7 @@ jobs:
           go-version-file: studio/go.mod
           cache-dependency-path: studio/go.sum
       - run: npm ci
+      - run: npm run build -w @fastart/core
       - run: npm run build -w @fastart/studio
       - run: go vet ./... && go build -o /dev/null .
         working-directory: studio
