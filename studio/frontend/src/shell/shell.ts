@@ -57,6 +57,8 @@ export interface Shell {
 	listFiles(root: string): Promise<string[]>;
 	readFile(root: string, rel: string): Promise<string | null>;
 	writeFile(root: string, rel: string, text: string): Promise<void>;
+	/** when a file was last written (ms since the epoch), null when it is not there */
+	stat(root: string, rel: string): Promise<number | null>;
 	caps(): Promise<Caps>;
 	/** to the Trash where there is one, else gone; resolves with which */
 	removeFile(root: string, rel: string): Promise<string>;
@@ -129,6 +131,12 @@ class HttpShell implements Shell {
 	async writeFile(_root: string, rel: string, text: string) {
 		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
 		if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
+	}
+	async stat(_root: string, rel: string) {
+		const r = await fetch(`api/stat?path=${encodeURIComponent(rel)}`);
+		if (!r.ok) return null;
+		const t = (await r.json()) as { text: string; found: boolean };
+		return t.found ? Number(t.text) : null;
 	}
 	async caps() {
 		const r = await fetch("api/info");

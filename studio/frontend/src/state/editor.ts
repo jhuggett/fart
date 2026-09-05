@@ -39,6 +39,7 @@ import {
 	type Anchor,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
+import { confirm } from "./prompt.ts";
 import { project } from "./project.ts";
 import { dirname, joinRel, relativeTo } from "./paths.ts";
 import { local, clearLocal } from "./local.ts";
@@ -102,6 +103,13 @@ let redoStack: Snap[] = [];
 let checkpoint = ""; // the doc as of the last checkpoint (⌘S): what Revert goes back to
 let lastFlush = ""; // the doc as last written to disk
 let writes: Promise<void> = Promise.resolve(); // one file's writes, in order
+// the file as the studio last synced with it: what it read, or what it wrote.
+// Another tool writing the file moves its mtime; the watch notices.
+let diskText = ""; // normalised
+let diskMtime: number | null = null;
+let watchTimer: number | undefined;
+let asking = false; // a conflict dialog is up: hold writes and polls
+const WATCH_MS = 1000;
 let flushTimer: number | undefined;
 let mergeKey: string | null = null;
 
@@ -372,20 +380,110 @@ function scheduleFlush() {
 	flushTimer = window.setTimeout(() => void flushNow(), FLUSH_MS);
 }
 
-/** Put the document on disk if it moved since the last write. */
+/** Put the document on disk if it moved since the last write, unless the file moved first. */
 export async function flushNow() {
 	flushTimer = undefined;
 	const rel = ed.path.value;
 	if (!rel) return;
 	const snap = docText();
 	if (snap === lastFlush) return;
-	lastFlush = snap;
+	if (asking) return; // the conflict dialog decides
+	// another tool may have written the file since we last synced: never write over that unseen
+	if (!(await syncDisk(rel))) return;
+	if (ed.path.value !== rel) return;
+	lastFlush = docText();
 	try {
 		await writeDoc(rel, stringifyDoc(doc()));
+		diskText = lastFlush;
+		diskMtime = await shell.stat(root(), rel);
 		ed.written.value = Date.now();
 	} catch {
 		lastFlush = ""; // try again on the next change
 	}
+}
+
+/**
+ * Look at the file on disk. Unchanged since we last synced: true, go on.
+ * Changed with nothing of ours pending: take the disk's version (an undo
+ * step) and say so; true. Changed while we hold edits: ask, and only a
+ * "keep mine" lets the write go on. The watch calls this every second;
+ * every write calls it first.
+ */
+async function syncDisk(rel: string): Promise<boolean> {
+	const m = await shell.stat(root(), rel);
+	if (m === null || m === diskMtime || ed.path.value !== rel) return true;
+	const text = await shell.readFile(root(), rel);
+	if (ed.path.value !== rel) return true;
+	diskMtime = m;
+	const norm = text === null ? null : normalizedText(text);
+	if (norm === null || norm === diskText) return true; // touched, or unreadable: nothing to take
+	const pending = docText() !== diskText;
+	if (!pending) {
+		adoptDisk(text!, norm);
+		project.error.value = `${rel} changed on disk: reloaded (⌘Z brings back what was here)`;
+		return true;
+	}
+	if (asking) return false;
+	asking = true;
+	let reload = true;
+	try {
+		reload = await confirm(`${rel} changed on disk while you were editing`, {
+			body: "Reload takes the file's version; your edits stay one ⌘Z away. Cancel keeps yours and overwrites the file's changes.",
+			ok: "Reload",
+		});
+	} finally {
+		asking = false;
+	}
+	if (reload) {
+		adoptDisk(text!, norm);
+		return false;
+	}
+	diskText = ""; // ours goes over it, knowingly
+	return true;
+}
+
+/** The disk's version becomes the document, as an undo step; no write follows. */
+function adoptDisk(text: string, norm: string) {
+	let d: Doc;
+	try {
+		const { doc: parsed } = parseDoc(text);
+		d = parsed ?? (JSON.parse(text) as Doc);
+	} catch {
+		return;
+	}
+	ensureDefaults(d);
+	delete d.resolved;
+	pushUndo();
+	mergeKey = null;
+	batch(() => {
+		ed.doc.value = d;
+		clampCursors();
+		ed.sel.value = [];
+		ed.hover.value = null;
+		ed.polyPts.value = [];
+		ed.pending.value = "none";
+		ed.rev.value++;
+		ed.tokens.value = [...ed.shared.value, ...palette()];
+		ed.canUndo.value = undoStack.length > 0;
+		ed.canRedo.value = redoStack.length > 0;
+	});
+	diskText = norm;
+	lastFlush = docText();
+	markDirty();
+	void reloadShared();
+}
+
+function startWatch(rel: string) {
+	stopWatch();
+	watchTimer = window.setInterval(() => {
+		if (ed.path.value !== rel || asking || flushTimer !== undefined) return;
+		void syncDisk(rel);
+	}, WATCH_MS);
+}
+
+function stopWatch() {
+	if (watchTimer !== undefined) clearInterval(watchTimer);
+	watchTimer = undefined;
 }
 
 function markDirty() {
@@ -420,6 +518,7 @@ export async function leaveFile() {
 	if (!rel) return;
 	if (flushTimer !== undefined) clearTimeout(flushTimer);
 	flushTimer = undefined;
+	stopWatch();
 	await flushNow();
 	await writes.catch(() => {});
 	batch(() => {
@@ -428,6 +527,8 @@ export async function leaveFile() {
 		ed.written.value = 0;
 		ed.checkpointAt.value = 0;
 	});
+	diskText = "";
+	diskMtime = null;
 }
 
 /** The text a file's content becomes as the open document (defaults filled), or null when it does not parse. */
@@ -669,7 +770,10 @@ export async function openFile(rel: string): Promise<boolean> {
 		ed.rev.value++;
 	});
 	lastFlush = docText();
+	diskText = lastFlush;
+	diskMtime = await shell.stat(root(), rel);
 	await adoptCheckpoint(rel, text);
+	startWatch(rel);
 	return true;
 }
 

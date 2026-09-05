@@ -33,6 +33,10 @@ export class WailsShell implements Shell {
 	writeFile(root: string, rel: string, text: string) {
 		return Project.WriteFile(root, rel, text);
 	}
+	async stat(root: string, rel: string) {
+		const t = await Project.Stat(root, rel);
+		return t.found ? Number(t.text) : null;
+	}
 	async caps() {
 		const c = await Project.Caps();
 		return { trash: !!c.trash, reveal: c.reveal ?? "" };

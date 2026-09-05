@@ -62,10 +62,10 @@ try {
 	const until = async (fn, ms = 4000) => {
 		const t0 = Date.now();
 		while (Date.now() - t0 < ms) {
-			if (fn()) return true;
+			if (await fn()) return true;
 			await new Promise((r) => setTimeout(r, 100));
 		}
-		return fn();
+		return await fn();
 	};
 	const raw0 = fs.readFileSync(file, "utf8");
 	const m0 = mtime(file);
@@ -115,6 +115,54 @@ try {
 	await open("cruiser");
 	await page.waitForTimeout(300);
 	check("leaving flushes, never reverts", JSON.stringify(pivot(file)) === "[3,3]", `disk pivot ${JSON.stringify(pivot(file))}`);
+
+	// 7. meta and unknown fields round-trip through the studio untouched
+	const withMeta = JSON.parse(fs.readFileSync(file, "utf8"));
+	withMeta.meta = { forward: "up", about: "the game's own words", game: { situations: { drowse: "curl", hunt: ["shuffle", "reach"] }, weight: 3 } };
+	withMeta.custom_top = { kept: true };
+	fs.writeFileSync(file, JSON.stringify(withMeta, null, 2) + "\n");
+	fs.rmSync(ck, { force: true });
+	await open("fighter");
+	await setPivot(5, 5);
+	await until(() => JSON.stringify(pivot(file)) === "[5,5]");
+	await page.locator(".canvas-wrap canvas").click({ position: { x: 30, y: 30 } });
+	await page.keyboard.press("Meta+s");
+	await page.waitForTimeout(700);
+	const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+	check("meta survives edit and save, byte for byte", JSON.stringify(saved.meta) === JSON.stringify(withMeta.meta), JSON.stringify(saved.meta));
+	check("unknown top-level fields survive too", JSON.stringify(saved.custom_top) === JSON.stringify(withMeta.custom_top));
+	check("the checkpoint carries meta as well", JSON.stringify(JSON.parse(fs.readFileSync(ck, "utf8")).meta) === JSON.stringify(withMeta.meta));
+
+	// 8. another tool writes the file: with nothing pending the studio reloads it
+	const external = JSON.parse(fs.readFileSync(file, "utf8"));
+	external.meta.about = "changed by the game";
+	external.meta.game.added = true;
+	fs.writeFileSync(file, JSON.stringify(external, null, 2) + "\n");
+	await until(async () => (await page.evaluate(() => fastart.ed.doc.value.meta?.about)) === "changed by the game", 5000);
+	await page.waitForTimeout(200);
+	check("an external change is reloaded", (await page.evaluate(() => fastart.ed.doc.value.meta?.about)) === "changed by the game");
+	check("the reload took the whole file", (await page.evaluate(() => fastart.ed.doc.value.meta?.game?.added)) === true);
+	check("the reload is an undo step", await page.evaluate(() => fastart.ed.canUndo.value));
+	await setPivot(6, 6);
+	await until(() => JSON.stringify(pivot(file)) === "[6,6]");
+	const afterEdit = JSON.parse(fs.readFileSync(file, "utf8"));
+	check("an edit after the reload keeps the external meta", afterEdit.meta.about === "changed by the game" && afterEdit.meta.game.added === true);
+
+	// 9. a change on disk while an edit is pending: the studio asks before writing
+	const external2 = JSON.parse(fs.readFileSync(file, "utf8"));
+	external2.meta.about = "changed again";
+	fs.writeFileSync(file, JSON.stringify(external2, null, 2) + "\n");
+	await setPivot(7, 7); // pending: the flush runs before the watch does
+	await until(async () => (await page.locator(".dialog").count()) > 0, 3000);
+	const dialogUp = (await page.locator(".dialog").count()) > 0;
+	check("a conflict asks instead of overwriting", dialogUp);
+	check("the file was not overwritten meanwhile", JSON.parse(fs.readFileSync(file, "utf8")).meta.about === "changed again" && JSON.stringify(pivot(file)) !== "[7,7]");
+	if (dialogUp) await page.locator(".dialog .btn.primary").click();
+	await page.waitForTimeout(500);
+	check("Reload takes the file's version", (await page.evaluate(() => fastart.ed.doc.value.meta?.about)) === "changed again" && JSON.stringify(await docPivot()) === "[6,6]");
+	await page.keyboard.press("Meta+z");
+	await page.waitForTimeout(600);
+	check("and the edit is one ⌘Z away", JSON.stringify(await docPivot()) === "[7,7]");
 	check("no temp files at the end", tmps().length === 0);
 } finally {
 	await browser.close();
