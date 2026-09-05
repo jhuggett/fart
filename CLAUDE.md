@@ -21,5 +21,9 @@ follow the spec, never the other way round.
   `globalThis.fastart` (store, view, `frameW()`) to assert. The Chrome
   extension is unreliable here. Regenerate bindings after changing the
   Go service: `cd studio && wails3 generate bindings -ts -i -clean=true`.
+- The file on disk is the document: edits land in it at once (atomic
+  write), ⌘S makes the checkpoint (`name.fart~`), nothing reverts on its
+  own. `make check-save` proves it end to end in a headless browser; run
+  it after touching editor.ts's disk code.
 - `make` lists the shortcuts; `make test` runs everything.
 - Writing `.fart` files: follow `skills/fastart/SKILL.md`.

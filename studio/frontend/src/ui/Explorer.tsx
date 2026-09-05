@@ -49,7 +49,7 @@ function Row({ node, depth }: { node: TreeNode; depth: number }) {
 		>
 			<span class="glyph">◆</span>
 			<span class="name">{stripExt(node.name)}</span>
-			{active && ed.dirty.value && <span class="dot" title="unsaved: rolls back unless you Save" />}
+			{active && ed.dirty.value && <span class="dot" title="changed since its checkpoint: the file on disk is current; ⌘S keeps this version, File › Revert goes back" />}
 		</div>
 	);
 }

@@ -7,6 +7,7 @@
 #   make install    build it into ~/Applications/Uranus.app (pin that to the Dock; every install replaces it in place)
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
+#   make check-save the save model, end to end, in a headless browser (needs the app built)
 #   make validate DIR=path/to/art   fart validate
 #   make skill      install the fastart skill for Claude Code (~/.claude/skills)
 
@@ -15,7 +16,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate skill install clean
+.PHONY: help setup dev app run serve test validate skill install check-save clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -65,6 +66,12 @@ test: node_modules
 	npm run check -w @fastart/studio
 	npm run build -w @fastart/studio
 	cd studio && go vet ./...
+
+# the file on disk is the document: edits land, ⌘S checkpoints, nothing reverts alone
+check-save: node_modules
+	cd studio && go build -o bin/studio .
+	npx playwright install chromium >/dev/null 2>&1 || true
+	node studio/test/save.mjs
 
 validate: node_modules
 	node packages/core/src/cli.ts validate $(DIR)

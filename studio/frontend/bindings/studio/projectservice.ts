@@ -152,6 +152,13 @@ export function ServeStop(): $CancellablePromise<void> {
 }
 
 /**
+ * Stat says whether rel exists under root and when it was last written (unix ms).
+ */
+export function Stat(root: string, rel: string): $CancellablePromise<$models.Text> {
+    return $Call.ByID(3774745978, root, rel);
+}
+
+/**
  * ToolReply is the page answering a tool call the MCP server relayed to it.
  */
 export function ToolReply(id: string, result: string): $CancellablePromise<void> {

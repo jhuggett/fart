@@ -114,11 +114,7 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 				http.Error(w, err.Error(), 400)
 				return
 			}
-			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			if err := os.WriteFile(full, body, 0o644); err != nil {
+			if err := writeAtomic(full, body); err != nil {
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -133,6 +129,20 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 		default:
 			http.Error(w, "method", 405)
 		}
+	})
+	mux.HandleFunc("/api/stat", func(w http.ResponseWriter, r *http.Request) {
+		noStore(w)
+		full, err := rooted(root, r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		fi, err := os.Stat(full)
+		if err != nil {
+			writeJSON(w, Text{})
+			return
+		}
+		writeJSON(w, Text{Text: fmt.Sprint(fi.ModTime().UnixMilli()), Found: true})
 	})
 	mux.HandleFunc("/api/rename", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)

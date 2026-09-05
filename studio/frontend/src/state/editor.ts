@@ -81,7 +81,12 @@ export const ed = {
 	colSel: signal(-1),
 	pending: signal<Pending>("none"),
 	polyPts: signal<Vec2[]>([]),
+	/** the document differs from its checkpoint */
 	dirty: signal(false),
+	/** when the file itself was last written this session (ms), 0 for not yet */
+	written: signal(0),
+	/** when the checkpoint was last made this session (ms), 0 for not yet */
+	checkpointAt: signal(0),
 	canUndo: signal(false),
 	canRedo: signal(false),
 };
@@ -94,8 +99,9 @@ interface Snap {
 }
 let undoStack: Snap[] = [];
 let redoStack: Snap[] = [];
-let base = ""; // the doc as of the last real save: the rollback point
+let checkpoint = ""; // the doc as of the last checkpoint (⌘S): what Revert goes back to
 let lastFlush = ""; // the doc as last written to disk
+let writes: Promise<void> = Promise.resolve(); // one file's writes, in order
 let flushTimer: number | undefined;
 let mergeKey: string | null = null;
 
@@ -259,7 +265,7 @@ function snapshot(): Snap {
 function touch() {
 	batch(() => {
 		ed.rev.value++;
-		ed.dirty.value = true;
+		markDirty();
 		ed.tokens.value = [...ed.shared.value, ...palette()];
 		ed.canUndo.value = undoStack.length > 0;
 		ed.canRedo.value = redoStack.length > 0;
@@ -304,6 +310,8 @@ function restore(snap: Snap) {
 	});
 	mergeKey = null;
 	touch();
+	markDirty();
+	scheduleFlush(); // an undo is a change the disk must see too
 	if (JSON.stringify(ed.doc.value.palette_refs ?? []) !== refsBefore) void reloadShared();
 }
 
@@ -337,12 +345,26 @@ function root(): string {
 	return project.root.value ?? "";
 }
 
-async function writeDoc(rel: string, text: string) {
-	try {
-		await shell.writeFile(root(), rel, text);
-	} catch (e) {
-		project.error.value = `could not write ${rel}: ${String(e)}`;
-	}
+// ------------------------------------------------------------- disk
+// The file on disk is the live document: every edit lands there within
+// FLUSH_MS, whole and atomically, so a game watching the folder sees each
+// change. Save (⌘S) writes the checkpoint beside it, <name>.fart~, the
+// last version you were happy with; "dirty" means the document differs
+// from that checkpoint. Nothing reverts on its own: Revert to checkpoint
+// is a command, and a file whose checkpoint differs opens dirty and says
+// so. Writes to one file go out in order, never interleaved.
+
+function writeDoc(rel: string, text: string): Promise<void> {
+	const job = writes.then(async () => {
+		try {
+			await shell.writeFile(root(), rel, text);
+		} catch (e) {
+			project.error.value = `could not write ${rel}: ${String(e)}`;
+			throw e;
+		}
+	});
+	writes = job.catch(() => {});
+	return job;
 }
 
 function scheduleFlush() {
@@ -350,7 +372,7 @@ function scheduleFlush() {
 	flushTimer = window.setTimeout(() => void flushNow(), FLUSH_MS);
 }
 
-/** The live scratch: mirror the doc to disk if it moved since last time. */
+/** Put the document on disk if it moved since the last write. */
 export async function flushNow() {
 	flushTimer = undefined;
 	const rel = ed.path.value;
@@ -358,14 +380,23 @@ export async function flushNow() {
 	const snap = docText();
 	if (snap === lastFlush) return;
 	lastFlush = snap;
-	await writeDoc(rel, stringifyDoc(doc()));
+	try {
+		await writeDoc(rel, stringifyDoc(doc()));
+		ed.written.value = Date.now();
+	} catch {
+		lastFlush = ""; // try again on the next change
+	}
 }
 
-function backupWrite(rel: string) {
-	if (!base) return;
-	void writeDoc(`${rel}~`, stringifyDoc(JSON.parse(base) as Doc));
+function markDirty() {
+	ed.dirty.value = docText() !== checkpoint;
 }
 
+/**
+ * Save (⌘S): a checkpoint. The file itself is already current; this
+ * bakes the triangles, writes the file once more so disk and checkpoint
+ * match byte for byte, and keeps the copy Revert goes back to.
+ */
 export async function save() {
 	const rel = ed.path.value;
 	if (!rel) return;
@@ -373,25 +404,88 @@ export async function save() {
 	flushTimer = undefined;
 	bakeTris(doc());
 	ed.rev.value++;
-	const snap = docText();
-	await writeDoc(rel, stringifyDoc(doc()));
-	base = snap;
-	lastFlush = snap;
-	ed.dirty.value = false;
-	backupWrite(rel);
+	lastFlush = "";
+	await flushNow();
+	checkpoint = docText();
+	await writeDoc(`${rel}~`, stringifyDoc(doc()));
+	batch(() => {
+		ed.dirty.value = false;
+		ed.checkpointAt.value = Date.now();
+	});
 }
 
-/** Leaving without saving: the disk goes back to the checkpoint. */
+/** Leaving a file: whatever is pending lands on disk; nothing reverts. */
 export async function leaveFile() {
 	const rel = ed.path.value;
 	if (!rel) return;
 	if (flushTimer !== undefined) clearTimeout(flushTimer);
 	flushTimer = undefined;
-	if (base && lastFlush !== base) {
-		await writeDoc(rel, stringifyDoc(JSON.parse(base) as Doc));
+	await flushNow();
+	await writes.catch(() => {});
+	batch(() => {
+		ed.path.value = null;
+		ed.dirty.value = false;
+		ed.written.value = 0;
+		ed.checkpointAt.value = 0;
+	});
+}
+
+/** The text a file's content becomes as the open document (defaults filled), or null when it does not parse. */
+function normalizedText(text: string): string | null {
+	try {
+		const { doc: parsed, report } = parseDoc(text);
+		let d: Doc;
+		if (parsed) d = parsed;
+		else if (report.errors.some((e) => HARD.has(e.code))) return null;
+		else d = JSON.parse(text) as Doc;
+		ensureDefaults(d);
+		delete d.resolved;
+		return JSON.stringify(d);
+	} catch {
+		return null;
 	}
-	ed.path.value = null;
-	ed.dirty.value = false;
+}
+
+/**
+ * The checkpoint beside a file just opened. Absent: made now, a copy of
+ * the file as read, so Revert always has somewhere to go. Present and
+ * different: the file opens dirty and the toolbar says so; nothing is
+ * replaced, the file on disk is the document.
+ */
+async function adoptCheckpoint(rel: string, fileText: string | null) {
+	const ck = await shell.readFile(root(), `${rel}~`);
+	const norm = ck === null ? null : normalizedText(ck);
+	if (norm !== null) checkpoint = norm;
+	else {
+		checkpoint = docText();
+		void writeDoc(`${rel}~`, fileText !== null && fileText.trim().length ? fileText : stringifyDoc(doc()));
+	}
+	batch(() => {
+		ed.dirty.value = docText() !== checkpoint;
+		ed.written.value = 0;
+		ed.checkpointAt.value = 0;
+	});
+}
+
+/** Back to the checkpoint, as an undo step; the disk follows. */
+export async function revertToCheckpoint(): Promise<boolean> {
+	const rel = ed.path.value;
+	if (!rel) return false;
+	const ck = await shell.readFile(root(), `${rel}~`);
+	if (ck === null) {
+		project.error.value = "there is no checkpoint beside this file yet (⌘S makes one)";
+		return false;
+	}
+	let d: Doc;
+	try {
+		const { doc: parsed } = parseDoc(ck);
+		d = parsed ?? (JSON.parse(ck) as Doc);
+	} catch (e) {
+		project.error.value = `the checkpoint does not parse: ${String(e)}`;
+		return false;
+	}
+	applyExternalDoc(d);
+	return true;
 }
 
 function ensureDefaults(d: Doc) {
@@ -574,9 +668,8 @@ export async function openFile(rel: string): Promise<boolean> {
 		ed.canRedo.value = false;
 		ed.rev.value++;
 	});
-	base = docText();
-	lastFlush = base;
-	backupWrite(rel);
+	lastFlush = docText();
+	await adoptCheckpoint(rel, text);
 	return true;
 }
 

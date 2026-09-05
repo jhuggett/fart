@@ -31,6 +31,9 @@ Four regions, like Rive and Spine and Figma:
   works through the same commands a hand does (one undo step per change,
   the canvas as its eyes) and never through the file system while a
   file is open.
+- **The file on disk is the document.** Edits land in it at once, whole
+  and atomic; ⌘S keeps a checkpoint (`name.fart~`) to revert to by
+  choice, never by surprise. What a watcher sees is what the canvas shows.
 - **Every view is a state.** There is no separate drawing mode: shapes
   are edited inside whichever state is on the canvas, through its pose,
   and the part is placed and turned by its own grips. A new state copies

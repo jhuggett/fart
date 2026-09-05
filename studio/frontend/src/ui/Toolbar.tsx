@@ -24,6 +24,9 @@ export function Toolbar() {
 	const tool = ed.tool.value;
 	const path = ed.path.value ?? "";
 	const dirty = ed.dirty.value;
+	const written = ed.written.value;
+	const ckAt = ed.checkpointAt.value;
+	const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour12: false });
 	const issues = ed.issues.value;
 	const errors = issues.filter((i) => !["unknown", "reserved", "unresolved"].includes(i.code)).length;
 	const pal = ed.isPalette.value;
@@ -54,9 +57,18 @@ export function Toolbar() {
 				<I.grid />
 			</button>
 			<span class="sep" />
-			<button class={`btn ${dirty ? "" : "ghost"}`} title="the checkpoint  (⌘ S)" onClick={() => void save()}>
-				Save
+			<button
+				class={`btn ${dirty ? "" : "ghost"}`}
+				title={`Save keeps this version as the checkpoint to revert to  (⌘ S)${ckAt ? ` · last ${clock(ckAt)}` : ""}${dirty ? " · changed since the checkpoint" : ""}`}
+				onClick={() => void save()}
+			>
+				Save{dirty ? " •" : ""}
 			</button>
+			{path && (
+				<span class="sub" title="every edit lands in the file itself within a moment; this is the last write">
+					{written ? `on disk ${clock(written)}` : "on disk"}
+				</span>
+			)}
 			{shell.chat && (
 				<button class={`btn ghost ${chat.open.value ? "active" : ""}`} title="ask Claude to change this file  (⌘ J)" onClick={toggleChat}>
 					Ask

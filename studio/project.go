@@ -116,6 +116,12 @@ func (p *ProjectService) DefaultRoot() string {
 	if err != nil || cwd == "/" || cwd == p.Home() {
 		return ""
 	}
+	// the fastart checkout and its studio folder are where the app is
+	// built from (make dev runs there), never a project: a "new file" would
+	// land in the source tree
+	if isCheckout(cwd) || isCheckout(filepath.Dir(cwd)) {
+		return ""
+	}
 	return cwd
 }
 
@@ -149,16 +155,60 @@ func (p *ProjectService) Exists(root, rel string) bool {
 	return err == nil
 }
 
+// writeAtomic puts text at full in one step: a sibling temp file, then a
+// rename, so a watcher (a game hot-reloading its art) never sees half a
+// file, and the mtime is always new.
+func writeAtomic(full string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(full), "."+filepath.Base(full)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	_ = os.Chmod(name, 0o644)
+	if err := os.Rename(name, full); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
+}
+
 // WriteFile writes text under root, creating folders on the way ("enemies/bat.fart").
 func (p *ProjectService) WriteFile(root, rel, text string) error {
 	full, err := rooted(root, rel)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return err
+	return writeAtomic(full, []byte(text))
+}
+
+// Stat says whether rel exists under root and when it was last written (unix ms).
+func (p *ProjectService) Stat(root, rel string) Text {
+	full, err := rooted(root, rel)
+	if err != nil {
+		return Text{}
 	}
-	return os.WriteFile(full, []byte(text), 0o644)
+	fi, err := os.Stat(full)
+	if err != nil {
+		return Text{}
+	}
+	return Text{Text: fmt.Sprint(fi.ModTime().UnixMilli()), Found: true}
 }
 
 // Caps: what this machine can do with files (see files.go).

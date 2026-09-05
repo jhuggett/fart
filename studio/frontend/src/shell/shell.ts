@@ -127,7 +127,8 @@ class HttpShell implements Shell {
 		return r.ok ? await r.text() : null;
 	}
 	async writeFile(_root: string, rel: string, text: string) {
-		await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
+		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
+		if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
 	}
 	async caps() {
 		const r = await fetch("api/info");
