@@ -19,7 +19,35 @@ export const chat = {
 	info: signal<ChatInfo>({ found: false, path: "", busy: false }),
 	cost: signal(0),
 	draft: signal(""),
+	/** the model the last turn ran on, from Claude Code */
+	model: signal(""),
+	/** "none" while a plan pays; an API key's origin otherwise */
+	keySource: signal(""),
 };
+
+/** How the login pays: a plan includes the turns, a key is billed per token. */
+export function onPlan(): boolean {
+	const i = chat.info.value;
+	if (chat.keySource.value && chat.keySource.value !== "none") return false;
+	return i.authMethod === "claude.ai";
+}
+
+export function planLabel(): string {
+	const i = chat.info.value;
+	if (!i.found) return "";
+	if (i.authMethod === "claude.ai") return `${i.plan ? i.plan[0].toUpperCase() + i.plan.slice(1) : "Claude"} plan`;
+	if (i.loggedIn || (chat.keySource.value && chat.keySource.value !== "none")) return "API key";
+	return "not signed in";
+}
+
+/** "claude-fable-5-1" reads as "fable 5.1". */
+export function modelLabel(): string {
+	const m = chat.model.value.replace(/^claude-/, "");
+	const parts = m.split("-");
+	const name = parts[0];
+	const nums = parts.slice(1).filter((p) => /^\d+$/.test(p));
+	return nums.length ? `${name} ${nums.join(".")}` : m;
+}
 
 let wired = false;
 
@@ -65,6 +93,10 @@ function describeTool(name: string, input: string): string | null {
 
 function onEvent(e: ChatEvent) {
 	switch (e.kind) {
+		case "init":
+			if (e.model) chat.model.value = e.model;
+			if (e.keySource) chat.keySource.value = e.keySource;
+			break;
 		case "text":
 			push({ role: "claude", text: e.text ?? "" });
 			break;

@@ -35,15 +35,36 @@ export interface ChatEvent {
     "input"?: string;
     "session"?: string;
     "cost"?: number;
+    "model"?: string;
+
+    /**
+     * "none" when a plan pays, else the API key's origin
+     */
+    "keySource"?: string;
 }
 
 /**
- * ChatInfo says whether Claude Code is on this machine.
+ * ChatInfo says whether Claude Code is on this machine, and whose it is:
+ * the login (a claude.ai plan, or an API key) decides what a turn costs
+ * the user, so the page can say so.
  */
 export interface ChatInfo {
     "found": boolean;
     "path": string;
     "busy": boolean;
+    "loggedIn": boolean;
+
+    /**
+     * "claude.ai" for a plan, else an API key or nothing
+     */
+    "authMethod": string;
+    "email": string;
+
+    /**
+     * "max", "pro", … when the login is claude.ai
+     */
+    "plan": string;
+    "org": string;
 }
 
 export interface ServeInfo {

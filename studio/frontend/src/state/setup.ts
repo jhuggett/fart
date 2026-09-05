@@ -146,7 +146,10 @@ export async function refreshSetup() {
 	// Claude Code: the Ask panel runs it
 	if (shell.chat) {
 		const info = await shell.chatStatus();
-		if (info.found) checks.push({ id: "claude", title: "Claude Code", status: "ok", detail: `found at ${info.path}; ⌘J asks it to change the open file` });
+		if (info.found) {
+			const who = info.authMethod === "claude.ai" ? `signed in as ${info.email} on the ${info.plan || "Claude"} plan: turns are included, not billed` : info.loggedIn ? `signed in with an API key${info.email ? ` (${info.email})` : ""}: turns are billed per token` : "not signed in: run claude once in a terminal";
+			checks.push({ id: "claude", title: "Claude Code", status: info.loggedIn ? "ok" : "warn", detail: `found at ${info.path}; ${who}. ⌘J asks it to change the open file` });
+		}
 		else checks.push({ id: "claude", title: "Claude Code", status: "warn", detail: "not found: install Claude Code and sign in once in a terminal, then the Ask panel works" });
 	}
 

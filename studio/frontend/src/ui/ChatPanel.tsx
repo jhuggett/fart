@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from "preact/hooks";
 import { marked } from "marked";
-import { chat, ask, stopChat, newChat, toggleChat } from "../state/chat.ts";
+import { chat, ask, stopChat, newChat, toggleChat, onPlan, planLabel, modelLabel } from "../state/chat.ts";
 import { shell } from "../shell/shell.ts";
 import { ed } from "../state/editor.ts";
 import { I } from "./Icons.tsx";
@@ -29,7 +29,32 @@ export function ChatPanel() {
 				<b>Ask Claude</b>
 				<span class="hint">{ed.path.value ? ed.path.value.replace(/\.fart$/, "") : "the shelf"}</span>
 				<span class="spacer" />
-				{chat.cost.value > 0 && <span class="chip" title="what this conversation has cost so far">${chat.cost.value.toFixed(2)}</span>}
+				{info.found && (
+					<span
+						class="chip"
+						title={
+							onPlan()
+								? `Signed in as ${info.email || "you"} (${planLabel()}). Turns count against the plan's usage; they are not billed.`
+								: `Claude Code is using an API key${info.email ? ` (${info.email})` : ""}: turns are billed per token.`
+						}
+					>
+						{planLabel()}
+						{chat.model.value ? ` · ${modelLabel()}` : ""}
+					</span>
+				)}
+				{chat.cost.value > 0 && (
+					<span
+						class="chip"
+						title={
+							onPlan()
+								? "what these turns would cost at API rates: included in the plan, shown as a gauge of how heavy they were"
+								: "billed to the API key so far, this conversation"
+						}
+					>
+						{onPlan() ? "≈" : ""}${chat.cost.value.toFixed(2)}
+						{onPlan() ? " incl." : ""}
+					</span>
+				)}
 				<button class="btn x" title="new conversation" onClick={() => void newChat()}>
 					<I.plus size={12} />
 				</button>
@@ -45,8 +70,10 @@ export function ChatPanel() {
 				)}
 				{lines.length === 0 && info.found && (
 					<div class="line note">
-						Claude works through the editor: it reads the open file, changes it as one undo step, and looks at the result. Try
-						"make the left arm longer" or "add a blink clip that shuts the eyes for a frame".
+						{info.email ? `Signed in as ${info.email}${planLabel() ? ` · ${planLabel()}` : ""}. ` : ""}
+						{onPlan() ? "Turns count against the plan, nothing is billed. " : ""}
+						Claude works through the editor: it reads the open file, changes it as one undo step (⌘Z takes it back), and looks at
+						the result. Try "make the left arm longer" or "add a blink clip that shuts the eyes for a frame".
 					</div>
 				)}
 				{lines.map((l, i) =>

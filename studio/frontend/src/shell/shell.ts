@@ -25,6 +25,9 @@ export interface ChatEvent {
 	input?: string;
 	session?: string;
 	cost?: number;
+	model?: string;
+	/** "none" when a plan pays for the turn, else where the API key came from */
+	keySource?: string;
 }
 /** A tool call the editor must answer (see state/tools.ts). */
 export interface ToolCall {
@@ -36,6 +39,13 @@ export interface ChatInfo {
 	found: boolean;
 	path: string;
 	busy: boolean;
+	loggedIn?: boolean;
+	/** "claude.ai" for a plan; anything else is an API key or no login */
+	authMethod?: string;
+	email?: string;
+	/** "max", "pro", … on a claude.ai login */
+	plan?: string;
+	org?: string;
 }
 
 export interface Shell {

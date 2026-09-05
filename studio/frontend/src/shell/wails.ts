@@ -69,7 +69,7 @@ export class WailsShell implements Shell {
 	readonly chat = true;
 	async chatStatus() {
 		const s = await Project.ChatStatus();
-		return { found: !!s.found, path: s.path ?? "", busy: !!s.busy };
+		return { found: !!s.found, path: s.path ?? "", busy: !!s.busy, loggedIn: !!s.loggedIn, authMethod: s.authMethod ?? "", email: s.email ?? "", plan: s.plan ?? "", org: s.org ?? "" };
 	}
 	chatAsk(root: string, prompt: string) {
 		return Project.ChatAsk(root, prompt);

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -25,19 +26,28 @@ import (
 // ChatEvent is one thing the page shows: a line of text, a tool Claude
 // used, the end of a turn.
 type ChatEvent struct {
-	Kind    string  `json:"kind"` // init | text | tool | result | error | done | log
-	Text    string  `json:"text,omitempty"`
-	Name    string  `json:"name,omitempty"`
-	Input   string  `json:"input,omitempty"`
-	Session string  `json:"session,omitempty"`
-	Cost    float64 `json:"cost,omitempty"`
+	Kind      string  `json:"kind"` // init | text | tool | result | error | done | log
+	Text      string  `json:"text,omitempty"`
+	Name      string  `json:"name,omitempty"`
+	Input     string  `json:"input,omitempty"`
+	Session   string  `json:"session,omitempty"`
+	Cost      float64 `json:"cost,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	KeySource string  `json:"keySource,omitempty"` // "none" when a plan pays, else the API key's origin
 }
 
-// ChatInfo says whether Claude Code is on this machine.
+// ChatInfo says whether Claude Code is on this machine, and whose it is:
+// the login (a claude.ai plan, or an API key) decides what a turn costs
+// the user, so the page can say so.
 type ChatInfo struct {
-	Found bool   `json:"found"`
-	Path  string `json:"path"`
-	Busy  bool   `json:"busy"`
+	Found      bool   `json:"found"`
+	Path       string `json:"path"`
+	Busy       bool   `json:"busy"`
+	LoggedIn   bool   `json:"loggedIn"`
+	AuthMethod string `json:"authMethod"` // "claude.ai" for a plan, else an API key or nothing
+	Email      string `json:"email"`
+	Plan       string `json:"plan"` // "max", "pro", … when the login is claude.ai
+	Org        string `json:"org"`
 }
 
 // bus carries events to the page: the Wails event system in the app, and
@@ -94,6 +104,8 @@ type Chat struct {
 	bus      *bus
 	mcp      *MCP
 	claude   string
+	account  ChatInfo // the login, asked of Claude Code now and then
+	askedAt  time.Time
 }
 
 func newChat(b *bus, m *MCP) *Chat {
@@ -122,11 +134,47 @@ func findClaude() string {
 
 func (c *Chat) status() ChatInfo {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.claude == "" {
 		c.claude = findClaude()
 	}
-	return ChatInfo{Found: c.claude != "", Path: c.claude, Busy: c.cmd != nil}
+	claude := c.claude
+	busy := c.cmd != nil
+	account := c.account
+	stale := time.Since(c.askedAt) > time.Minute
+	c.mu.Unlock()
+	if claude != "" && stale {
+		account = whoseClaude(claude)
+		c.mu.Lock()
+		c.account = account
+		c.askedAt = time.Now()
+		c.mu.Unlock()
+	}
+	info := account
+	info.Found = claude != ""
+	info.Path = claude
+	info.Busy = busy
+	return info
+}
+
+// whoseClaude asks Claude Code who is signed in: `claude auth status` prints JSON.
+func whoseClaude(claude string) ChatInfo {
+	cmd := exec.Command(claude, "auth", "status")
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(claude)+":"+os.Getenv("PATH"))
+	out, err := cmd.Output()
+	if err != nil {
+		return ChatInfo{}
+	}
+	var st struct {
+		LoggedIn   bool   `json:"loggedIn"`
+		AuthMethod string `json:"authMethod"`
+		Email      string `json:"email"`
+		OrgName    string `json:"orgName"`
+		Plan       string `json:"subscriptionType"`
+	}
+	if err := json.Unmarshal(out, &st); err != nil {
+		return ChatInfo{}
+	}
+	return ChatInfo{LoggedIn: st.LoggedIn, AuthMethod: st.AuthMethod, Email: st.Email, Plan: st.Plan, Org: st.OrgName}
 }
 
 func (c *Chat) reset(root string) {
@@ -247,6 +295,8 @@ func (c *Chat) relay(root string, r io.Reader) {
 			Result    string  `json:"result"`
 			IsError   bool    `json:"is_error"`
 			Cost      float64 `json:"total_cost_usd"`
+			Model     string  `json:"model"`
+			KeySource string  `json:"apiKeySource"`
 			Message   struct {
 				Content []struct {
 					Type  string          `json:"type"`
@@ -265,7 +315,7 @@ func (c *Chat) relay(root string, r io.Reader) {
 				c.mu.Lock()
 				c.sessions[root] = e.SessionID
 				c.mu.Unlock()
-				c.bus.emit("chat", ChatEvent{Kind: "init", Session: e.SessionID})
+				c.bus.emit("chat", ChatEvent{Kind: "init", Session: e.SessionID, Model: e.Model, KeySource: e.KeySource})
 			}
 		case "assistant":
 			for _, b := range e.Message.Content {
