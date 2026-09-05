@@ -1637,7 +1637,7 @@ code,
 	color: var(--text-3);
 	font-size: var(--fs-small);
 }
-.setup .check {
+.setup .setup-row {
 	display: flex;
 	align-items: center;
 	gap: 14px;
@@ -1647,36 +1647,36 @@ code,
 	background: var(--raised);
 	border: 1px solid var(--edge);
 }
-.setup .check:first-of-type {
+.setup .setup-row:first-of-type {
 	margin-top: 16px;
 }
-.setup .check .dot {
+.setup .setup-row .mark {
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
 	flex: none;
 	background: var(--text-3);
 }
-.setup .check.ok .dot {
+.setup .setup-row.ok .mark {
 	background: var(--teal, #4cc0a8);
 }
-.setup .check.warn .dot {
+.setup .setup-row.warn .mark {
 	background: var(--accent);
 }
-.setup .check.missing .dot {
+.setup .setup-row.missing .mark {
 	background: var(--danger);
 }
-.setup .check.na {
+.setup .setup-row.na {
 	opacity: 0.6;
 }
-.setup .check .body {
+.setup .setup-row .what {
 	flex: 1;
 	min-width: 0;
 }
-.setup .check .t {
+.setup .setup-row .h {
 	font-weight: 500;
 }
-.setup .check .d {
+.setup .setup-row .p {
 	color: var(--text-3);
 	font-size: var(--fs-small);
 	margin-top: 2px;

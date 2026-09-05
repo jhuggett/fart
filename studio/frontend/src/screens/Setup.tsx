@@ -35,11 +35,11 @@ export function Setup() {
 					</p>
 				</div>
 				{checks.map((c) => (
-					<div class={`check ${c.status}`} key={c.id}>
-						<span class="dot" />
-						<div class="body">
-							<div class="t">{c.title}</div>
-							<div class="d">{c.detail}</div>
+					<div class={`setup-row ${c.status}`} key={c.id}>
+						<span class="mark" />
+						<div class="what">
+							<div class="h">{c.title}</div>
+							<div class="p">{c.detail}</div>
 						</div>
 						{c.action && c.run && (
 							<button class={`btn ${c.status === "ok" ? "ghost" : "primary"}`} disabled={busy} onClick={() => void c.run!()}>
