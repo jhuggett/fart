@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from "preact/hooks";
 import { marked } from "marked";
-import { chat, ask, stopChat, newChat, toggleChat, onPlan, planLabel, modelLabel } from "../state/chat.ts";
+import { chat, ask, stopChat, newChat, toggleChat, toggleDock, onPlan, planLabel, modelLabel } from "../state/chat.ts";
 import { shell } from "../shell/shell.ts";
 import { ed } from "../state/editor.ts";
 import { I } from "./Icons.tsx";
@@ -22,8 +22,9 @@ export function ChatPanel() {
 		box.current?.focus();
 	}, []);
 	const send = () => void ask(chat.draft.value);
+	const dock = chat.dock.value;
 	return (
-		<div class="chat">
+		<div class={`chat ${dock}`}>
 			<div class="chat-hdr">
 				<span class={`dot ${busy ? "busy" : info.found ? "ok" : "off"}`} />
 				<b>Ask Claude</b>
@@ -57,6 +58,9 @@ export function ChatPanel() {
 				)}
 				<button class="btn x" title="new conversation" onClick={() => void newChat()}>
 					<I.plus size={12} />
+				</button>
+				<button class="btn x" title={dock === "right" ? "dock below everything" : "dock to the right"} onClick={toggleDock}>
+					{dock === "right" ? "⬓" : "◨"}
 				</button>
 				<button class="btn x" title="close  (⌘J)" onClick={toggleChat}>
 					×

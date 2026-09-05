@@ -34,6 +34,8 @@
 	--tb: 48px;
 	--left: 232px;
 	--right: 240px;
+	--chat: 380px;
+	--chat-h: 280px;
 	--row: 26px;
 	color-scheme: dark;
 }
@@ -611,6 +613,13 @@ code,
 /* the explorer hidden: three columns, or every panel slides one over */
 .editor.no-explorer {
 	grid-template-columns: var(--left) 1fr var(--right);
+}
+/* Ask docked right: one more column, the rightmost */
+.editor.chat-right {
+	grid-template-columns: auto var(--left) 1fr var(--right) var(--chat);
+}
+.editor.no-explorer.chat-right {
+	grid-template-columns: var(--left) 1fr var(--right) var(--chat);
 }
 .browse-body {
 	flex: 1;
@@ -1720,17 +1729,26 @@ code,
 
 /* ---- Ask Claude: a drawer on the right */
 .chat {
-	position: fixed;
-	top: var(--tb);
-	right: 0;
-	bottom: 0;
-	width: 380px;
-	z-index: 30;
 	display: flex;
 	flex-direction: column;
+	min-height: 0;
+	min-width: 0;
 	background: var(--panel);
+}
+/* the rightmost column: beside the inspector in the editor, beside the shelf */
+.chat.right {
+	width: var(--chat);
+	flex: none;
 	border-left: 1px solid var(--edge-strong);
-	box-shadow: var(--shadow);
+}
+/* a band below everything */
+.chat.bottom {
+	height: var(--chat-h);
+	flex: none;
+	border-top: 1px solid var(--edge-strong);
+}
+.chat.bottom .chat-lines {
+	padding: 8px 14px;
 }
 .chat-hdr {
 	height: 36px;

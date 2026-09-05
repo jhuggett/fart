@@ -14,7 +14,6 @@ import { Docs } from "./screens/Docs.tsx";
 import { Setup } from "./screens/Setup.tsx";
 import { Prompt, Confirm } from "./ui/Prompt.tsx";
 import { ContextMenu } from "./ui/ContextMenu.tsx";
-import { ChatPanel } from "./ui/ChatPanel.tsx";
 import { CommandPalette } from "./ui/CommandPalette.tsx";
 
 initCommands();
@@ -67,7 +66,6 @@ export function App() {
 			{screen === "edit" && <Editor />}
 			{screen === "docs" && <Docs />}
 			{screen === "setup" && <Setup />}
-			<ChatPanel />
 			<Prompt />
 			<Confirm />
 			<ContextMenu />

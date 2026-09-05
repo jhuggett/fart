@@ -12,8 +12,20 @@ export interface Line {
 	name?: string;
 }
 
+export type Dock = "right" | "bottom";
+const DOCK_KEY = "fastart.chat.dock";
+function savedDock(): Dock {
+	try {
+		return localStorage.getItem(DOCK_KEY) === "bottom" ? "bottom" : "right";
+	} catch {
+		return "right";
+	}
+}
+
 export const chat = {
 	open: signal(false),
+	/** where the panel sits: the rightmost column, or a band below everything */
+	dock: signal<Dock>(savedDock()),
 	lines: signal<Line[]>([]),
 	busy: signal(false),
 	info: signal<ChatInfo>({ found: false, path: "", busy: false }),
@@ -173,4 +185,13 @@ export async function newChat() {
 export function toggleChat() {
 	chat.open.value = !chat.open.value;
 	if (chat.open.value) wireChat();
+}
+
+export function toggleDock() {
+	chat.dock.value = chat.dock.value === "right" ? "bottom" : "right";
+	try {
+		localStorage.setItem(DOCK_KEY, chat.dock.value);
+	} catch {
+		// the choice lasts the session
+	}
 }

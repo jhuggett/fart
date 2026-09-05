@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { project, openDoc, pickFolder, goWelcome, goDocs, goSetup, toggleServe, type Thumb } from "../state/project.ts";
 import { setup } from "../state/setup.ts";
 import { chat, toggleChat } from "../state/chat.ts";
+import { ChatPanel } from "../ui/ChatPanel.tsx";
 import { shell } from "../shell/shell.ts";
 import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
@@ -113,7 +114,9 @@ export function Browse() {
 						</div>
 					)}
 				</div>
+				{chat.open.value && chat.dock.value === "right" && <ChatPanel />}
 			</div>
+			{chat.open.value && chat.dock.value === "bottom" && <ChatPanel />}
 			{serve?.on && serve.qr && (
 				<div class="qr">
 					<img src={serve.qr} alt="" />

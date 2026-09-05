@@ -1,5 +1,7 @@
 import { Toolbar, showIssues } from "../ui/Toolbar.tsx";
 import { PaletteView } from "../ui/PaletteView.tsx";
+import { ChatPanel } from "../ui/ChatPanel.tsx";
+import { chat } from "../state/chat.ts";
 import { Layers } from "../ui/Layers.tsx";
 import { Inspector } from "../ui/Inspector.tsx";
 import { BottomBar, StatesList, ClipsList } from "../ui/BottomBar.tsx";
@@ -27,6 +29,8 @@ export function Editor() {
 							? `state "${st.name}" · shapes edit in place · drag the part's ⌖ to move it, its lever to turn it, a ring to reach`
 							: "";
 	const issues = ed.issues.value;
+	const chatRight = chat.open.value && chat.dock.value === "right";
+	const chatBelow = chat.open.value && chat.dock.value === "bottom";
 	if (ed.isPalette.value) {
 		return (
 			<div class="app">
@@ -34,14 +38,16 @@ export function Editor() {
 				<div class="browse-body">
 					<Explorer />
 					<PaletteView />
+					{chatRight && <ChatPanel />}
 				</div>
+				{chatBelow && <ChatPanel />}
 			</div>
 		);
 	}
 	return (
 		<div class="app">
 			<Toolbar />
-			<div class={`editor ${explorer.open.value ? "" : "no-explorer"}`}>
+			<div class={`editor ${explorer.open.value ? "" : "no-explorer"} ${chatRight ? "chat-right" : ""}`}>
 				<Explorer />
 				<div class="panel left">
 					<Layers />
@@ -69,7 +75,9 @@ export function Editor() {
 					<BottomBar />
 				</div>
 				<Inspector />
+				{chatRight && <ChatPanel />}
 			</div>
+			{chatBelow && <ChatPanel />}
 		</div>
 	);
 }
