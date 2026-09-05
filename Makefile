@@ -28,6 +28,7 @@ dev: node_modules
 	cd studio && wails3 dev
 
 app: node_modules
+	rm -f studio/bin/Uranus # a universal build leaves a fat binary go build refuses to overwrite
 	cd studio && wails3 task package
 
 # a running studio would just take the launch (single instance): quit it first
