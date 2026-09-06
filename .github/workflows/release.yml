@@ -108,8 +108,11 @@ jobs:
           name: linux
           path: studio/uranus-*.tar.gz
 
+  # whatever built gets published: a platform that failed is missing from
+  # the release, not blocking it
   release:
     needs: [macos, windows, linux]
+    if: ${{ !cancelled() && (needs.macos.result == 'success' || needs.windows.result == 'success' || needs.linux.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
