@@ -7,6 +7,7 @@ import { chat, ask, stopChat, newChat, toggleChat, toggleDock, onPlan, planLabel
 import { shell } from "../shell/shell.ts";
 import { ed } from "../state/editor.ts";
 import { I } from "./Icons.tsx";
+import { Gutter } from "./Gutter.tsx";
 
 export function ChatPanel() {
 	if (!shell.chat || !chat.open.value) return null;
@@ -25,6 +26,7 @@ export function ChatPanel() {
 	const dock = chat.dock.value;
 	return (
 		<div class={`chat ${dock}`}>
+			{dock === "right" ? <Gutter k="chat" edge="left" /> : <Gutter k="chatH" edge="top" />}
 			<div class="chat-hdr">
 				<span class={`dot ${busy ? "busy" : info.found ? "ok" : "off"}`} />
 				<b>Ask Claude</b>

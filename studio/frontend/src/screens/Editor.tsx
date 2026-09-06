@@ -2,6 +2,7 @@ import { Toolbar, showIssues } from "../ui/Toolbar.tsx";
 import { PaletteView } from "../ui/PaletteView.tsx";
 import { ChatPanel } from "../ui/ChatPanel.tsx";
 import { chat } from "../state/chat.ts";
+import { Gutter } from "../ui/Gutter.tsx";
 import { Layers } from "../ui/Layers.tsx";
 import { Inspector } from "../ui/Inspector.tsx";
 import { BottomBar, StatesList, ClipsList } from "../ui/BottomBar.tsx";
@@ -49,10 +50,13 @@ export function Editor() {
 			<Toolbar />
 			<div class={`editor ${explorer.open.value ? "" : "no-explorer"} ${chatRight ? "chat-right" : ""}`}>
 				<Explorer />
-				<div class="panel left">
-					<Layers />
-					<StatesList />
-					<ClipsList />
+				<div class="dock">
+					<div class="panel left">
+						<Layers />
+						<StatesList />
+						<ClipsList />
+					</div>
+					<Gutter k="left" edge="right" />
 				</div>
 				<div class="canvas-col">
 					<div class="canvas-wrap">
@@ -74,7 +78,10 @@ export function Editor() {
 					</div>
 					<BottomBar />
 				</div>
-				<Inspector />
+				<div class="dock">
+					<Inspector />
+					<Gutter k="right" edge="left" />
+				</div>
 				{chatRight && <ChatPanel />}
 			</div>
 			{chatBelow && <ChatPanel />}

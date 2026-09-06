@@ -32,6 +32,7 @@
 	--fs-body: 13px;
 	--fs-big: 18px;
 	--tb: 48px;
+	--explorer: 208px;
 	--left: 232px;
 	--right: 240px;
 	--chat: 380px;
@@ -627,7 +628,7 @@ code,
 	display: flex;
 }
 .explorer {
-	width: 208px;
+	width: var(--explorer);
 	flex: none;
 	background: var(--panel);
 	border-right: 1px solid var(--edge);
@@ -1860,4 +1861,66 @@ code,
 .chat-input textarea:focus {
 	outline: none;
 	border-color: var(--accent-line);
+}
+
+/* ---- docks and gutters: a panel with a draggable edge */
+.dock {
+	position: relative;
+	display: flex;
+	min-height: 0;
+	min-width: 0;
+}
+.dock > .panel {
+	flex: 1;
+	min-width: 0;
+}
+.explorer-dock {
+	flex: none;
+	height: 100%;
+}
+.explorer-dock > .explorer {
+	height: 100%;
+}
+.chat {
+	position: relative;
+}
+.gutter {
+	position: absolute;
+	z-index: 6;
+	background: transparent;
+	transition: background 0.12s;
+}
+.gutter.left,
+.gutter.right {
+	top: 0;
+	bottom: 0;
+	width: 7px;
+	cursor: col-resize;
+}
+.gutter.right {
+	right: -3px;
+}
+.gutter.left {
+	left: -3px;
+}
+.gutter.top {
+	left: 0;
+	right: 0;
+	top: -3px;
+	height: 7px;
+	cursor: row-resize;
+}
+.gutter:hover,
+.gutter.active {
+	background: var(--accent-line);
+}
+body.resizing-x,
+body.resizing-x * {
+	cursor: col-resize !important;
+	user-select: none;
+}
+body.resizing-y,
+body.resizing-y * {
+	cursor: row-resize !important;
+	user-select: none;
 }

@@ -3,8 +3,10 @@ import "./theme.css";
 import { App } from "./App.tsx";
 import { boot } from "./state/project.ts";
 import { initTheme } from "./state/theme.ts";
+import { applyLayout } from "./state/layout.ts";
 
 initTheme();
+applyLayout();
 render(<App />, document.getElementById("app")!);
 void boot();
 

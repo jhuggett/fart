@@ -252,6 +252,12 @@ by name, so pasting works across files), or the current part when no
 name matches, nudged a little each paste. Esc deselects or cancels;
 Cmd+Z undoes; Cmd+Shift+Z (or Cmd+Y) redoes. `?` opens these docs.
 
+## The panels
+
+Every panel has a draggable edge: the explorer, the layers column, the
+inspector, and the Ask panel in either dock. Drag to resize, double-click
+the edge to put it back. Sizes are remembered on this device.
+
 ## Saving is a checkpoint, not a copy
 
 The file on disk always mirrors what you see, written a beat after every

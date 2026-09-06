@@ -5,6 +5,7 @@ import { ed } from "../state/editor.ts";
 import { stripExt } from "../state/paths.ts";
 import { openContextMenu } from "../state/menu.ts";
 import { fileMenu, folderMenu, askNewFile } from "./fileMenu.ts";
+import { Gutter } from "./Gutter.tsx";
 
 function menuAt(e: MouseEvent, items: ReturnType<typeof fileMenu>) {
 	e.preventDefault();
@@ -60,7 +61,8 @@ export function Explorer() {
 	void ed.rev.value;
 	const root = tree();
 	return (
-		<div class="explorer">
+		<div class="dock explorer-dock">
+			<div class="explorer">
 			<div class="hdr">
 				Explorer
 				<span class="hint">
@@ -89,6 +91,8 @@ export function Explorer() {
 			{root.children.map((c) => (
 				<Row key={c.path} node={c} depth={0} />
 			))}
+			</div>
+			<Gutter k="explorer" edge="right" />
 		</div>
 	);
 }
