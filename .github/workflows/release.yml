@@ -135,6 +135,7 @@ jobs:
         with:
           tag_name: ${{ env.TAG }}
           name: Uranus ${{ env.TAG }}
+          overwrite_files: true
           generate_release_notes: true
           body: |
             Uranus, the fastart studio. It emits farts.

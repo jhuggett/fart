@@ -40,7 +40,8 @@ rm -f studio/bin/Uranus
 rm -rf studio/bin/Uranus.app
 (cd studio && wails3 task darwin:package:universal 2>&1 | grep -v "ld: warning\|sysroot\|sponsor\|documentation\|^\[" | tail -1)
 lipo -info studio/bin/Uranus.app/Contents/MacOS/Uranus | grep -q "x86_64 arm64" || { echo "not a universal binary"; exit 1; }
-ZIP="Uranus-$TAG-macos-universal.zip"
+# the same name the workflow uses, so its build replaces this one rather than clashing
+ZIP="uranus-$TAG-macos-universal.zip"
 rm -f "/tmp/$ZIP"
 ditto -c -k --keepParent studio/bin/Uranus.app "/tmp/$ZIP"
 
