@@ -5,6 +5,7 @@
 #   make app        build studio/bin/Uranus.app (or bin/Uranus elsewhere)
 #   make run        build it, then open it
 #   make install    build it into ~/Applications/Uranus.app (pin that to the Dock; every install replaces it in place)
+#   make release V=0.4.0   bump, tag, push, build the universal bundle, publish it on GitHub, install it
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make check-save the save model, end to end, in a headless browser (needs the app built)
@@ -16,7 +17,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate skill install check-save clean
+.PHONY: help setup dev app run serve test validate skill install check-save release clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -66,6 +67,10 @@ test: node_modules
 	npm run check -w @fastart/studio
 	npm run build -w @fastart/studio
 	cd studio && go vet ./...
+
+# a studio release, end to end (see scripts/release.sh)
+release: node_modules
+	sh scripts/release.sh $(V)
 
 # the file on disk is the document: edits land, ⌘S checkpoints, nothing reverts alone
 check-save: node_modules
