@@ -3,7 +3,7 @@
 // a `map` so the same code draws rest space and a posed state.
 
 import { canvasColors } from "../state/theme.ts";
-import { colorOf, cssColor, docBounds, drawList, xfApply, type Doc, type Shape, type StatePart, type Token, type Vec2, shapesOf } from "@fastart/core";
+import { colorOf, cssColor, docBounds, drawList, shadeColor, xfApply, type Doc, type Shape, type StatePart, type Token, type Vec2, shapesOf } from "@fastart/core";
 
 export type Map2 = (p: Vec2) => Vec2;
 export const ident: Map2 = (p) => p;
@@ -104,7 +104,7 @@ export function drawDoc(ctx: CanvasRenderingContext2D, doc: Doc, tokens: readonl
 	for (const { part, xf, scale } of drawList(doc, opts.pose)) {
 		const map: Map2 = (p) => xfApply(xf, p);
 		for (const sh of shapesOf(doc, part)) {
-			fillShape(ctx, sh, cssColor(colorOf(tokens, sh.color ?? "")), map, scale);
+			fillShape(ctx, sh, cssColor(shadeColor(colorOf(tokens, sh.color ?? ""), sh.shade)), map, scale);
 		}
 	}
 	ctx.globalAlpha = 1;

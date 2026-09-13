@@ -3,18 +3,21 @@
 // it and the ways a project gets opened (dialog, drop, argv, the Finder).
 
 import { signal, batch } from "@preact/signals";
-import { parseDoc, resolvePalettes, stringifyDoc, isPaletteFile, type Doc, type Token } from "@fastart/core";
+import { parseDoc, resolvePalettes, stringifyDoc, isPaletteFile, as3d, projectDoc, type Doc, type Token } from "@fastart/core";
 import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
+import { openModel, leaveModel, md } from "./model.ts";
 import { ask, confirm } from "./prompt.ts";
 import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
 import { refreshSetup } from "./setup.ts";
 
-export type Screen = "welcome" | "browse" | "edit" | "docs" | "setup";
+export type Screen = "welcome" | "browse" | "edit" | "model" | "docs" | "setup";
 
 export interface Thumb {
 	doc: Doc;
 	tokens: Token[];
+	/** 1.3: the file is a 3D model; the thumb is its front view */
+	space3d?: boolean;
 }
 
 export const project = {
@@ -83,6 +86,7 @@ export async function openProject(root: string) {
 	let r = root;
 	while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
 	if (ed.path.value) await leaveFile();
+	if (md.path.value) await leaveModel();
 	batch(() => {
 		project.root.value = r;
 		project.name.value = basename(r);
@@ -131,11 +135,13 @@ export async function forgetRecent(root: string) {
 
 export async function goWelcome() {
 	if (ed.path.value) await leaveFile();
+	if (md.path.value) await leaveModel();
 	project.screen.value = "welcome";
 }
 
 export async function goBrowse() {
 	if (ed.path.value) await leaveFile();
+	if (md.path.value) await leaveModel();
 	project.screen.value = "browse";
 	await refreshFiles();
 }
@@ -151,7 +157,7 @@ export function leaveDocs() {
 }
 
 export function goSetup() {
-	if (project.screen.value !== "setup") project.setupBack.value = project.screen.value === "edit" ? "browse" : project.screen.value;
+	if (project.screen.value !== "setup") project.setupBack.value = project.screen.value === "edit" || project.screen.value === "model" ? "browse" : project.screen.value;
 	project.screen.value = "setup";
 }
 
@@ -178,9 +184,18 @@ export async function refreshFiles() {
 				doc = null;
 			}
 			if (!doc) return;
+			// a 3D file shows its front view on the shelf
+			const d3 = as3d(doc);
+			if (d3) {
+				try {
+					doc = projectDoc(d3, { view: "front" });
+				} catch {
+					return;
+				}
+			}
 			const dir = dirname(rel);
 			const { tokens } = await resolvePalettes(doc, (ref) => shell.readFile(root, joinRel(dir, ref)));
-			thumbs.set(rel, { doc, tokens });
+			thumbs.set(rel, { doc, tokens, ...(d3 ? { space3d: true } : {}) });
 		}),
 	);
 	batch(() => {
@@ -190,9 +205,47 @@ export async function refreshFiles() {
 }
 
 export async function openDoc(rel: string): Promise<boolean> {
+	const root = project.root.value;
+	// a 3D file goes to the model screen; anything else (or nothing yet) to the editor
+	const text = root === null ? null : await shell.readFile(root, rel);
+	if (text !== null && /"space"\s*:\s*"3d"/.test(text)) {
+		let is3d = false;
+		try {
+			is3d = (JSON.parse(text) as { space?: unknown }).space === "3d";
+		} catch {
+			is3d = false;
+		}
+		if (is3d) {
+			if (ed.path.value) await leaveFile();
+			const ok = await openModel(rel, text);
+			if (ok) project.screen.value = "model";
+			return ok;
+		}
+	}
+	if (md.path.value) await leaveModel();
 	const ok = await openFile(rel);
 	if (ok) project.screen.value = "edit";
 	return ok;
+}
+
+/** A new 3D file: a part, a colour, a state; then the model screen. */
+export async function newModel(name: string) {
+	const root = project.root.value;
+	if (root === null) return;
+	const rel = name.endsWith(".fart") ? name : `${name}.fart`;
+	if (project.files.value.includes(rel)) {
+		project.error.value = `${rel} already exists`;
+		return;
+	}
+	const doc = { version: 1, space: "3d", name: basename(rel.replace(/\.fart$/, "")), palette: [{ name: "ink", rgb: [200, 195, 185, 255] }], parts: [{ name: "body", pivot: [0, 0, 0], shapes: [] }], states: [{ name: "default", parts: [{ part: "body", offset: [0, 0, 0] }] }] };
+	try {
+		await shell.writeFile(root, rel, JSON.stringify(doc, null, 2) + "\n");
+	} catch (e) {
+		project.error.value = `could not write ${rel}: ${String(e)}`;
+		return;
+	}
+	await refreshFiles();
+	await openDoc(rel);
 }
 
 /** The project's palette files: colours and no parts. */

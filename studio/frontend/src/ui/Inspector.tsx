@@ -159,6 +159,11 @@ function ShapeSection({ sh, collision }: { sh: Shape; collision: boolean }) {
 					<span>{sh.points.length}</span>
 				</div>
 			)}
+			{n === 1 && !collision && (
+				<div class="fields">
+					<Num label="shade" value={sh.shade ?? 1} min={0} onChange={(v) => setShapeNumber(sh, "shade", null, v)} title="lighting on the slot's colour: 1 as is, below darker, above brighter. A palette swap keeps it." wide />
+				</div>
+			)}
 			<div class="line" style="margin-top:8px;gap:6px">
 				{!collision && (
 					<>

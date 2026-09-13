@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
+import { run } from "../state/commands.ts";
 import { project, openDoc, pickFolder, goWelcome, goDocs, goSetup, toggleServe, type Thumb } from "../state/project.ts";
 import { setup } from "../state/setup.ts";
 import { chat, toggleChat } from "../state/chat.ts";
@@ -79,6 +80,9 @@ export function Browse() {
 				</button>
 				<button class="btn ghost" title="colours other files draw from" onClick={() => void askNewPalette("")}>
 					new palette
+				</button>
+				<button class="btn ghost" title="a 3D model: solids to draw in any view and project to 2D files" onClick={() => run("file.newModel")}>
+					new 3D model
 				</button>
 				{shell.chat && (
 					<button class={`btn ghost ${chat.open.value ? "active" : ""}`} title="ask Claude  (⌘ J)" onClick={toggleChat}>

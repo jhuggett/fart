@@ -320,7 +320,7 @@ function diamond(ctx: CanvasRenderingContext2D, s: Vec2, css: string) {
 	ctx.fill();
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: number, py: number, zoom: number, minor: string, major: string) {
+export function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number, px: number, py: number, zoom: number, minor: string, major: string) {
 	// a step that stays between 24 and 120 pixels
 	let step = 1;
 	while (step * zoom < 24) step *= step === 1 ? 5 : 2;

@@ -286,6 +286,63 @@ draws, two fingers pan and pinch. Every change streams back to disk. No
 cloud, no app store: your machine serves, your tablet draws. From a
 terminal, `studio --serve some/dir` does the same without a window.
 
+## Shade
+
+A shape may carry a **shade** (in the inspector, under its numbers):
+the slot's colour times that number, alpha kept. 1 is the colour as
+is, 0.6 is the shadowed side of a barrel, 1.2 a highlight. A palette
+swap recolours a shaded shape along with the rest; that is the point of
+shading the slot instead of picking a darker colour.
+
+## 3D models
+
+A file with `"space": "3d"` is a model, not a drawing: mesh, ball and
+rod shapes, three-coordinate points, turns about x, y and z. **New 3D
+model** on the shelf makes one; opening one lands in the model screen,
+the same four regions with the model turned under a **view**.
+
+- **The view** is a turn laid on the model. Pick front, back, left,
+  right, top or bottom in the toolbar or the inspector, or **drag on
+  nothing (or Alt-drag anywhere) to orbit**. The little axes in the
+  corner say which way the model is turned. Wheel pans, ⌘-wheel zooms,
+  as ever.
+- **The tools make solids.** Rect (R) drags a **box**, Circle (O) a
+  **ball**, Line (L) a **rod**, Poly (P) clicks a profile and closes it
+  into a **prism**. Each is drawn in the view plane and is as deep as the
+  **depth** field in the toolbar, centred on the depth of what is
+  selected (else the part's pivot). So the way to model a pistol is to
+  pick the left view, click its profile, close it, then turn to the top
+  and drag the barrel's octagon... or just its box.
+- **Drag a shape** to move it along the view plane; select a mesh and
+  **drag a corner** to pull it along the view plane. The inspector moves
+  either on any axis by number, and turns a corner's or a ball's fields
+  into the model's coordinates. **Mirror across x** (right-click) copies
+  a shape reflected through the model's middle, faces turned to stay
+  outward.
+- **Poses are the same as in 2D** with a third axis: the ⌖ moves the
+  part, the lever turns it about the view axis, and the inspector has
+  the turn about x, y and z in degrees. A turn about the view axis is
+  what survives projection exactly; the rest bakes.
+- **Clips preview** with a scrubber under the canvas; keys name states.
+- **Project…** writes the 2D files a game draws, beside the model:
+  `pistol-left.fart`, `pistol-top.fart`, ordinary files this editor
+  opens: faces that face the viewer as shaded polys, and every pose
+  either a real 2D pose (a turn about the view axis; parents kept, clips
+  tweened) or a baked variant part (`hammer@1`) with the clip subdivided
+  at 12 fps. The same comes from the command line:
+
+      npx fart project pistol.fart --view left --view top --outline ink:0.25
+
+  `spec/PROJECT.md` has the rules; the spec page here has the format.
+- **The file on disk is the document** here too: edits land at once,
+  ⌘S is the checkpoint, Revert goes back to it. ⌘J asks Claude, who can
+  read and write the model like any file.
+- **For a 3D game** the model loads as it is: the Odin loader flattens
+  each part to triangles (`flatten_part`) and poses them through
+  `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with
+  its animations for any other engine. Chains work in 3D with a `pole`
+  in place of `bend`; the model screen does not show them yet.
+
 ## Files a tool refused
 
 A file that is not JSON, carries a version the studio does not know, or

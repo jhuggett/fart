@@ -10,6 +10,8 @@ import { shell } from "./shell/shell.ts";
 import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
 import { Editor } from "./screens/Editor.tsx";
+import { Model } from "./screens/Model.tsx";
+import { md, curClip as curClip3 } from "./state/model.ts";
 import { Docs } from "./screens/Docs.tsx";
 import { Setup } from "./screens/Setup.tsx";
 import { Prompt, Confirm } from "./ui/Prompt.tsx";
@@ -36,6 +38,8 @@ function onKey(e: KeyboardEvent) {
 		e.preventDefault();
 		if (screen === "edit" && curClip()) run("clip.play");
 		else if (screen === "edit") ix.space = true;
+		else if (screen === "model" && curClip3()) run("clip.play");
+		else if (screen === "model") md.space = true;
 		return;
 	}
 	const id = KEYMAP[k];
@@ -44,7 +48,10 @@ function onKey(e: KeyboardEvent) {
 }
 
 function onKeyUp(e: KeyboardEvent) {
-	if (e.code === "Space") ix.space = false;
+	if (e.code === "Space") {
+		ix.space = false;
+		md.space = false;
+	}
 }
 
 export function App() {
@@ -64,6 +71,7 @@ export function App() {
 			{screen === "welcome" && <Welcome />}
 			{screen === "browse" && <Browse />}
 			{screen === "edit" && <Editor />}
+			{screen === "model" && <Model />}
 			{screen === "docs" && <Docs />}
 			{screen === "setup" && <Setup />}
 			<Prompt />

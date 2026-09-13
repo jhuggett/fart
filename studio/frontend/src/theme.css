@@ -823,6 +823,10 @@ code,
 .canvas-wrap canvas.select {
 	cursor: default;
 }
+/* the model screen stacks the ground and the WebGL solids under the overlay that takes the pointer */
+.canvas-wrap canvas.under {
+	pointer-events: none;
+}
 .canvas-wrap canvas.grab {
 	cursor: grabbing;
 }

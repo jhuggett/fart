@@ -10,6 +10,7 @@
 import { signal, batch } from "@preact/signals";
 import {
 	parseDoc,
+	is3d,
 	validate,
 	stringifyDoc,
 	resolvePalettes,
@@ -728,6 +729,11 @@ export async function openFile(rel: string): Promise<boolean> {
 			return false;
 		} else d = JSON.parse(text) as Doc;
 		issues = [...report.errors, ...report.warnings];
+	}
+	if (is3d(d)) {
+		// 1.3: a 3D model. The studio draws its front view on the shelf; editing it is next.
+		project.error.value = `${rel} is a 3D file: Uranus cannot edit it yet. fart project makes its 2D views (see Docs).`;
+		return false;
 	}
 	const isPalette = isPaletteFile(d);
 	ensureDefaults(d);

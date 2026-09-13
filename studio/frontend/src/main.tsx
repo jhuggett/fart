@@ -1,7 +1,7 @@
 import { render } from "preact";
 import "./theme.css";
 import { App } from "./App.tsx";
-import { boot } from "./state/project.ts";
+import { boot, project } from "./state/project.ts";
 import { initTheme } from "./state/theme.ts";
 import { applyLayout } from "./state/layout.ts";
 
@@ -13,6 +13,7 @@ void boot();
 // A probe for scripts and the console: the store, the view, and the
 // screen mapping. Read-only in spirit; nothing in the app uses it.
 import { ed, applyExternalDoc, revertToCheckpoint, flushNow } from "./state/editor.ts";
+import { md, projectViews } from "./state/model.ts";
 import { view, toScreen, toWorld } from "./canvas/view.ts";
 import { frameW, partXf, worldPivot, poseLever, chainGrabs } from "./canvas/interact.ts";
-(globalThis as { fastart?: unknown }).fastart = { ed, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, applyExternalDoc, revertToCheckpoint, flushNow };
+(globalThis as { fastart?: unknown }).fastart = { ed, md, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, applyExternalDoc, revertToCheckpoint, flushNow };

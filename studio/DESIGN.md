@@ -69,6 +69,22 @@ definition each, and the tooltips repeat them.
 "Layers" is the panel; "parts" are what it lists. A part is a layer
 that can move, which is why it is not just called a layer.
 
+A 3D file (`space: "3d"`, 1.3) opens in the **model screen**: the same
+four regions, the canvas showing the model turned under a **view**. The
+words gain a coordinate, not a vocabulary:
+
+| word       | in the file     | what it is                                                  |
+|------------|-----------------|-------------------------------------------------------------|
+| box, ball, rod, prism | `mesh`, `ball`, `rod` | what the four drawing tools make: R drags a box, O a ball, L a rod, P clicks a prism's profile; each as deep as the **depth** field, along the view axis |
+| corner     | `points[i]`     | a mesh's vertex; drags along the view plane                  |
+| view       | (not saved)     | a turn laid on the model: front, back, left, right, top, bottom, or free after an orbit |
+| orbit      |                 | drag on nothing, or Alt-drag anywhere                        |
+| turn       | `rotate` `[x,y,z]` | a pose's turn about x, then y, then z; the lever turns about the view axis |
+| Project…   |                 | write the 2D views (`name-left.fart`, …) beside the model    |
+
+Everything else is the editor's: states, clips, the pivot and lever,
+the timeline, the inspector, undo, the file on disk as the document.
+
 ## The keys
 
 Figma's letters, because everyone's hands already know them.
