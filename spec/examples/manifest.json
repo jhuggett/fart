@@ -20,11 +20,13 @@
     "chain": "a constraint's chain is empty or its parts are not parented in order",
     "ref.anchor": "a constraint's end is not part/anchor on the chain's last part",
     "like": "a part is like itself, like a part that is itself like another, or carries its own shapes or anchors",
-    "ref.chain": "a target names a constraint the document does not have"
+    "ref.chain": "a target names a constraint the document does not have",
+    "space": "a space the reader does not know (1.3)",
+    "face": "a mesh face with fewer than three indices, or an index past the last point (1.3)"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
-    "reserved": "a field or value this version reserves for later (children, space)",
+    "reserved": "a field or value this version reserves for later (children)",
     "unresolved": "a palette_ref could not be read, so token references were not checked"
   },
   "cases": [
@@ -302,6 +304,73 @@
       "file": "invalid/anchor-angle-string.fart",
       "valid": false,
       "code": "schema"
+    },
+    {
+      "file": "valid/shade.fart",
+      "valid": true,
+      "note": "1.3: shade on shapes, 0 to above 1"
+    },
+    {
+      "file": "valid/cube.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.3: the smallest useful 3D document: a mesh, a ball, a rod, a turn about y, a clip"
+    },
+    {
+      "file": "valid/chest3d.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.3: the 3D kit: a hinged lid on a parent, a socket with a dir, like and mirror, shade, 3D collision, a ref"
+    },
+    {
+      "file": "invalid/space-unknown.fart",
+      "valid": false,
+      "code": "space"
+    },
+    {
+      "file": "invalid/face-two.fart",
+      "valid": false,
+      "code": "face"
+    },
+    {
+      "file": "invalid/face-range.fart",
+      "valid": false,
+      "code": "face"
+    },
+    {
+      "file": "invalid/mesh-flat-points.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a 3D point has three coordinates"
+    },
+    {
+      "file": "invalid/poly-in-3d.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "poly is not a 3D kind; a mesh face is"
+    },
+    {
+      "file": "invalid/mesh-in-2d.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "mesh is not a 2D kind"
+    },
+    {
+      "file": "invalid/shade-negative.fart",
+      "valid": false,
+      "code": "schema"
+    },
+    {
+      "file": "invalid/rotate-scalar-3d.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a 3D turn is [x, y, z]"
+    },
+    {
+      "file": "valid/reach3d.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.3: a chain in 3D with a pole, a target on a state and on an inline key"
     }
   ]
 }

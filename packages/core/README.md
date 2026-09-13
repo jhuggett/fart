@@ -22,4 +22,15 @@ load" reads the same everywhere.
 The command line:
 
     fart validate spec/examples      # every .fart below, refs resolved, exit 1 on any failure
-    fart bake enemies/bat.fart       # write tris into each poly, in place
+    fart bake enemies/bat.fart       # write tris into each poly (or mesh), in place
+    fart project pistol.fart --view left --view top -o out/pistol.fart   # 1.3: 2D views of a 3D file
+
+3D (1.3): `as3d(doc)` types a parsed 3D document; `worldTransforms3`,
+`sampleClip3`, `sampleTargets3`, `solveChain3`, `blendPoses3`,
+`layerPoses3`, `attachXf3`, `bakeTris3` are the 2D calls with a third
+coordinate; `projectDoc(doc3, { view, light, ambient, fps, outline })` is
+`fart project` as a function and `toGlb(doc3)` is `fart gltf`. Solids:
+`box`, `extrude`, `lathe`, `windOutward`, `ballMesh`, `rodMesh`;
+`flattenPart` / `triMesh` give a renderer its triangles and normals;
+`Y_UP` / `yUp` turn the frame for y-up engines. `shadeColor` lays a
+shape's `shade` on a resolved colour.

@@ -20,7 +20,7 @@ const manifest = JSON.parse(await readFile(join(spec, "examples/manifest.json"),
 const Ajv2020 = (AjvModule as unknown as { default: typeof AjvModule.default }).default ?? AjvModule;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const bySchema = ajv.compile(schema);
-const STRUCTURAL = new Set(["version", "schema", "path"]);
+const STRUCTURAL = new Set(["version", "schema", "path", "space"]);
 
 test("the schema compiles in strict mode", () => {
 	assert.ok(bySchema);

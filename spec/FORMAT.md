@@ -1,9 +1,10 @@
-# Fast Art Format (.fart) — v1.2
+# Fast Art Format (.fart) — v1.3
 
 JSON-backed vector art for games. The format is the contract: any editor
 that writes it and any engine that reads it agree through this document
-alone. Scope: describing drawable, recolorable, re-posable 2D art. Nothing
-else — no scenes, no logic, no engine data (that's what `meta` is for).
+alone. Scope: describing drawable, recolorable, re-posable art, flat or
+(since 1.3) low-poly solid. Nothing else — no scenes, no logic, no engine
+data (that's what `meta` is for).
 
 It is called `.fart` on purpose. The format does not take itself
 seriously so that you don't have to: it is plain JSON, small enough to
@@ -55,6 +56,11 @@ Two kinds, distinguished by content, same extension:
 - Token lookup order: this file's `palette` first, then `palette_refs`
   from last to first. Unresolvable tokens render loud magenta.
 - Token entries are objects so later fields (e.g. `emissive`) are additive.
+- `space` (1.3): `"2d"` (the default when absent) or `"3d"`. Everything
+  in this document up to **Space: 3D** describes the 2D document; a 3D
+  document is the same words with a third coordinate, and that section
+  says exactly where they differ. A reader refuses a space it does not
+  know (error `space`).
 
 ## Shapes
 
@@ -76,6 +82,20 @@ Order within a part = paint order.
   indices, each one a valid index into `points`.
 - Reserved kinds for future versions: `ring`, `path`. A version-1 reader
   rejects them; they are not "unknown", they are spoken for.
+
+### Shade (1.3)
+
+```json
+{"kind": "poly", "color": "steel", "shade": 0.72, "points": [[...]]}
+```
+
+A shape may carry `shade`, a number from 0 (absent = 1): the resolved
+colour's red, green and blue are multiplied by it and clamped, alpha is
+left alone. The token is still the recolor surface (a swap recolours a
+shaded shape along with the rest), shade is the lighting painted on top:
+the lit face and the shadowed face of one steel barrel name the same
+token. Projections (below) write it; hands may too. A reader that
+predates 1.3 draws flat.
 
 ## Parts
 
@@ -327,6 +347,85 @@ anything new in a file:
 base of a layer. Additive layers (a delta on top of any pose) are not
 defined yet; a layer with a weight envelope covers the common cases.
 
+## Space: 3D (1.3)
+
+```json
+{"version": 1, "space": "3d", "name": "pistol", "parts": [ ... ], "states": [ ... ]}
+```
+
+A document with `"space": "3d"` describes a low-poly solid the same way
+a 2D document describes a drawing: parts with pivots and parents,
+shapes that each paint one token, states and clips that pose them. It is
+authoring-side first (model once, project to any 2D view; see
+`PROJECT.md`), and a game with a 3D renderer may load it directly.
+
+- Coordinates: **x-right, y-down, z-away** (into the picture), a
+  right-handed frame. Dropping z from a 3D document at rest gives its
+  front view: the file at rest still looks like the thing, from the front.
+- Every point that was `[x, y]` is `[x, y, z]`: shape geometry, `pivot`,
+  anchor `at`, pose `offset`. A 2D reader that predates 1.3 refuses a 3D
+  document at the schema stage, which is the right outcome.
+- Shapes are `mesh`, `ball` and `rod`; `circle`, `line` and `poly` do not
+  occur in a 3D document (a mesh face is what a poly becomes):
+
+```json
+{"kind": "mesh", "color": "wood",  "points": [[0,0,0], ...], "faces": [[0,1,2,3], [4,5,6,7], ...], "tris": [0,1,2, 0,2,3, ...]}
+{"kind": "ball", "color": "brass", "at": [0,0,0], "r": 1.2}
+{"kind": "rod",  "color": "steel", "a": [0,0,0], "b": [8,0,0], "w": 0.6}
+```
+
+  - `mesh`: `points` (three or more) and `faces`, each face a list of
+    three or more indices into `points`, planar, wound so that
+    `(p1 − p0) × (p2 − p0)` points **outward**. A face may be concave.
+    **Editors bake `tris`** (index triples into `points`, every face
+    fanned or ear-clipped) on save so renderers can be dumb; `tris` is
+    optional in a hand-written file. Error `face` covers a face with
+    fewer than three indices or an index past the last point; `tris`
+    covers the triples as in 2D.
+  - `ball`: a sphere at `at` with radius `r`. `rod`: a round-capped
+    cylinder from `a` to `b`, width `w`. Both project to exactly the
+    circle and the line a 2D reader draws.
+  - `shade` applies as in 2D.
+- Anchors carry `at` and, for a socket, `dir`: a direction vector in the
+  part's rest space (unit length is the convention; readers normalise).
+  `angle` has no meaning in 3D.
+- A pose's `rotate` is `[x, y, z]`: radians about the pivot, applied as
+  a turn about x, then y, then z, in the parent's rest frame. Each turn
+  is right-handed about its axis, so a turn about z is the 2D `rotate`
+  exactly (`x' = x cos θ − y sin θ`, `y' = x sin θ + y cos θ`). Absent
+  is `[0, 0, 0]`. `scale` stays one number; `mirror` reflects x across the
+  pivot before the turn, as in 2D. The local map is
+
+      L(part) = translate(offset) · Rz · Ry · Rx · scale · mirror · translate(−pivot)
+
+  and `W(part) = W(parent) · L(part)` as ever.
+- Tweening (clips, blending, layering): `offset` and `scale` linearly;
+  `rotate` **as a rotation**, the short way round: both keys' turns
+  become quaternions (`q = qz · qy · qx`), the pair is brought to a
+  positive dot product, and the frame is their spherical interpolation.
+  A reader that lerps Euler angles instead is wrong past small turns.
+- Attaching: positions matched and, where both anchors have a `dir`,
+  the item turned by the shortest rotation taking its `dir` onto the
+  host's. Roll is left alone.
+- A state's list is membership; in 3D, depth decides what paints over
+  what, so the order carries no meaning (readers keep it anyway, and the
+  projection sorts by depth). `like` keeps a part's geometry shared.
+- Chains and targets work as in 2D with a third axis: a constraint's
+  `chain`, `end` and errors are the same; `bend` has no meaning in 3D
+  and an optional `pole` (`[x, y, z]`, document space) is a point the
+  first elbow leans toward, since a bent chain in space may swivel
+  freely about its root-to-end line. A target's `at` is `[x, y, z]`.
+  The reference solver is cyclic coordinate descent: each joint, end
+  first, turns about the axis `(joint → end) × (joint → target)` by the
+  angle between them, in its parent's frame; then, with a pole, the root
+  swings the chain about the root-to-end line until the elbow lies
+  toward the pole. Any solver that reaches the same point conforms.
+  Everything else (`like`, `mirror`, clips, `events`, `curve`,
+  `emissive`, `collision` with the 3D kinds, `palette_refs`) means what
+  it means in 2D.
+- Nothing here changes a 2D document: a 2D file is a 1.2 file, byte for
+  byte, unless it uses `shade`.
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -355,6 +454,8 @@ engine that cares reads them and treats them as solid however it likes.
 - Collision does not pose: it is rest-space, state-independent. Doors
   and other state-dependent solids stay engine-owned for now.
 - Loaders that predate this field ignore it; the version stays 1.
+- In a 3D document (1.3) the kinds are the 3D ones: a `rod` is a capsule,
+  a `ball` a sphere, a `mesh` a convex-ish solid.
 
 ## Validation
 
@@ -389,6 +490,8 @@ the same from any tool:
 | `ref.anchor` | a constraint's `end` is not `part/anchor` on the chain's last part |
 | `like`      | a part is like itself, like a part that is itself like another, or carries its own shapes or anchors |
 | `ref.chain` | a target names a constraint the document does not have           |
+| `space`     | a space the reader does not know (1.3)                          |
+| `face`      | a mesh face with fewer than three indices, or an index past the last point (1.3) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -424,7 +527,5 @@ anything else; validators warn when they appear.
 
 - `children` on a part: nesting, should `parent` ever prove the wrong way
   round.
-- `space` at the top level: `"2d"` is the only value and the default; a
-  three-dimensional Fast Art would be a new major, but the key is spoken
-  for.
+- (`space` stopped being reserved in 1.3.)
 - Shape kinds `ring` and `path`.

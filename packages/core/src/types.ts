@@ -21,6 +21,8 @@ export interface CircleShape {
 	kind: "circle";
 	/** A palette token. Required inside a part, optional in collision. */
 	color?: string;
+	/** Since 1.3: multiplies the resolved colour's r, g, b. Absent means 1. */
+	shade?: number;
 	at: Vec2;
 	r: number;
 	[extra: string]: unknown;
@@ -29,6 +31,7 @@ export interface CircleShape {
 export interface LineShape {
 	kind: "line";
 	color?: string;
+	shade?: number;
 	a: Vec2;
 	b: Vec2;
 	/** Stroke width, round caps. As collision, the capsule's girth. */
@@ -39,6 +42,7 @@ export interface LineShape {
 export interface PolyShape {
 	kind: "poly";
 	color?: string;
+	shade?: number;
 	points: Vec2[];
 	/** Index triples into points, baked on save. Absent: triangulate yourself. */
 	tris?: number[];
@@ -138,13 +142,17 @@ export interface Constraint {
 	chain: string[];
 	/** "part/anchor" on the chain's last part. */
 	end: string;
-	/** Preferred elbow direction where a solution is ambiguous. */
+	/** Preferred elbow direction where a solution is ambiguous (2D). */
 	bend?: 1 | -1;
+	/** 3D (1.3): a document-space point the first elbow leans toward. */
+	pole?: Vec3;
 	[extra: string]: unknown;
 }
 
 export interface Doc {
 	version: 1;
+	/** Since 1.3: "2d" (absent) or "3d". A 3D document is typed as Doc3; see as3d(). */
+	space?: "2d" | "3d";
 	name?: string;
 	palette_refs?: string[];
 	palette?: Token[];
@@ -160,7 +168,134 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 2;
+export const FORMAT_MINOR = 3;
+
+// ------------------------------------------------------------------ 1.3: 3D
+// A 3D document is the same words with a third coordinate: x-right,
+// y-down, z-away, right-handed. Dropping z gives the front view.
+
+/** [x, y, z]. */
+export type Vec3 = [number, number, number];
+
+export interface MeshShape {
+	kind: "mesh";
+	color?: string;
+	shade?: number;
+	points: Vec3[];
+	/** Index loops into points, wound so (p1-p0)x(p2-p0) points outward. */
+	faces: number[][];
+	/** Index triples into points, baked on save. */
+	tris?: number[];
+	[extra: string]: unknown;
+}
+
+export interface BallShape {
+	kind: "ball";
+	color?: string;
+	shade?: number;
+	at: Vec3;
+	r: number;
+	[extra: string]: unknown;
+}
+
+export interface RodShape {
+	kind: "rod";
+	color?: string;
+	shade?: number;
+	a: Vec3;
+	b: Vec3;
+	w: number;
+	[extra: string]: unknown;
+}
+
+export type Shape3 = MeshShape | BallShape | RodShape;
+
+export interface Anchor3 {
+	name: string;
+	at: Vec3;
+	/** The direction an attached thing points, in the part's rest space. */
+	dir?: Vec3;
+	[extra: string]: unknown;
+}
+
+export interface Part3 {
+	name: string;
+	parent?: string;
+	pivot?: Vec3;
+	like?: string;
+	shapes?: Shape3[];
+	anchors?: Anchor3[];
+	meta?: Record<string, unknown>;
+	[extra: string]: unknown;
+}
+
+export interface StatePart3 {
+	part: string;
+	offset?: Vec3;
+	/** Radians about the pivot: about x, then y, then z. Absent means [0, 0, 0]. */
+	rotate?: Vec3;
+	scale?: number;
+	mirror?: boolean;
+	[extra: string]: unknown;
+}
+
+/** 3D (1.3): where a chain should reach in this pose, document space. */
+export interface Target3 {
+	chain: string;
+	at: Vec3;
+	[extra: string]: unknown;
+}
+
+export interface State3 {
+	name: string;
+	/** Membership. Depth decides painting in 3D; the list's order is kept for readers that want it. */
+	parts: StatePart3[];
+	targets?: Target3[];
+	[extra: string]: unknown;
+}
+
+export interface ClipKey3 {
+	t: number;
+	state?: string;
+	parts?: StatePart3[];
+	ease?: Ease;
+	curve?: Curve;
+	targets?: Target3[];
+	events?: string[];
+	[extra: string]: unknown;
+}
+
+export interface Clip3 {
+	name: string;
+	loop?: boolean;
+	keys: ClipKey3[];
+	[extra: string]: unknown;
+}
+
+export interface Doc3 {
+	version: 1;
+	space: "3d";
+	name?: string;
+	palette_refs?: string[];
+	palette?: Token[];
+	parts?: Part3[];
+	states?: State3[];
+	clips?: Clip3[];
+	constraints?: Constraint[];
+	collision?: Shape3[];
+	meta?: Record<string, unknown>;
+	[extra: string]: unknown;
+}
+
+/** Is this a 3D document? parseDoc returns a Doc for both spaces; this tells them apart. */
+export function is3d(doc: { space?: unknown }): boolean {
+	return doc.space === "3d";
+}
+
+/** The document as a 3D one, or null when it is not. A validated 3D document is a Doc3. */
+export function as3d(doc: Doc | Doc3): Doc3 | null {
+	return doc.space === "3d" ? (doc as Doc3) : null;
+}
 
 /** What an unresolvable token renders as: loud, on purpose. */
 export const MAGENTA: Rgba = [255, 0, 255, 255];

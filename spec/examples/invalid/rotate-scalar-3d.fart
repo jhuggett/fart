@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "space": "3d",
+  "parts": [
+    {
+      "name": "a",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "s",
+      "parts": [
+        {
+          "part": "a",
+          "rotate": 0.5
+        }
+      ]
+    }
+  ]
+}

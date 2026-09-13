@@ -1,4 +1,4 @@
-import type { Doc } from "./types.ts";
+import type { Doc, Doc3 } from "./types.ts";
 import { validate, type Report, type ValidateOptions } from "./validate.ts";
 
 export interface ParseResult {
@@ -37,6 +37,6 @@ export function loadDoc(text: string, opts?: ValidateOptions): Doc {
 }
 
 /** The canonical on-disk form: two-space indent, trailing newline. */
-export function stringifyDoc(doc: Doc): string {
+export function stringifyDoc(doc: Doc | Doc3): string {
 	return JSON.stringify(doc, null, 2) + "\n";
 }

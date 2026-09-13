@@ -7,6 +7,7 @@ package fastart_test
 import "core:encoding/json"
 import "core:fmt"
 import "core:math"
+import "core:math/linalg"
 import "core:os"
 import "core:testing"
 import fart ".."
@@ -17,6 +18,7 @@ Case :: struct {
 	file:  string,
 	valid: bool,
 	code:  string,
+	space: string, // "3d" for the 1.3 3D cases
 }
 Manifest :: struct {
 	cases: []Case,
@@ -40,6 +42,14 @@ corpus :: proc(t: ^testing.T) {
 	for c in m.cases {
 		data, err := os.read_entire_file(fmt.tprintf("%s%s", EXAMPLES, c.file), context.temp_allocator)
 		if !testing.expectf(t, err == nil, "%s should be readable", c.file) do continue
+		if c.space == "3d" {
+			context.allocator = context.temp_allocator
+			_, ok3 := fart.load_bytes_3d(data)
+			testing.expectf(t, ok3 == c.valid || !c.valid, "%s should load as 3D", c.file)
+			_, ok2 := fart.load_bytes(data)
+			testing.expectf(t, !ok2, "%s is 3D: the 2D loader refuses it", c.file)
+			continue
+		}
 		doc, ok := arena_load(data)
 		if c.valid {
 			testing.expectf(t, ok, "%s should load", c.file)
@@ -192,4 +202,68 @@ v12_blend_layer_solve :: proc(t: ^testing.T) {
 	A := fart.attach_xf(fart.XF_ID, &host, &item)
 	g := fart.xf_apply(A, {0, 3})
 	testing.expect(t, abs(g.x - 10) < 1e-3 && abs(g.y) < 1e-3, "attach lands the grip on the hand")
+}
+
+// 1.3: a 3D document loads, its turns compose like the TypeScript reference, and shade multiplies.
+@(test)
+space_3d :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	data, err := os.read_entire_file(EXAMPLES + "valid/chest3d.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := fart.load_bytes_3d(data)
+	if !testing.expect(t, ok, "chest3d loads as 3D") do return
+	testing.expect_value(t, doc.space, "3d")
+	testing.expect_value(t, len(doc.parts), 5)
+	lid := fart.part_of_3d(&doc, "lid")
+	testing.expect(t, lid != nil && lid.parent == "box")
+	testing.expect(t, len(lid.shapes) == 1 && lid.shapes[0].kind == "mesh" && len(lid.shapes[0].faces) == 6, "the lid is a box of six faces")
+	testing.expect(t, abs(lid.shapes[0].shade - 1.1) < 1e-6, "shade reads")
+	// a quarter turn about z of (2,0,0) about the pivot (1,0,0) lands at (1,1,0)
+	p := fart.Part3{name = "p", pivot = {1, 0, 0}}
+	sp := fart.State_Part3{part = "p", offset = {1, 0, 0}, rotate = {0, 0, math.PI / 2}}
+	q := fart.xf3_apply(fart.local_xf_3d(&p, &sp), {2, 0, 0})
+	testing.expect(t, abs(q.x - 1) < 1e-4 && abs(q.y - 1) < 1e-4 && abs(q.z) < 1e-4, "a turn about z is the 2D rotate")
+	// a quarter turn of the box about y carries the lid's pivot from z=4 to x=4
+	poses := [?]fart.State_Part3{{part = "box", rotate = {0, math.PI / 2, 0}}, {part = "lid", offset = {0, -1, 4}}}
+	W := fart.world_xf_3d(&doc, poses[:], "lid")
+	r := fart.xf3_apply(W, {0, -1, 4})
+	testing.expect(t, abs(r.x - 4) < 1e-4 && abs(r.y + 1) < 1e-4 && abs(r.z) < 1e-4, "the lid rides the box")
+	// the open clip: halfway through an ease-out the lid has turned more than half
+	frame := make([dynamic]fart.State_Part3, context.temp_allocator)
+	fart.sample_clip_3d(&doc, fart.clip_of_3d(&doc, "open"), 0.2, &frame)
+	for sp in frame do if sp.part == "lid" do testing.expect(t, sp.rotate.x < -1.1 && sp.rotate.x > -2.2, "the lid is on its way")
+	// turns round-trip through quaternions
+	e := fart.euler_from_quat(fart.quat_from_euler({0.3, -0.7, 1.9}))
+	testing.expect(t, abs(e.x - 0.3) < 1e-4 && abs(e.y + 0.7) < 1e-4 && abs(e.z - 1.9) < 1e-4, "euler round trip")
+	testing.expect(t, fart.shade_color({100, 200, 50, 128}, 0.5) == {50, 100, 25, 128}, "shade multiplies and keeps alpha")
+	testing.expect(t, fart.shade_color({100, 200, 50, 128}, 0) == {100, 200, 50, 128}, "0 means 1")
+}
+
+// 1.3: a chain in 3D reaches its target, and a pole picks the swivel.
+@(test)
+chains_3d :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	data, err := os.read_entire_file(EXAMPLES + "valid/reach3d.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := fart.load_bytes_3d(data)
+	if !testing.expect(t, ok, "reach3d loads") do return
+	testing.expect_value(t, len(doc.constraints), 1)
+	testing.expect(t, doc.constraints[0].has_pole, "the pole reads")
+	poses := make([dynamic]fart.State_Part3, context.temp_allocator)
+	append(&poses, ..doc.states[0].parts[:])
+	target := fart.V3{8, -9, -6}
+	left := fart.solve_chain_3d(&doc, &poses, &doc.constraints[0], target)
+	testing.expect(t, left < 0.05, "the hand reaches")
+	e, eok := fart.chain_end_world_3d(&doc, poses[:], &doc.constraints[0])
+	testing.expect(t, eok && abs(e.x - 8) < 0.05 && abs(e.y + 9) < 0.05 && abs(e.z + 6) < 0.05, "at the target")
+	elbow := fart.xf3_apply(fart.world_xf_3d(&doc, poses[:], "fore"), {9, -4, 0})
+	testing.expect(t, elbow.z < 0, "the elbow leans toward the pole")
+	targets := make([dynamic]fart.Target3, context.temp_allocator)
+	fart.sample_targets_3d(&doc, &doc.clips[0], 0.4, &targets)
+	testing.expect_value(t, len(targets), 1)
+	// flattening: the torso rod is a cylinder of triangles with unit normals
+	ms := make([dynamic]fart.Tri_Mesh, context.temp_allocator)
+	fart.flatten_part(&doc, fart.part_of_3d(&doc, "torso"), &ms)
+	testing.expect(t, len(ms) == 1 && len(ms[0].positions) > 30 && len(ms[0].positions) % 3 == 0, "a rod flattens to triangles")
+	testing.expect(t, abs(linalg.length(ms[0].normals[0]) - 1) < 1e-4, "normals are unit")
 }

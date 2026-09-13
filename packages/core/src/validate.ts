@@ -28,7 +28,9 @@ export type ErrorCode =
 	| "chain"
 	| "ref.anchor"
 	| "like"
-	| "ref.chain";
+	| "ref.chain"
+	| "space"
+	| "face";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -55,27 +57,32 @@ export interface ValidateOptions {
 }
 
 const KINDS = ["circle", "line", "poly"];
+const KINDS3 = ["mesh", "ball", "rod"];
 const RESERVED_KINDS = ["ring", "path"];
+const SPACES = ["2d", "3d"];
 // "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
-const KNOWN_TOP = ["version", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta", "resolved"];
-const RESERVED_TOP = ["space"];
+const KNOWN_TOP = ["version", "space", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta", "resolved"];
+const RESERVED_TOP: string[] = [];
 const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta", "like"];
 const KNOWN_CLIP = ["name", "loop", "keys"];
 const KNOWN_KEY = ["t", "state", "parts", "ease", "curve", "targets", "events"];
 const KNOWN_TARGET = ["chain", "at"];
 const EASES = ["linear", "in", "out", "in-out", "step"];
 const KNOWN_CONSTRAINT = ["name", "chain", "end", "bend"];
+const KNOWN_CONSTRAINT3 = ["name", "chain", "end", "pole"];
 const RESERVED_PART = ["children"];
 // every shape field is known on every kind: writers that serialise a
 // whole struct (the classic editor did) leave the others at zero
-const SHAPE_FIELDS = ["kind", "color", "at", "r", "a", "b", "w", "points", "tris"];
+const SHAPE_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "tris"];
 const KNOWN_SHAPE: Record<string, string[]> = {
 	circle: SHAPE_FIELDS,
 	line: SHAPE_FIELDS,
 	poly: SHAPE_FIELDS,
 };
+const SHAPE3_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "faces", "tris"];
 const KNOWN_TOKEN = ["name", "rgb", "emissive"];
 const KNOWN_ANCHOR = ["name", "at", "angle"];
+const KNOWN_ANCHOR3 = ["name", "at", "dir"];
 const KNOWN_STATE = ["name", "parts", "targets"];
 const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale", "mirror"];
 
@@ -90,6 +97,9 @@ function isNum(v: unknown): v is number {
 function isVec2(v: unknown): boolean {
 	return Array.isArray(v) && v.length === 2 && v.every(isNum);
 }
+function isVec3(v: unknown): boolean {
+	return Array.isArray(v) && v.length === 3 && v.every(isNum);
+}
 function isRgba(v: unknown): boolean {
 	return Array.isArray(v) && v.length === 4 && v.every((x) => Number.isInteger(x) && x >= 0 && x <= 255);
 }
@@ -103,6 +113,8 @@ function isAbsolutePath(p: string): boolean {
 class Ctx {
 	errors: Issue[] = [];
 	warnings: Issue[] = [];
+	/** The document's space: how many coordinates a point has (1.3). */
+	dim: 2 | 3 = 2;
 	err(code: ErrorCode, path: string, message: string) {
 		this.errors.push({ code, path, message });
 	}
@@ -120,6 +132,15 @@ class Ctx {
 		if (isVec2(v)) return true;
 		this.err("schema", path, "expected [x, y]");
 		return false;
+	}
+	vec3(v: unknown, path: string): boolean {
+		if (isVec3(v)) return true;
+		this.err("schema", path, "expected [x, y, z]");
+		return false;
+	}
+	/** A point in the document's space. */
+	point(v: unknown, path: string): boolean {
+		return this.dim === 3 ? this.vec3(v, path) : this.vec2(v, path);
 	}
 	name(v: unknown, path: string): v is string {
 		if (isName(v)) return true;
@@ -179,25 +200,81 @@ function checkShape(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string
 					pointsOk = false;
 				}
 			}
-			if ("tris" in sh && ctx.array(sh.tris, `${path}/tris`)) {
-				const tris = sh.tris;
-				const ints = tris.every((t, i) => {
-					if (Number.isInteger(t) && (t as number) >= 0) return true;
-					ctx.err("schema", `${path}/tris/${i}`, "expected a non-negative integer");
-					return false;
-				});
-				if (ints && pointsOk) {
-					if (tris.length % 3 !== 0) ctx.err("tris", `${path}/tris`, `tris come in triples; got ${tris.length} indices`);
-					const n = (sh.points as unknown[]).length;
-					tris.forEach((t, i) => {
-						if ((t as number) >= n) ctx.err("tris", `${path}/tris/${i}`, `index ${t} is past the last point (${n - 1})`);
-					});
-				}
-			}
+			if ("tris" in sh) checkTris(ctx, sh.tris, `${path}/tris`, pointsOk ? (sh.points as unknown[]).length : -1);
 			break;
 		}
 	}
+	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	ctx.unknown(sh, KNOWN_SHAPE[kind], [], path);
+	return kind;
+}
+
+/** Baked triangles: triples of indices into n points (n < 0: the points were bad, skip the range check). */
+function checkTris(ctx: Ctx, tris: unknown, path: string, n: number) {
+	if (!ctx.array(tris, path)) return;
+	const ints = tris.every((t, i) => {
+		if (Number.isInteger(t) && (t as number) >= 0) return true;
+		ctx.err("schema", `${path}/${i}`, "expected a non-negative integer");
+		return false;
+	});
+	if (!ints || n < 0) return;
+	if (tris.length % 3 !== 0) ctx.err("tris", path, `tris come in triples; got ${tris.length} indices`);
+	tris.forEach((t, i) => {
+		if ((t as number) >= n) ctx.err("tris", `${path}/${i}`, `index ${t} is past the last point (${n - 1})`);
+	});
+}
+
+/** Structure of one 3D shape (1.3): mesh, ball, rod. */
+function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string | null {
+	if (!ctx.object(sh, path)) return null;
+	const kind = sh.kind;
+	if (typeof kind !== "string" || !KINDS3.includes(kind)) {
+		const hint = KINDS.includes(kind as string) ? ` ("${kind}" is a 2D kind; a mesh face is what a poly becomes)` : "";
+		ctx.err("schema", `${path}/kind`, `kind must be one of ${KINDS3.join(", ")} in a 3D document${hint}`);
+		return null;
+	}
+	if ("color" in sh) ctx.name(sh.color, `${path}/color`);
+	else if (drawn) ctx.err("schema", `${path}/color`, "a drawn shape names a palette token");
+	switch (kind) {
+		case "ball":
+			ctx.vec3(sh.at, `${path}/at`);
+			ctx.number(sh.r, `${path}/r`, 0);
+			break;
+		case "rod":
+			ctx.vec3(sh.a, `${path}/a`);
+			ctx.vec3(sh.b, `${path}/b`);
+			ctx.number(sh.w, `${path}/w`, 0);
+			break;
+		case "mesh": {
+			let n = -1;
+			if (ctx.array(sh.points, `${path}/points`)) {
+				const ok = sh.points.every((p, i) => ctx.vec3(p, `${path}/points/${i}`));
+				if (sh.points.length < 3) ctx.err("schema", `${path}/points`, "a mesh needs at least three points");
+				else if (ok) n = sh.points.length;
+			}
+			if (!("faces" in sh)) ctx.err("schema", `${path}/faces`, "a mesh has faces");
+			else if (ctx.array(sh.faces, `${path}/faces`)) {
+				sh.faces.forEach((f, i) => {
+					const fp = `${path}/faces/${i}`;
+					if (!ctx.array(f, fp)) return;
+					const ints = f.every((t, j) => {
+						if (Number.isInteger(t) && (t as number) >= 0) return true;
+						ctx.err("schema", `${fp}/${j}`, "expected a non-negative integer");
+						return false;
+					});
+					if (!ints) return;
+					if (f.length < 3) ctx.err("face", fp, `a face needs at least three points; got ${f.length}`);
+					if (n >= 0) f.forEach((t, j) => {
+						if ((t as number) >= n) ctx.err("face", `${fp}/${j}`, `index ${t} is past the last point (${n - 1})`);
+					});
+				});
+			}
+			if ("tris" in sh) checkTris(ctx, sh.tris, `${path}/tris`, n);
+			break;
+		}
+	}
+	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
+	ctx.unknown(sh, SHAPE3_FIELDS, [], path);
 	return kind;
 }
 
@@ -220,18 +297,23 @@ function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 		if (Array.isArray(p.shapes) && p.shapes.length) ctx.err("like", `${path}/shapes`, "a part with like draws that part's shapes; it has none of its own");
 		if (Array.isArray(p.anchors) && p.anchors.length) ctx.err("like", `${path}/anchors`, "a part with like has that part's anchors; none of its own");
 	}
-	if ("pivot" in p) ctx.vec2(p.pivot, `${path}/pivot`);
+	if ("pivot" in p) ctx.point(p.pivot, `${path}/pivot`);
 	if ("shapes" in p && ctx.array(p.shapes, `${path}/shapes`)) {
-		p.shapes.forEach((sh, i) => checkShape(ctx, sh, `${path}/shapes/${i}`, true));
+		p.shapes.forEach((sh, i) => (ctx.dim === 3 ? checkShape3 : checkShape)(ctx, sh, `${path}/shapes/${i}`, true));
 	}
 	if ("anchors" in p && ctx.array(p.anchors, `${path}/anchors`)) {
 		p.anchors.forEach((a, i) => {
 			const ap = `${path}/anchors/${i}`;
 			if (!ctx.object(a, ap)) return;
 			ctx.name(a.name, `${ap}/name`);
-			ctx.vec2(a.at, `${ap}/at`);
-			if ("angle" in a) ctx.number(a.angle, `${ap}/angle`);
-			ctx.unknown(a, KNOWN_ANCHOR, [], ap);
+			ctx.point(a.at, `${ap}/at`);
+			if (ctx.dim === 3) {
+				if ("dir" in a) ctx.vec3(a.dir, `${ap}/dir`);
+				ctx.unknown(a, KNOWN_ANCHOR3, [], ap);
+			} else {
+				if ("angle" in a) ctx.number(a.angle, `${ap}/angle`);
+				ctx.unknown(a, KNOWN_ANCHOR, [], ap);
+			}
 		});
 	}
 	if ("meta" in p) ctx.object(p.meta, `${path}/meta`);
@@ -246,8 +328,12 @@ function checkStateParts(ctx: Ctx, parts: unknown[], path: string, partNames: Se
 		if (ctx.name(sp.part, `${spp}/part`) && !partNames.has(sp.part)) {
 			ctx.err("ref.part", `${spp}/part`, `no part named "${sp.part}"`);
 		}
-		if ("offset" in sp) ctx.vec2(sp.offset, `${spp}/offset`);
-		if ("rotate" in sp) ctx.number(sp.rotate, `${spp}/rotate`);
+		if ("offset" in sp) ctx.point(sp.offset, `${spp}/offset`);
+		if ("rotate" in sp) {
+			if (ctx.dim === 3) {
+				if (!isVec3(sp.rotate)) ctx.err("schema", `${spp}/rotate`, "a 3D turn is [x, y, z] radians");
+			} else ctx.number(sp.rotate, `${spp}/rotate`);
+		}
 		if ("scale" in sp) ctx.number(sp.scale, `${spp}/scale`, 0);
 		if ("mirror" in sp && typeof sp.mirror !== "boolean") ctx.err("schema", `${spp}/mirror`, "expected true or false");
 		ctx.unknown(sp, KNOWN_STATE_PART, [], spp);
@@ -261,7 +347,7 @@ function checkTargets(ctx: Ctx, targets: unknown, path: string, chainNames: Set<
 		const tp = `${path}/${i}`;
 		if (!ctx.object(tg, tp)) return;
 		if (ctx.name(tg.chain, `${tp}/chain`) && !chainNames.has(tg.chain)) ctx.err("ref.chain", `${tp}/chain`, `no constraint named "${tg.chain}"`);
-		ctx.vec2(tg.at, `${tp}/at`);
+		ctx.point(tg.at, `${tp}/at`);
 		ctx.unknown(tg, KNOWN_TARGET, [], tp);
 	});
 }
@@ -344,8 +430,13 @@ function checkConstraint(ctx: Ctx, c: unknown, path: string, parts: Map<string, 
 			ctx.err("ref.anchor", `${path}/end`, `"${c.end}" is not an anchor on the chain's last part`);
 		}
 	}
-	if ("bend" in c && c.bend !== 1 && c.bend !== -1) ctx.err("schema", `${path}/bend`, "bend is 1 or -1");
-	ctx.unknown(c, KNOWN_CONSTRAINT, [], path);
+	if (ctx.dim === 3) {
+		if ("pole" in c) ctx.vec3(c.pole, `${path}/pole`);
+		ctx.unknown(c, KNOWN_CONSTRAINT3, [], path);
+	} else {
+		if ("bend" in c && c.bend !== 1 && c.bend !== -1) ctx.err("schema", `${path}/bend`, "bend is 1 or -1");
+		ctx.unknown(c, KNOWN_CONSTRAINT, [], path);
+	}
 	return named ? (c.name as string) : null;
 }
 
@@ -397,6 +488,13 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 	else if ((doc.version as number) > FORMAT_VERSION)
 		ctx.err("version", "/version", `version ${doc.version} is newer than this reader (${FORMAT_VERSION})`);
 	else if ((doc.version as number) < 1) ctx.err("version", "/version", "version must be 1");
+	if (ctx.errors.length) return done();
+
+	// space (1.3): how many coordinates a point has; a reader refuses a space it does not know
+	if ("space" in doc) {
+		if (typeof doc.space !== "string" || !SPACES.includes(doc.space)) ctx.err("space", "/space", `space must be one of ${SPACES.join(", ")}`);
+		else if (doc.space === "3d") ctx.dim = 3;
+	}
 	if (ctx.errors.length) return done();
 
 	if ("name" in doc && typeof doc.name !== "string") ctx.err("schema", "/name", "expected a string");
@@ -480,7 +578,7 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 	}
 
 	if ("collision" in doc && ctx.array(doc.collision, "/collision")) {
-		doc.collision.forEach((sh, i) => checkShape(ctx, sh, `/collision/${i}`, false));
+		doc.collision.forEach((sh, i) => (ctx.dim === 3 ? checkShape3 : checkShape)(ctx, sh, `/collision/${i}`, false));
 	}
 
 	if ("meta" in doc) ctx.object(doc.meta, "/meta");

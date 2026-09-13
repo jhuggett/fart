@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/jhuggett/fart/main/spec/fart.schema.json",
-  "title": "Fast Art Format (.fart), version 1.2",
-  "description": "JSON-backed vector art for games: shapes, recolorable palette tokens, re-posable parts, states. This schema checks structure; spec/FORMAT.md holds meaning, and the validator in packages/core adds the cross-reference checks a schema cannot express (names resolve, tris index the points). Unknown fields are allowed everywhere: editors preserve them, loaders ignore them.",
+  "title": "Fast Art Format (.fart), version 1.3",
+  "description": "JSON-backed vector art for games: shapes, recolorable palette tokens, re-posable parts, states; since 1.3 also 3D documents (space: \"3d\") with mesh, ball and rod shapes, and shade on shapes. This schema checks structure; spec/FORMAT.md holds meaning, and the validator in packages/core adds the cross-reference checks a schema cannot express (names resolve, tris index the points). Unknown fields are allowed everywhere: editors preserve them, loaders ignore them.",
   "type": "object",
   "required": [
     "version"
@@ -28,42 +28,15 @@
         "$ref": "#/$defs/token"
       }
     },
-    "parts": {
-      "type": "array",
-      "description": "Layers with a pivot. File order is paint order when no state says otherwise.",
-      "items": {
-        "$ref": "#/$defs/part"
-      }
-    },
-    "states": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/state"
-      }
-    },
-    "collision": {
-      "type": "array",
-      "description": "Shapes a game may treat as solid. Never drawn, so color is optional. Rest-space, state-independent.",
-      "items": {
-        "$ref": "#/$defs/shape"
-      }
-    },
     "meta": {
       "$ref": "#/$defs/meta"
     },
-    "clips": {
-      "type": "array",
-      "description": "Animation: states in time. See FORMAT.md, Clips.",
-      "items": {
-        "$ref": "#/$defs/clip"
-      }
-    },
-    "constraints": {
-      "type": "array",
-      "description": "Inverse kinematics chains a runtime may solve live. See FORMAT.md, Constraints.",
-      "items": {
-        "$ref": "#/$defs/constraint"
-      }
+    "space": {
+      "enum": [
+        "2d",
+        "3d"
+      ],
+      "description": "Since 1.3: the document's space. Absent means 2d. A 3D document's points have three coordinates, its shapes are mesh, ball and rod, its turns are [x, y, z]; see FORMAT.md, Space: 3D."
     }
   },
   "$defs": {
@@ -137,6 +110,11 @@
         "color": {
           "$ref": "#/$defs/name",
           "description": "A palette token, never a literal color."
+        },
+        "shade": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Since 1.3: multiplies the resolved colour's r, g, b; absent means 1."
         }
       },
       "allOf": [
@@ -525,6 +503,504 @@
         },
         "at": {
           "$ref": "#/$defs/vec2"
+        }
+      }
+    },
+    "vec3": {
+      "type": "array",
+      "description": "[x, y, z]; y-down, x-right, z-away, right-handed.",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "shape3": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "mesh",
+            "ball",
+            "rod"
+          ]
+        },
+        "color": {
+          "$ref": "#/$defs/name",
+          "description": "A palette token, never a literal color."
+        },
+        "shade": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ball"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "at",
+              "r"
+            ],
+            "properties": {
+              "at": {
+                "$ref": "#/$defs/vec3"
+              },
+              "r": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "rod"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "a",
+              "b",
+              "w"
+            ],
+            "properties": {
+              "a": {
+                "$ref": "#/$defs/vec3"
+              },
+              "b": {
+                "$ref": "#/$defs/vec3"
+              },
+              "w": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mesh"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "points",
+              "faces"
+            ],
+            "properties": {
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/vec3"
+                },
+                "minItems": 3
+              },
+              "faces": {
+                "type": "array",
+                "description": "Index loops into points, wound so (p1-p0)x(p2-p0) points outward. The validator checks each has three or more indices in range (error face).",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "tris": {
+                "type": "array",
+                "description": "Index triples into points, baked by editors on save.",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drawn_shape3": {
+      "description": "A 3D shape inside a part: painted, so it names a token.",
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/shape3"
+        },
+        {
+          "type": "object",
+          "required": [
+            "color"
+          ],
+          "properties": {
+            "color": {
+              "$ref": "#/$defs/name"
+            }
+          }
+        }
+      ]
+    },
+    "anchor3": {
+      "type": "object",
+      "required": [
+        "name",
+        "at"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "at": {
+          "$ref": "#/$defs/vec3"
+        },
+        "dir": {
+          "$ref": "#/$defs/vec3",
+          "description": "The direction an attached thing points, in the part's rest space."
+        }
+      }
+    },
+    "part3": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "pivot": {
+          "$ref": "#/$defs/vec3"
+        },
+        "shapes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/drawn_shape3"
+          }
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/anchor3"
+          }
+        },
+        "meta": {
+          "$ref": "#/$defs/meta"
+        },
+        "parent": {
+          "$ref": "#/$defs/name"
+        },
+        "like": {
+          "$ref": "#/$defs/name"
+        }
+      }
+    },
+    "state_part3": {
+      "type": "object",
+      "required": [
+        "part"
+      ],
+      "properties": {
+        "part": {
+          "$ref": "#/$defs/name"
+        },
+        "offset": {
+          "$ref": "#/$defs/vec3"
+        },
+        "rotate": {
+          "$ref": "#/$defs/vec3",
+          "description": "Radians about the pivot: about x, then y, then z. Absent means [0, 0, 0]."
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirror": {
+          "type": "boolean"
+        }
+      }
+    },
+    "state3": {
+      "type": "object",
+      "required": [
+        "name",
+        "parts"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/state_part3"
+          }
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target3"
+          }
+        }
+      }
+    },
+    "key3": {
+      "type": "object",
+      "description": "One moment in a clip: a time and a pose, named or inline.",
+      "required": [
+        "t"
+      ],
+      "properties": {
+        "t": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds."
+        },
+        "state": {
+          "$ref": "#/$defs/name"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/state_part3"
+          }
+        },
+        "ease": {
+          "enum": [
+            "linear",
+            "in",
+            "out",
+            "in-out",
+            "step"
+          ],
+          "description": "How time approaches this key from the previous one. Absent means linear."
+        },
+        "curve": {
+          "type": "array",
+          "description": "Since 1.2: a cubic bezier's control points [x1, y1, x2, y2], x within 0..1; wins over ease.",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target3"
+          }
+        },
+        "events": {
+          "type": "array",
+          "description": "Since 1.2: names a runtime hears when the playhead crosses this key.",
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "$ref": "#/$defs/name"
+            }
+          }
+        },
+        {
+          "required": [
+            "parts"
+          ],
+          "properties": {
+            "parts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/state_part3"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "clip3": {
+      "type": "object",
+      "required": [
+        "name",
+        "keys"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/key3"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "constraint3": {
+      "type": "object",
+      "required": [
+        "name",
+        "chain",
+        "end"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "chain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/name"
+          },
+          "minItems": 1
+        },
+        "end": {
+          "type": "string",
+          "pattern": "^[^/]+/[^/]+$"
+        },
+        "pole": {
+          "$ref": "#/$defs/vec3",
+          "description": "A document-space point the first elbow leans toward."
+        }
+      }
+    },
+    "target3": {
+      "type": "object",
+      "required": [
+        "chain",
+        "at"
+      ],
+      "properties": {
+        "chain": {
+          "$ref": "#/$defs/name"
+        },
+        "at": {
+          "$ref": "#/$defs/vec3"
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "space": {
+        "const": "3d"
+      }
+    },
+    "required": [
+      "space"
+    ]
+  },
+  "then": {
+    "properties": {
+      "parts": {
+        "type": "array",
+        "description": "3D: parts with three-coordinate pivots and mesh, ball, rod shapes.",
+        "items": {
+          "$ref": "#/$defs/part3"
+        }
+      },
+      "states": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/state3"
+        }
+      },
+      "clips": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/clip3"
+        }
+      },
+      "collision": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/shape3"
+        }
+      },
+      "constraints": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/constraint3"
+        }
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "parts": {
+        "type": "array",
+        "description": "Layers with a pivot. File order is paint order when no state says otherwise.",
+        "items": {
+          "$ref": "#/$defs/part"
+        }
+      },
+      "states": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/state"
+        }
+      },
+      "clips": {
+        "type": "array",
+        "description": "Animation: states in time. See FORMAT.md, Clips.",
+        "items": {
+          "$ref": "#/$defs/clip"
+        }
+      },
+      "constraints": {
+        "type": "array",
+        "description": "Inverse kinematics chains a runtime may solve live. See FORMAT.md, Constraints.",
+        "items": {
+          "$ref": "#/$defs/constraint"
+        }
+      },
+      "collision": {
+        "type": "array",
+        "description": "Shapes a game may treat as solid. Never drawn, so color is optional. Rest-space, state-independent.",
+        "items": {
+          "$ref": "#/$defs/shape"
         }
       }
     }

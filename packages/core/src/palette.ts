@@ -76,6 +76,14 @@ export function colorOf(tokens: readonly Token[], name: string): Rgba {
 	return MAGENTA;
 }
 
+/** Since 1.3: a shape's shade laid on a resolved colour: r, g, b multiplied and clamped, alpha kept. */
+export function shadeColor(rgba: Rgba, shade: number | undefined): Rgba {
+	if (shade === undefined || shade === 1) return rgba;
+	const k = Math.max(0, shade);
+	const c = (v: number) => Math.min(255, Math.round(v * k));
+	return [c(rgba[0]), c(rgba[1]), c(rgba[2]), rgba[3]];
+}
+
 /** Just the names, for validate({ refTokens }). */
 export function tokenNames(resolved: Resolved): Set<string> {
 	return new Set(resolved.tokens.map((t) => t.name));

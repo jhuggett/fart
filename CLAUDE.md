@@ -8,6 +8,8 @@ follow the spec, never the other way round.
 - `packages/core`: `@fastart/core`, TypeScript, zero deps, Node type
   stripping (no parameter properties). Tests: `npm test -w @fastart/core`.
 - `loaders/odin`: the reference loader; `odin test loaders/odin/test`.
+  Build the raylib example with `odin build loaders/odin/examples/raylib_spin
+  -out:/tmp/spin "-extra-linker-flags:-isysroot $(xcrun --show-sdk-path)"`.
   A copy lives in the user's game (qftebl2/fastart): copy it over after
   changing the loader and build the game.
 - `studio/`: Uranus, the app ("the fastart studio. It emits farts."): Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
@@ -27,3 +29,15 @@ follow the spec, never the other way round.
   it after touching editor.ts's disk code.
 - `make` lists the shortcuts; `make test` runs everything.
 - Writing `.fart` files: follow `skills/fastart/SKILL.md`.
+- 3D (format 1.3): `spec/PROJECT.md` is the projection contract; core's
+  `space3.ts` + `project.ts` implement it, `fart project` drives it,
+  `examples/pistol/generate.mjs` is the proof. In the studio a 3D file
+  opens the model screen (`state/model.ts` store, `canvas/model3.ts`
+  render+interact, `screens/Model.tsx`): the solids are drawn by WebGL
+  with a depth buffer (`canvas/gl3.ts`, under a 2D overlay; the painter's
+  `projectFrame` is the fallback and does picking), the four tools
+  extrude solids in the view plane, Project… writes the 2D views.
+  Solid helpers live in core's `solids.ts` (use them in generators), 3D
+  chains in `ik3.ts`, glTF export in `gltf.ts` (`fart gltf`); the Odin
+  loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
+  are the 3D game path.

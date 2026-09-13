@@ -12,6 +12,7 @@ V2 :: [2]f32
 Shape :: struct {
 	kind:   string, // "circle" | "line" | "poly"
 	color:  string, // palette token
+	shade:  f32, // 1.3: multiplies r, g, b (shade_color); 0 = 1 (absent)
 	at:     V2,
 	r:      f32,
 	a:      V2,
@@ -115,6 +116,8 @@ load_bytes :: proc(data: []byte) -> (doc: Doc, ok: bool) {
 	if terr != nil do return {}, false
 	root, is_obj := tree.(json.Object)
 	if !is_obj || !version_ok(root["version"]) do return {}, false
+	// 1.3: a 3D document is not a drawing; load_bytes_3d reads those
+	if space_of(root) == "3d" do return {}, false
 	if json.unmarshal(data, &doc) != nil do return {}, false
 	normalize_offsets(&doc, root)
 	return doc, true

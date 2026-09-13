@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "space": "3d",
+  "name": "reach3d",
+  "palette": [
+    {
+      "name": "c",
+      "rgb": [
+        120,
+        120,
+        140,
+        255
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "torso",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "rod",
+          "color": "c",
+          "a": [
+            0,
+            -6,
+            0
+          ],
+          "b": [
+            0,
+            6,
+            0
+          ],
+          "w": 3
+        }
+      ]
+    },
+    {
+      "name": "upper",
+      "parent": "torso",
+      "pivot": [
+        3,
+        -4,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "rod",
+          "color": "c",
+          "a": [
+            3,
+            -4,
+            0
+          ],
+          "b": [
+            9,
+            -4,
+            0
+          ],
+          "w": 1.4
+        }
+      ]
+    },
+    {
+      "name": "fore",
+      "parent": "upper",
+      "pivot": [
+        9,
+        -4,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "rod",
+          "color": "c",
+          "a": [
+            9,
+            -4,
+            0
+          ],
+          "b": [
+            15,
+            -4,
+            0
+          ],
+          "w": 1.2
+        }
+      ],
+      "anchors": [
+        {
+          "name": "hand",
+          "at": [
+            15,
+            -4,
+            0
+          ],
+          "dir": [
+            1,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "constraints": [
+    {
+      "name": "arm",
+      "chain": [
+        "upper",
+        "fore"
+      ],
+      "end": "fore/hand",
+      "pole": [
+        6,
+        -12,
+        -4
+      ]
+    }
+  ],
+  "states": [
+    {
+      "name": "rest",
+      "parts": [
+        {
+          "part": "torso"
+        },
+        {
+          "part": "upper"
+        },
+        {
+          "part": "fore"
+        }
+      ]
+    },
+    {
+      "name": "reach",
+      "parts": [
+        {
+          "part": "torso"
+        },
+        {
+          "part": "upper",
+          "rotate": [
+            0,
+            -0.9,
+            0.3
+          ]
+        },
+        {
+          "part": "fore",
+          "rotate": [
+            0,
+            -0.6,
+            0.5
+          ]
+        }
+      ],
+      "targets": [
+        {
+          "chain": "arm",
+          "at": [
+            8,
+            -9,
+            -6
+          ]
+        }
+      ]
+    }
+  ],
+  "clips": [
+    {
+      "name": "grab",
+      "keys": [
+        {
+          "t": 0,
+          "state": "rest"
+        },
+        {
+          "t": 0.4,
+          "parts": [
+            {
+              "part": "torso"
+            },
+            {
+              "part": "upper"
+            },
+            {
+              "part": "fore"
+            }
+          ],
+          "targets": [
+            {
+              "chain": "arm",
+              "at": [
+                8,
+                -9,
+                -6
+              ]
+            }
+          ],
+          "ease": "out"
+        }
+      ]
+    }
+  ]
+}

@@ -10,3 +10,8 @@ export * from "./palette.ts";
 export * from "./geometry.ts";
 export * from "./clips.ts";
 export * from "./ik.ts";
+export * from "./space3.ts";
+export * from "./project.ts";
+export * from "./solids.ts";
+export * from "./ik3.ts";
+export * from "./gltf.ts";

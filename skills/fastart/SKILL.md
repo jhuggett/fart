@@ -109,6 +109,10 @@ validator, the loaders, the studio and a sample set.
   - `"curve": [x1,y1,x2,y2]` on a key: a cubic bezier, wins over
     `ease`; set `ease` to the nearest name as well.
   - `"emissive": 1.5` on a palette token: light the slot gives off.
+- **1.3 additions**:
+  - `"shade": 0.7` on a shape: multiplies the slot's r, g, b (alpha
+    kept); lighting that survives a palette swap. Absent = 1.
+  - `"space": "3d"` at the top: a 3D model. See **3D** below.
 - **Palettes**: `palette` is the file's slots with default colours.
   `palette_refs` are paths relative to *this file* to palette files
   (colours and no parts). Lookup is the file's own palette first, then
@@ -117,11 +121,95 @@ validator, the loaders, the studio and a sample set.
   override a slot locally only when one file must differ.
 - Unknown fields are kept by every tool, so `meta` and your own keys are safe.
 
+## 3D
+
+A file with `"space": "3d"` is a low-poly model in the same words with a
+third coordinate. Model props once, then project them to the 2D views a
+2D game draws, or load them straight into a 3D game.
+
+- **Frame**: x right, y **down**, z **away** (right-handed). The front
+  of a thing faces -z (a muzzle points at the viewer in the front view);
+  dropping z is the front view. Most engines are y-up: `Y_UP` / `to_y_up`
+  in the loaders turn the frame (x, -y, -z) at draw time; never model
+  y-up.
+- **Shapes**: `mesh` (`points` `[x,y,z]`, `faces` as index loops wound
+  so `(p1-p0)×(p2-p0)` points **out of the solid**, `tris` baked by
+  `bakeTris3` or the studio), `ball` (`at`, `r`), `rod` (`a`, `b`, `w`).
+  One token per shape, `shade` as in 2D. A face wound the wrong way
+  vanishes in every view.
+- **Parts and poses** as in 2D: `pivot` `[x,y,z]` at the joint, `parent`,
+  `like`; a pose's `rotate` is `[x,y,z]` radians about x, then y, then
+  z (a turn about z is the 2D rotate); `scale` uniform; `mirror` flips
+  x. Between keys turns slerp. Anchors take `dir` (a direction) instead
+  of `angle`. Chains work with a `pole` (a document-space point the
+  elbow leans toward) instead of `bend`; targets are `[x,y,z]`.
+- **Build by script, with the helpers**, never by typing coordinates:
+
+  ```js
+  import { box, extrude, lathe, bakeTris3, projectDoc, stringifyDoc, validate } from "@fastart/core";
+  box("wood", [cx, cy, cz], [sx, sy, sz])                       // a box
+  extrude("steel", [[z0, y0], [z1, y1], ...], "x", -1, 1)       // a side profile (any winding, concave is fine) as a prism
+  lathe("brass", [[r0, t0], [r1, t1], ...], "y", 12)            // a profile of [radius, along] revolved: barrels, bottles, wheels
+  { kind: "rod", color, a, b, w }  { kind: "ball", color, at, r }  // ribs, chains, eyes, knobs
+  ```
+  For `extrude` the profile is `[z, y]` on axis x, `[x, z]` on y, `[x, y]`
+  on z. Every helper returns faces wound outward; `windOutward(mesh)`
+  fixes a hand-made one. `examples/pistol/generate.mjs` (a flintlock from
+  extruded profiles) and `examples/lantern/generate.mjs` (lathes, a box,
+  rods) are the models to copy.
+- **Conventions**: the same scale as the 2D art (a pistol ~24 units
+  long); one part per thing that moves, its pivot at the hinge; parts
+  that pass through each other project badly (the painter's order is
+  per part), so split them; keep a ball's centre on or in front of the
+  surface it sits on; tokens for colour, `shade` for baked light,
+  `emissive` for glow.
+- **Project** to 2D: `npx fart project model.fart --view left --view top
+  [--outline ink:0.25]`. A turn about the view axis stays a real 2D pose
+  (parents kept, clips tweened); anything else bakes into variant parts
+  (`hammer@1`) and the clip subdivides at 12 fps. `left` is the
+  side-scroller profile (muzzle right), `top` the top-down sprite (muzzle
+  up). `spec/PROJECT.md` has the rules.
+- **Export** for other engines: `npx fart gltf model.fart` writes a
+  `.glb` (a node per part, vertex colours, an animation per clip, y-up).
+- **Look at it**: open the folder in Uranus; a 3D file opens the model
+  screen (orbit, the four tools make box/ball/rod/prism, Project…).
+
+### Loading in a 3D game (Odin, raylib)
+
+`loaders/odin/examples/raylib_spin/main.odin` is the whole loop; the
+shape of it:
+
+```odin
+doc, ok := fastart.load_bytes_3d(data)              // load_bytes refuses 3D files; this reads them
+fastart.resolve_palettes_3d(&doc, resolver, nil)
+for &p in doc.parts {                                // once: flatten each part to triangles
+    tms := make([dynamic]fastart.Tri_Mesh)
+    fastart.flatten_part(&doc, &p, &tms)             // per shape: positions, normals (rest space), color token, shade
+    // upload: fastart.to_y_up(pos), to_y_up(normal); colour = shade_color(color_of_3d(&doc, tm.color), tm.shade)
+}
+fastart.sample_clip_3d(&doc, clip, t, &frame)       // every frame: the pose
+fastart.sample_targets_3d(&doc, clip, t, &targets); fastart.solve_targets_3d(&doc, &frame, targets[:])   // live IK, if any
+for sp in frame {
+    W := fastart.Y_UP * fastart.world_xf_3d(&doc, frame[:], sp.part)   // rest → engine space
+    rl.DrawMesh(mesh, material, rl.Matrix(W))
+}
+```
+
+Light in a shader from the normals, or bake it into vertex colours the
+way the example does. `blend_poses_3d`, `layer_poses_3d`,
+`clip_events_3d`, `attach_xf_3d` (dir-aligned sockets) and
+`apply_palette_3d` are the 2D calls with a third axis.
+
+**TypeScript**: `as3d`, `worldTransforms3`, `sampleClip3`, `sampleTargets3`,
+`solveTargets3`, `flattenPart`/`triMesh`, `Y_UP`, `projectDoc`, `toGlb`.
+
 ## Workflow
 
 1. Write the JSON (by hand for one file; by a small script for a set,
    starting from `{{FASTART}}/examples/space/generate.mjs`, which has the
-   helpers: mirrored parts, baked tris, validation, writing).
+   helpers: mirrored parts, baked tris, validation, writing). For 3D,
+   start from `{{FASTART}}/examples/lantern/generate.mjs` and core's
+   `box`, `extrude`, `lathe`.
 2. Validate, always:
    `cd {{FASTART}} && make validate DIR=/path/to/art` (every `.fart`
    below, refs resolved). Fix every error; warnings about unknown fields
@@ -216,3 +304,14 @@ and the note.
 - Blending and layering are runtime calls on sampled poses, not fields;
   a "flinch on top of a walk" is `layer_poses` with a weight that rises
   and falls.
+- A 3D file is refused by 2D loaders (`load_bytes` says no;
+  `load_bytes_3d` reads it). Inside Uranus with a model open,
+  `get_document` says so and `render` takes a `view` (front, left, top,
+  … or [x, y, z] radians).
+- Mesh faces wind outward. Use the helpers, or `windOutward`; a face
+  wound the wrong way vanishes in every view and every projection.
+- `extrude`'s profile is in the plane's other two axes in a fixed order
+  (`[z, y]` for x); a profile typed as `[y, z]` comes out mirrored.
+- A sampled target only exists once the playhead reaches the key that
+  names it; give the outgoing key a target too if the hand must track
+  from the start.
