@@ -75,6 +75,7 @@ import {
 	setTurn,
 	save,
 	projectViews,
+	hullOfPart,
 	type Tool3,
 } from "../state/model.ts";
 
@@ -139,6 +140,9 @@ function ModelToolbar() {
 			</select>
 			<button class={`btn ghost ${md.outline.value ? "active" : ""}`} title="show silhouettes, the way --outline projects them" onClick={() => run("model.outline")}>
 				ink
+			</button>
+			<button class={`btn ${md.collide.value ? "active" : "ghost"}`} title="the collision solids as wireframes, posed with the frame  (C)" onClick={() => run("view.collision")}>
+				<I.collision /> Collision
 			</button>
 			<button class={`btn ghost ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
 				<I.grid />
@@ -579,6 +583,16 @@ function Inspector3() {
 					<div class="line" style="gap:6px">
 						<button class="btn small ghost" title="click the canvas to place the pivot" onClick={() => (md.pending.value = "pivot")}>
 							set pivot
+						</button>
+						<button
+							class="btn small ghost"
+							title="a convex hull of this part's shapes into the file's collision, riding the part; run again to replace it (fart hull does the same)"
+							onClick={() => {
+								if (hullOfPart(i)) md.collide.value = true;
+								else project.error.value = `${p.name} has no volume to hull`;
+							}}
+						>
+							hull
 						</button>
 					</div>
 				</>

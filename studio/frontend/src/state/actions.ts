@@ -139,11 +139,14 @@ export function initCommands() {
 			id: "view.collision",
 			title: "Collision lens",
 			group: "View",
-			when: setup,
-			run: () => {
-				ed.collide.value = !ed.collide.value;
-				ed.colSel.value = -1;
-			},
+			when: () => setup() || inModel(),
+			run: either(
+				() => {
+					ed.collide.value = !ed.collide.value;
+					ed.colSel.value = -1;
+				},
+				() => (M.md.collide.value = !M.md.collide.value),
+			),
 		},
 		{ id: "view.explorer", title: "Explorer", group: "View", when: inProject, run: toggleExplorer },
 

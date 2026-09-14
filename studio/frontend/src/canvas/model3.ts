@@ -6,7 +6,7 @@
 // drags to place it and its lever turns it about the view axis, and a
 // drag on nothing orbits the model.
 
-import { cssColor, colorOf, shadeColor, shapeDistance, viewXf3, xf3Apply, xf3ApplyDir, xf3Invert, xf3Det, dist, type Shape, type Vec2, type Vec3, type FramePart } from "@fastart/core";
+import { cssColor, colorOf, collisionWorld3, shadeColor, shapeDistance, viewXf3, xf3Apply, xf3ApplyDir, xf3Invert, xf3Det, dist, type Shape, type Vec2, type Vec3, type FramePart } from "@fastart/core";
 import { view } from "./view.ts";
 import { fillShape, outlineShape, tracePoly } from "./draw.ts";
 import { drawGrid } from "./render.ts";
@@ -17,6 +17,7 @@ import {
 	curPart,
 	curClip,
 	curTokName,
+	frame,
 	frameParts,
 	framePartOf,
 	selShape,
@@ -467,6 +468,66 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 			ctx.rect(s[0] - 3.5, s[1] - 3.5, 7, 7);
 			ctx.fill();
 			ctx.stroke();
+		}
+	}
+
+	// the collision solids, posed with the frame: wireframes coloured by layer (1.4)
+	if (md.collide.value) {
+		const V = viewOnly();
+		const layerColor = (layer: string) => (layer === "solid" ? TEAL : layer === "surface" ? ACCENT : layer === "trigger" ? C.text2 : C.hover);
+		screen();
+		ctx.lineWidth = LW;
+		ctx.font = "10px system-ui, sans-serif";
+		for (const c of collisionWorld3(md.doc.value, frame())) {
+			const col = layerColor(c.layer);
+			ctx.strokeStyle = col;
+			ctx.fillStyle = col;
+			ctx.setLineDash(c.layer === "trigger" ? [4, 3] : []);
+			const vp = (p: Vec3): Vec2 => {
+				const v = xf3Apply(V, p);
+				return toS([v[0], v[1]]);
+			};
+			let label: Vec2;
+			if (c.kind === "ball") {
+				const s = vp(c.at);
+				ctx.beginPath();
+				ctx.arc(s[0], s[1], c.r * zoom, 0, Math.PI * 2);
+				ctx.stroke();
+				label = [s[0] + c.r * zoom + 3, s[1]];
+			} else if (c.kind === "rod") {
+				const a = vp(c.a);
+				const b = vp(c.b);
+				ctx.lineWidth = Math.max(LW, c.w * zoom);
+				ctx.globalAlpha = 0.35;
+				ctx.lineCap = "round";
+				ctx.beginPath();
+				ctx.moveTo(a[0], a[1]);
+				ctx.lineTo(b[0], b[1]);
+				ctx.stroke();
+				ctx.globalAlpha = 1;
+				ctx.lineWidth = LW;
+				label = [(a[0] + b[0]) / 2 + 4, (a[1] + b[1]) / 2];
+			} else {
+				const pts = c.points.map(vp);
+				const drawn = new Set<string>();
+				for (const f of c.faces) {
+					for (let i = 0; i < f.length; i++) {
+						const a = f[i];
+						const b = f[(i + 1) % f.length];
+						const k = a < b ? `${a}:${b}` : `${b}:${a}`;
+						if (drawn.has(k)) continue;
+						drawn.add(k);
+						ctx.beginPath();
+						ctx.moveTo(pts[a][0], pts[a][1]);
+						ctx.lineTo(pts[b][0], pts[b][1]);
+						ctx.stroke();
+					}
+				}
+				const top = pts.reduce((m, p) => (p[1] < m[1] ? p : m), pts[0]);
+				label = [top[0] + 3, top[1] - 3];
+			}
+			ctx.setLineDash([]);
+			ctx.fillText(`${c.layer}${c.part ? " · " + c.part : ""}`, label[0], label[1]);
 		}
 	}
 

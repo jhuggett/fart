@@ -14,6 +14,7 @@ import {
 	sampleClip3,
 	projectDoc,
 	projectFrame,
+	setHull,
 	quatAxis,
 	quatFromEuler,
 	quatMul,
@@ -65,6 +66,8 @@ export const md = {
 	ambient: signal(DEFAULT_AMBIENT),
 	/** draw silhouettes in the viewport */
 	outline: signal(false),
+	/** show the collision solids as wireframes, posed with the frame (1.4) */
+	collide: signal(false),
 	/** how deep a new box, prism, ball or rod is, along the view axis */
 	thick: signal(2),
 	curPart: signal(0),
@@ -902,6 +905,17 @@ export function setDocName(name: string) {
 }
 export function curTokName(): string {
 	return md.tokens.value[md.tokens.value.length - 1]?.name ?? "ink";
+}
+
+/** A convex hull of the part's visible shapes into the document's collision, replacing the one it had (1.4). */
+export function hullOfPart(i: number): boolean {
+	const p = parts()[i];
+	if (!p) return false;
+	let ok = false;
+	mutate((d) => {
+		ok = setHull(d, p.name) !== null;
+	});
+	return ok;
 }
 
 /** Write the 2D views beside the model. Resolves with the files written. */

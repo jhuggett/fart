@@ -337,6 +337,11 @@ the same four regions with the model turned under a **view**.
 - **The file on disk is the document** here too: edits land at once,
   ⌘S is the checkpoint, Revert goes back to it. ⌘J asks Claude, who can
   read and write the model like any file.
+- **Collision** (the Collision button, C) shows the file's solids as
+  wireframes posed with the frame, coloured by layer and labelled.
+  A part's **hull** button writes a convex hull of its shapes into the
+  collision list, riding the part; hand-made solids go in the file
+  (`box`, `ball`, `rod`, convex `mesh`, with `part` and `layer`).
 - **For a 3D game** the model loads as it is: the Odin loader flattens
   each part to triangles (`flatten_part`) and poses them through
   `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with

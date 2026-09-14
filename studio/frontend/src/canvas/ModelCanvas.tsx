@@ -67,6 +67,7 @@ export function ModelCanvas() {
 			void md.light.value;
 			void md.ambient.value;
 			void md.outline.value;
+			void md.collide.value;
 			void md.pending.value;
 			void view.pan.value;
 			void view.zoom.value;
