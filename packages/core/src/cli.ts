@@ -5,6 +5,7 @@
 //   fart bake <file>...           write tris into every poly (or mesh), in place
 //   fart project <3d.fart> [--view v]... [-o out]   a 2D view of a 3D document (1.3)
 //   fart gltf <3d.fart> [-o out.glb] [--fps n]      the model as a binary glTF (1.3)
+//   fart hull <3d.fart> [--part name]...           convex hulls of parts, into collision (1.4)
 //
 // Directories are walked for .fart files; palette_refs are read relative
 // to each file so shared tokens get checked too.
@@ -19,6 +20,7 @@ import { as3d, type Doc, type Vec3 } from "./types.ts";
 import { bakeTris3 } from "./space3.ts";
 import { DEFAULT_AMBIENT, DEFAULT_FPS, DEFAULT_LIGHT, VIEWS, projectDoc } from "./project.ts";
 import { toGlb } from "./gltf.ts";
+import { setHull } from "./collision.ts";
 
 async function collect(paths: string[]): Promise<string[]> {
 	const out: string[] = [];
@@ -97,6 +99,7 @@ async function bakeCmd(paths: string[]): Promise<number> {
 const USAGE = `usage: fart validate <file|dir>...
        fart bake <file>...
        fart gltf <3d.fart> [-o out.glb] [--fps n]
+       fart hull <3d.fart> [--part name]...     (no --part: every part) hulls into collision, in place
        fart project <3d.fart> [--view name|x,y,z(deg)]... [--light x,y,z] [--ambient a] [--fps n] [--outline token[:w]] [-o out.fart]
          views: ${Object.keys(VIEWS).join(", ")}; several --view flags write several files (out gets -<view>)`;
 
@@ -198,6 +201,41 @@ async function gltfCmd(args: string[]): Promise<number> {
 	return 0;
 }
 
+/** fart hull: a convex hull per part (every part, or the named ones) into the file's collision, in place. */
+async function hullCmd(args: string[]): Promise<number> {
+	const names: string[] = [];
+	const files: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--part") names.push(args[++i]);
+		else if (a.startsWith("-")) throw new Error(`unknown flag ${a}`);
+		else files.push(a);
+	}
+	if (files.length !== 1) throw new Error("hull takes one 3D source file");
+	const file = files[0];
+	const { ok, doc, lines } = await check(file);
+	if (!ok || !doc) {
+		console.log(`skip ${file}: not valid`);
+		for (const l of lines) console.log(l);
+		return 1;
+	}
+	const src = as3d(doc);
+	if (!src) throw new Error(`${file} is not a 3D document (space: "3d")`);
+	const parts = names.length ? names : (src.parts ?? []).filter((p) => !p.like).map((p) => p.name);
+	let n = 0;
+	for (const name of parts) {
+		if (!(src.parts ?? []).some((p) => p.name === name)) throw new Error(`no part named ${name}`);
+		const h = setHull(src, name);
+		if (h) {
+			n++;
+			console.log(`hull ${name}: ${h.points.length} points, ${h.faces.length} faces`);
+		} else console.log(`hull ${name}: no volume, skipped`);
+	}
+	await writeFile(file, stringifyDoc(src));
+	console.log(`wrote ${file}  (${n} hull${n === 1 ? "" : "s"})`);
+	return 0;
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 let code = 2;
 try {
@@ -213,6 +251,9 @@ try {
 			break;
 		case "gltf":
 			code = await gltfCmd(rest);
+			break;
+		case "hull":
+			code = await hullCmd(rest);
 			break;
 		default:
 			console.log(USAGE);

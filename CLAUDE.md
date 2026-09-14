@@ -38,6 +38,8 @@ follow the spec, never the other way round.
   `projectFrame` is the fallback and does picking), the four tools
   extrude solids in the view plane, Project… writes the 2D views.
   Solid helpers live in core's `solids.ts` (use them in generators), 3D
-  chains in `ik3.ts`, glTF export in `gltf.ts` (`fart gltf`); the Odin
+  chains in `ik3.ts`, glTF export in `gltf.ts` (`fart gltf`), collision
+  (1.4: posed by `part`, `box`, `layer`, convexity, hulls) in
+  `collision.ts` (`fart hull`); the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.

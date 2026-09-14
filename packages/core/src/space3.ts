@@ -464,5 +464,5 @@ export function bakeTris3(doc: Doc3): void {
 		}
 	};
 	for (const part of doc.parts ?? []) bake(part.shapes);
-	bake(doc.collision);
+	bake(doc.collision?.filter((sh): sh is Shape3 => sh.kind !== "box"));
 }

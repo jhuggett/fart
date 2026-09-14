@@ -30,7 +30,8 @@ export type ErrorCode =
 	| "like"
 	| "ref.chain"
 	| "space"
-	| "face";
+	| "face"
+	| "convex";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -74,6 +75,7 @@ const RESERVED_PART = ["children"];
 // every shape field is known on every kind: writers that serialise a
 // whole struct (the classic editor did) leave the others at zero
 const SHAPE_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "tris"];
+const COLLISION_FIELDS = ["part", "layer", "meta"];
 const KNOWN_SHAPE: Record<string, string[]> = {
 	circle: SHAPE_FIELDS,
 	line: SHAPE_FIELDS,
@@ -205,8 +207,49 @@ function checkShape(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string
 		}
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
-	ctx.unknown(sh, KNOWN_SHAPE[kind], [], path);
+	if (!drawn) checkCollisionFields(ctx, sh, path);
+	ctx.unknown(sh, drawn ? KNOWN_SHAPE[kind] : [...KNOWN_SHAPE[kind], ...COLLISION_FIELDS], [], path);
 	return kind;
+}
+
+/** 1.4: a collision shape's part (checked against the parts later) and layer. */
+function checkCollisionFields(ctx: Ctx, sh: Obj, path: string) {
+	if ("part" in sh) ctx.name(sh.part, `${path}/part`);
+	if ("layer" in sh) ctx.name(sh.layer, `${path}/layer`);
+	if ("meta" in sh) ctx.object(sh.meta, `${path}/meta`);
+}
+
+/** 1.4: every point on or behind the plane of every face, or the mesh is not a solid a plane test can use. */
+function checkConvex(ctx: Ctx, sh: Obj, path: string) {
+	const pts = sh.points as number[][];
+	const faces = sh.faces as number[][];
+	const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+	const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+	const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+	let scale = 0;
+	for (const p of pts) scale = Math.max(scale, Math.abs(p[0]), Math.abs(p[1]), Math.abs(p[2]));
+	const eps = 1e-4 * Math.max(1, scale);
+	faces.forEach((f, fi) => {
+		// Newell's normal, then the plane through the face's first point
+		const n = [0, 0, 0];
+		for (let i = 0; i < f.length; i++) {
+			const a = pts[f[i]];
+			const b = pts[f[(i + 1) % f.length]];
+			n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+			n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+			n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+		}
+		const len = Math.hypot(n[0], n[1], n[2]);
+		if (len < 1e-12) return;
+		const un = [n[0] / len, n[1] / len, n[2] / len];
+		for (let i = 0; i < pts.length; i++) {
+			if (dot(un, sub(pts[i], pts[f[0]])) > eps) {
+				ctx.err("convex", `${path}/faces/${fi}`, `point ${i} lies in front of face ${fi}: a collision mesh is convex`);
+				return;
+			}
+		}
+	});
+	void cross;
 }
 
 /** Baked triangles: triples of indices into n points (n < 0: the points were bad, skip the range check). */
@@ -224,18 +267,25 @@ function checkTris(ctx: Ctx, tris: unknown, path: string, n: number) {
 	});
 }
 
-/** Structure of one 3D shape (1.3): mesh, ball, rod. */
+/** Structure of one 3D shape (1.3): mesh, ball, rod; in a collision list (1.4) also box. */
 function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string | null {
 	if (!ctx.object(sh, path)) return null;
 	const kind = sh.kind;
-	if (typeof kind !== "string" || !KINDS3.includes(kind)) {
-		const hint = KINDS.includes(kind as string) ? ` ("${kind}" is a 2D kind; a mesh face is what a poly becomes)` : "";
-		ctx.err("schema", `${path}/kind`, `kind must be one of ${KINDS3.join(", ")} in a 3D document${hint}`);
+	const kinds = drawn ? KINDS3 : [...KINDS3, "box"];
+	if (typeof kind !== "string" || !kinds.includes(kind)) {
+		const hint = KINDS.includes(kind as string) ? ` ("${kind}" is a 2D kind; a mesh face is what a poly becomes)` : kind === "box" ? ' ("box" is a collision kind, never drawn)' : "";
+		ctx.err("schema", `${path}/kind`, `kind must be one of ${kinds.join(", ")} in a 3D document${hint}`);
 		return null;
 	}
 	if ("color" in sh) ctx.name(sh.color, `${path}/color`);
 	else if (drawn) ctx.err("schema", `${path}/color`, "a drawn shape names a palette token");
+	let meshOk = false;
 	switch (kind) {
+		case "box":
+			ctx.vec3(sh.at, `${path}/at`);
+			ctx.vec3(sh.size, `${path}/size`);
+			if ("rotate" in sh) ctx.vec3(sh.rotate, `${path}/rotate`);
+			break;
 		case "ball":
 			ctx.vec3(sh.at, `${path}/at`);
 			ctx.number(sh.r, `${path}/r`, 0);
@@ -254,6 +304,7 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 			}
 			if (!("faces" in sh)) ctx.err("schema", `${path}/faces`, "a mesh has faces");
 			else if (ctx.array(sh.faces, `${path}/faces`)) {
+				meshOk = n >= 0;
 				sh.faces.forEach((f, i) => {
 					const fp = `${path}/faces/${i}`;
 					if (!ctx.array(f, fp)) return;
@@ -262,19 +313,28 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 						ctx.err("schema", `${fp}/${j}`, "expected a non-negative integer");
 						return false;
 					});
+					if (!ints) meshOk = false;
 					if (!ints) return;
-					if (f.length < 3) ctx.err("face", fp, `a face needs at least three points; got ${f.length}`);
+					if (f.length < 3) {
+						ctx.err("face", fp, `a face needs at least three points; got ${f.length}`);
+						meshOk = false;
+					}
 					if (n >= 0) f.forEach((t, j) => {
-						if ((t as number) >= n) ctx.err("face", `${fp}/${j}`, `index ${t} is past the last point (${n - 1})`);
+						if ((t as number) >= n) {
+							ctx.err("face", `${fp}/${j}`, `index ${t} is past the last point (${n - 1})`);
+							meshOk = false;
+						}
 					});
 				});
 			}
 			if ("tris" in sh) checkTris(ctx, sh.tris, `${path}/tris`, n);
+			if (!drawn && meshOk) checkConvex(ctx, sh, path);
 			break;
 		}
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
-	ctx.unknown(sh, SHAPE3_FIELDS, [], path);
+	if (!drawn) checkCollisionFields(ctx, sh, path);
+	ctx.unknown(sh, drawn ? SHAPE3_FIELDS : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
 	return kind;
 }
 
@@ -578,7 +638,11 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 	}
 
 	if ("collision" in doc && ctx.array(doc.collision, "/collision")) {
-		doc.collision.forEach((sh, i) => (ctx.dim === 3 ? checkShape3 : checkShape)(ctx, sh, `/collision/${i}`, false));
+		doc.collision.forEach((sh, i) => {
+			(ctx.dim === 3 ? checkShape3 : checkShape)(ctx, sh, `/collision/${i}`, false);
+			// 1.4: a shape that rides a part names one the document has
+			if (isObj(sh) && isName(sh.part) && !partSet.has(sh.part)) ctx.err("ref.part", `/collision/${i}/part`, `no part named "${sh.part}"`);
+		});
 	}
 
 	if ("meta" in doc) ctx.object(doc.meta, "/meta");

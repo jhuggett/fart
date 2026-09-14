@@ -33,4 +33,7 @@ coordinate; `projectDoc(doc3, { view, light, ambient, fps, outline })` is
 `box`, `extrude`, `lathe`, `windOutward`, `ballMesh`, `rodMesh`;
 `flattenPart` / `triMesh` give a renderer its triangles and normals;
 `Y_UP` / `yUp` turn the frame for y-up engines. `shadeColor` lays a
-shape's `shade` on a resolved colour.
+shape's `shade` on a resolved colour. Collision (1.4): `collisionWorld`
+/ `collisionWorld3` give every solid in document space under a pose,
+boxes expanded, layers set; `hullPart` / `setHull` / `convexHull` derive
+hulls (`fart hull`).

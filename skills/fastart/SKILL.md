@@ -90,8 +90,13 @@ validator, the loaders, the studio and a sample set.
   parented to the previous; `end` is `part/anchor` on the last part;
   `bend` is `1` or `-1`. Games may solve live (`solveChain` /
   a CCD solver); the studio uses chains to pose, and saves ordinary states.
-- **Collision**: ordinary shapes in document space, never drawn, `color`
-  optional. Rest space only: a game poses them itself if it must.
+- **Collision**: shapes in document space, never drawn, `color`
+  optional. Since 1.4 a collision shape may name a `part`: it is then in
+  that part's rest space and rides the part's pose (a door flap's solid
+  moves with the flap); `layer` (default `solid`) is an engine's tag
+  (`surface`, `player`, `trigger`, whatever the game says). Loaders give
+  the whole list in document space for a pose: `collisionWorld(doc,
+  poses)` / `collision_world(&doc, poses, &out)`.
 - **1.2 additions** (all optional; older readers ignore them):
   - `"like": "claw_r"` on a part: it draws that part's shapes and
     anchors and has none of its own (keep its own `pivot`, `parent`).
@@ -171,6 +176,16 @@ third coordinate. Model props once, then project them to the 2D views a
   up). `spec/PROJECT.md` has the rules.
 - **Export** for other engines: `npx fart gltf model.fart` writes a
   `.glb` (a node per part, vertex colours, an animation per clip, y-up).
+- **Collision in 3D (1.4)**: `collision` holds `ball`, `rod`, convex
+  `mesh`, and `box` (`at` centre, `size` full extents, optional `rotate`;
+  never in `shapes`). A collision `mesh` must be **convex** (error
+  `convex`, naming the face): author concave solids as several pieces.
+  `part` makes a solid ride a part; `layer` tags it. `npx fart hull
+  model.fart [--part name]` writes a convex hull of each part's visible
+  shapes into `collision` (`meta.hull` marks them, rerun replaces), so
+  most props need no hand-written collision. The model screen's
+  Collision button shows the solids posed, and a part's **hull** button
+  does the same as the CLI.
 - **Look at it**: open the folder in Uranus; a 3D file opens the model
   screen (orbit, the four tools make box/ball/rod/prism, Project…).
 
@@ -189,6 +204,7 @@ for &p in doc.parts {                                // once: flatten each part 
 }
 fastart.sample_clip_3d(&doc, clip, t, &frame)       // every frame: the pose
 fastart.sample_targets_3d(&doc, clip, t, &targets); fastart.solve_targets_3d(&doc, &frame, targets[:])   // live IK, if any
+fastart.collision_world_3d(&doc, frame[:], &colliders)   // the solids under this pose: ball / rod / mesh (boxes arrive as meshes), each with .layer and .part
 for sp in frame {
     W := fastart.Y_UP * fastart.world_xf_3d(&doc, frame[:], sp.part)   // rest → engine space
     rl.DrawMesh(mesh, material, rl.Matrix(W))

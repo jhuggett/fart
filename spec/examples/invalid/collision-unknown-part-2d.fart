@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "parts": [
+    {
+      "name": "a"
+    }
+  ],
+  "collision": [
+    {
+      "kind": "circle",
+      "part": "b",
+      "at": [
+        0,
+        0
+      ],
+      "r": 1
+    }
+  ]
+}

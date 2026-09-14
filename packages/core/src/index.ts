@@ -15,3 +15,4 @@ export * from "./project.ts";
 export * from "./solids.ts";
 export * from "./ik3.ts";
 export * from "./gltf.ts";
+export * from "./collision.ts";

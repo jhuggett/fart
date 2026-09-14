@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "space": "3d",
+  "parts": [
+    {
+      "name": "a",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "collision": [
+    {
+      "kind": "ball",
+      "part": "b",
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "r": 1
+    }
+  ]
+}

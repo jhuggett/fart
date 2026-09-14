@@ -17,7 +17,15 @@ export interface Token {
 	[extra: string]: unknown;
 }
 
-export interface CircleShape {
+/** Since 1.4, on a collision shape: the part it rides (its rest space), and an engine's layer. */
+export interface CollisionFields {
+	part?: string;
+	/** Absent means "solid". The format does not interpret it. */
+	layer?: string;
+	meta?: Record<string, unknown>;
+}
+
+export interface CircleShape extends CollisionFields {
 	kind: "circle";
 	/** A palette token. Required inside a part, optional in collision. */
 	color?: string;
@@ -28,7 +36,7 @@ export interface CircleShape {
 	[extra: string]: unknown;
 }
 
-export interface LineShape {
+export interface LineShape extends CollisionFields {
 	kind: "line";
 	color?: string;
 	shade?: number;
@@ -39,7 +47,7 @@ export interface LineShape {
 	[extra: string]: unknown;
 }
 
-export interface PolyShape {
+export interface PolyShape extends CollisionFields {
 	kind: "poly";
 	color?: string;
 	shade?: number;
@@ -168,7 +176,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 3;
+export const FORMAT_MINOR = 4;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -177,7 +185,7 @@ export const FORMAT_MINOR = 3;
 /** [x, y, z]. */
 export type Vec3 = [number, number, number];
 
-export interface MeshShape {
+export interface MeshShape extends CollisionFields {
 	kind: "mesh";
 	color?: string;
 	shade?: number;
@@ -189,7 +197,7 @@ export interface MeshShape {
 	[extra: string]: unknown;
 }
 
-export interface BallShape {
+export interface BallShape extends CollisionFields {
 	kind: "ball";
 	color?: string;
 	shade?: number;
@@ -198,7 +206,7 @@ export interface BallShape {
 	[extra: string]: unknown;
 }
 
-export interface RodShape {
+export interface RodShape extends CollisionFields {
 	kind: "rod";
 	color?: string;
 	shade?: number;
@@ -208,7 +216,18 @@ export interface RodShape {
 	[extra: string]: unknown;
 }
 
+/** Since 1.4, collision only: a box at its centre, `size` the full extents, turned like a pose. */
+export interface BoxShape extends CollisionFields {
+	kind: "box";
+	at: Vec3;
+	size: Vec3;
+	rotate?: Vec3;
+	[extra: string]: unknown;
+}
+
 export type Shape3 = MeshShape | BallShape | RodShape;
+/** What a 3D collision list holds: the 3D kinds and boxes. */
+export type CollisionShape3 = Shape3 | BoxShape;
 
 export interface Anchor3 {
 	name: string;
@@ -282,7 +301,7 @@ export interface Doc3 {
 	states?: State3[];
 	clips?: Clip3[];
 	constraints?: Constraint[];
-	collision?: Shape3[];
+	collision?: CollisionShape3[];
 	meta?: Record<string, unknown>;
 	[extra: string]: unknown;
 }

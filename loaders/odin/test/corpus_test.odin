@@ -267,3 +267,63 @@ chains_3d :: proc(t: ^testing.T) {
 	testing.expect(t, len(ms) == 1 && len(ms[0].positions) > 30 && len(ms[0].positions) % 3 == 0, "a rod flattens to triangles")
 	testing.expect(t, abs(linalg.length(ms[0].normals[0]) - 1) < 1e-4, "normals are unit")
 }
+
+// 1.4: posed collision lands where the part's mesh lands; a box expands
+// outward; layers and the engine's own fields ride along.
+@(test)
+collision_3d :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	data, err := os.read_entire_file(EXAMPLES + "valid/hut.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := fart.load_bytes_3d(data)
+	if !testing.expect(t, ok, "hut loads") do return
+	open := fart.state_of_3d(&doc, "open")
+	if !testing.expect(t, open != nil) do return
+	cs := make([dynamic]fart.Collider3, context.temp_allocator)
+	fart.collision_world_3d(&doc, open.parts[:], &cs)
+	testing.expect_value(t, len(cs), 8)
+	// the flap's box: its far-corner point lands where the flap's map puts it
+	flap: ^fart.Collider3
+	lamp: ^fart.Collider3
+	table: ^fart.Collider3
+	for &c in cs {
+		switch c.part {
+		case "flap":
+			flap = &c
+		case "lamp":
+			lamp = &c
+		case "table":
+			table = &c
+		}
+	}
+	if !testing.expect(t, flap != nil && flap.kind == "mesh" && len(flap.points) == 8, "the flap's box is a posed mesh") do return
+	W := fart.world_xf_3d(&doc, open.parts[:], "flap")
+	want := fart.xf3_apply(W, {10.3, -10, -8}) // the box's near top corner, at rest (10.3, -10, -8)
+	hit := false
+	for p in flap.points do if linalg.length(p - want) < 1e-3 do hit = true
+	testing.expect(t, hit, "a posed collider corner lands where world_xf_3d puts it")
+	// wound outward: every face's normal points away from the box's centre
+	centre := fart.xf3_apply(W, {10, -5, -5})
+	for f in flap.points {
+		_ = f
+	}
+	for f in flap.faces {
+		n := fart.face_normal(flap.points[:], f[:])
+		mid: fart.V3
+		for i in f do mid += flap.points[i]
+		mid /= f32(len(f))
+		testing.expect(t, linalg.dot(n, mid - centre) > 0, "a box face winds outward")
+	}
+	testing.expect(t, lamp != nil && lamp.layer == "trigger" && lamp.kind == "ball", "the lamp's trigger ball, with its layer")
+	testing.expect(t, table != nil && table.layer == "surface", "the table's surface top")
+	testing.expect(t, cs[0].layer == "solid" && cs[0].part == "", "a shape without a part or layer is solid, document space")
+	// closed: the flap stands where it was authored
+	closed := fart.state_of_3d(&doc, "closed")
+	cs2 := make([dynamic]fart.Collider3, context.temp_allocator)
+	fart.collision_world_3d(&doc, closed.parts[:], &cs2)
+	for c in cs2 do if c.part == "flap" {
+		hit2 := false
+		for p in c.points do if linalg.length(p - fart.V3{10.3, -10, -8}) < 1e-3 do hit2 = true
+		testing.expect(t, hit2, "closed, the flap's box is at rest")
+	}
+}

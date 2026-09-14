@@ -20,6 +20,66 @@ Shape :: struct {
 	w:      f32,
 	points: [dynamic]V2,
 	tris:   [dynamic]u16, // baked triangulation (index triples)
+	part:   string, // 1.4, collision: the part it rides ("" = document space, at rest)
+	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
+}
+
+// 1.4: a 2D solid in document space under a pose (see collision_world).
+Collider :: struct {
+	kind:   string, // "circle" | "line" | "poly"
+	layer:  string,
+	part:   string,
+	at:     V2,
+	r:      f32,
+	a:      V2,
+	b:      V2,
+	w:      f32,
+	points: [dynamic]V2,
+	tris:   [dynamic]u16,
+}
+
+// Every collision shape in document space under `poses`: shapes that
+// name a part ride its world map (radius and width scaled with it).
+collision_world :: proc(doc: ^Doc, poses: []State_Part, out: ^[dynamic]Collider) {
+	place :: proc(sh: ^Shape, T: Xf, posed: bool, part: string, out: ^[dynamic]Collider) {
+		c := Collider{kind = sh.kind, layer = sh.layer == "" ? "solid" : sh.layer, part = part}
+		s := posed ? xf_scale(T) : 1
+		mv :: proc(T: Xf, posed: bool, p: V2) -> V2 {return posed ? xf_apply(T, p) : p}
+		switch sh.kind {
+		case "circle":
+			c.at = mv(T, posed, sh.at)
+			c.r = sh.r * s
+		case "line":
+			c.a = mv(T, posed, sh.a)
+			c.b = mv(T, posed, sh.b)
+			c.w = sh.w * s
+		case "poly":
+			for p in sh.points do append(&c.points, mv(T, posed, p))
+			append(&c.tris, ..sh.tris[:])
+		case:
+			return
+		}
+		append(out, c)
+	}
+	for &sh in doc.collision {
+		if sh.part == "" {
+			place(&sh, XF_ID, false, "", out)
+			continue
+		}
+		for &p in doc.parts {
+			src := p.like == "" ? p.name : p.like
+			if src != sh.part do continue
+			place(&sh, world_xf(doc, poses, p.name), true, p.name, out)
+		}
+	}
+}
+
+destroy_colliders :: proc(cs: ^[dynamic]Collider) {
+	for &c in cs {
+		delete(c.points)
+		delete(c.tris)
+	}
+	delete(cs^)
 }
 
 Anchor :: struct {

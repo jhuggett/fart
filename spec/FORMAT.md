@@ -1,4 +1,4 @@
-# Fast Art Format (.fart) — v1.3
+# Fast Art Format (.fart) — v1.4
 
 JSON-backed vector art for games. The format is the contract: any editor
 that writes it and any engine that reads it agree through this document
@@ -439,23 +439,51 @@ tokens, palettes resolve them, resolution order is specified above.
 
 ## Collision (optional)
 
-A doc may carry a `collision` array of ordinary shapes -- same kinds,
-same document space, no `color` required. They are never drawn; an
-engine that cares reads them and treats them as solid however it likes.
+A doc may carry a `collision` array of shapes -- the document's kinds,
+no `color` required. They are never drawn; an engine that cares reads
+them and treats them as solid however it likes.
 
 ```json
 "collision": [
-  {"kind": "line", "a": [-3, 0], "b": [3, 0], "w": 12}
+  {"kind": "line", "a": [-3, 0], "b": [3, 0], "w": 12},
+  {"kind": "box", "at": [0, 4, 0], "size": [8, 2, 8], "layer": "surface"},
+  {"kind": "mesh", "part": "flap", "points": [...], "faces": [...]}
 ]
 ```
 
 - A **line with width is a capsule** (the natural furniture shape); a
-  **circle** is a circle; a **poly** is a convex-ish region.
-- Collision does not pose: it is rest-space, state-independent. Doors
-  and other state-dependent solids stay engine-owned for now.
-- Loaders that predate this field ignore it; the version stays 1.
-- In a 3D document (1.3) the kinds are the 3D ones: a `rod` is a capsule,
-  a `ball` a sphere, a `mesh` a convex-ish solid.
+  **circle** is a circle; a **poly** is a convex region. In a 3D document
+  a `rod` is a capsule, a `ball` a sphere, a `mesh` a **convex** solid,
+  and a `box` (collision only, 1.4) is `at` its centre with `size` the
+  full extents and an optional `rotate` (`[x, y, z]`, applied as a
+  pose's turn). A validator checks a collision `mesh` is convex: every
+  point on or behind the plane of every face (error `convex`, naming
+  the face). A concave solid is authored as several convex pieces, or
+  as a `box` and a few balls; `fart hull` derives a convex hull from a
+  part's visible shapes. A `box` inside a part's `shapes` is refused
+  (`schema`): it is not a drawn kind.
+- **Posed collision (1.4)**: a collision shape may name a `part`. It is
+  then authored in that part's rest space, like the part's own shapes,
+  and rides the part's world transform under any state or clip:
+  `W(part) = W(parent) · L(part)`, mirror, scale and parents included;
+  a ball's radius and a rod's width scale with the part. A shape
+  without `part` is document space, at rest, whatever the pose. A part
+  drawn `like` another carries the collision shapes that name its
+  source, in its own place. A `part` that names no part is `ref.part`.
+  This holds in 2D documents too. The reference loaders turn the whole
+  list into document-space colliders for a pose list (`collisionWorld`,
+  `collision_world_3d`), boxes expanded to eight-point, six-face meshes
+  so a consumer sees only balls, rods and meshes (circles, lines and
+  polys in 2D).
+- **Layers (1.4)**: a collision shape may carry a `layer`, a non-empty
+  string an engine reads and the format does not interpret; absent
+  means `"solid"`. A game's own words: `solid`, `surface`, `player`,
+  `trigger`.
+- A generated hull carries `"meta": {"hull": true}` so a tool can
+  replace it; `meta` on a collision shape is otherwise yours.
+- Loaders that predate this field ignore it, and loaders that predate
+  1.4 read every collision shape as document space and at rest; the
+  version stays 1.
 
 ## Validation
 
@@ -491,6 +519,7 @@ the same from any tool:
 | `like`      | a part is like itself, like a part that is itself like another, or carries its own shapes or anchors |
 | `ref.chain` | a target names a constraint the document does not have           |
 | `space`     | a space the reader does not know (1.3)                          |
+| `convex`    | a collision mesh is not convex: a point lies in front of the named face (1.4) |
 | `face`      | a mesh face with fewer than three indices, or an index past the last point (1.3) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
@@ -519,6 +548,17 @@ the corpus only requires it to load every valid file and refuse those two.
   `emissive` on tokens, and defined blending, layering and attaching for
   runtimes. Every one is optional; a 1.1 reader draws a `like` part empty
   and eases by name, and is otherwise right.
+- 1.3 added `shade` on shapes, and `space: "3d"`: 3D documents with
+  `mesh`, `ball` and `rod` shapes, three-coordinate points, `[x, y, z]`
+  turns, `dir` on anchors and `pole` on chains, plus `PROJECT.md`, the
+  rules that turn a 3D document into 2D ones. A 2D file without `shade`
+  is a 1.2 file; a 1.2 reader draws `shade` flat and refuses a 3D file
+  at the schema stage.
+- 1.4 added collision that poses (`part` on a collision shape), the
+  collision-only `box` kind, `layer` on collision shapes, and the rule
+  that a collision `mesh` is convex (error `convex`). A file that uses
+  none of them is a 1.3 file; a 1.3 reader reads posed collision at
+  rest and refuses a `box` at the schema stage.
 
 ## Reserved for later
 

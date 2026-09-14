@@ -15,10 +15,10 @@ import "core:math/linalg"
 V3 :: [3]f32
 
 Shape3 :: struct {
-	kind:   string, // "mesh" | "ball" | "rod"
+	kind:   string, // "mesh" | "ball" | "rod"; in collision (1.4) also "box"
 	color:  string,
 	shade:  f32, // 0 = 1 (absent): multiplies r, g, b
-	at:     V3, // ball
+	at:     V3, // ball; box centre
 	r:      f32,
 	a:      V3, // rod
 	b:      V3,
@@ -26,6 +26,10 @@ Shape3 :: struct {
 	points: [dynamic]V3, // mesh
 	faces:  [dynamic][dynamic]u16, // index loops, wound outward
 	tris:   [dynamic]u16, // baked triangulation
+	size:   V3, // 1.4, box: the full extents
+	rotate: V3, // 1.4, box: a pose's turn about at
+	part:   string, // 1.4, collision: the part it rides ("" = document space, at rest)
+	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
 }
 
 Anchor3 :: struct {
@@ -681,6 +685,117 @@ Y_UP :: Xf3{1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1}
 
 to_y_up :: proc(p: V3) -> V3 {
 	return {p.x, -p.y, -p.z}
+}
+
+// ------------------------------------------------------------ collision (1.4)
+// The document's solids under a pose, in document space: shapes that
+// name a part ride its world map (radius and width scaled with it), the
+// rest pass through, boxes expand to meshes. A part drawn like another
+// carries the shapes that name its source.
+
+Collider3 :: struct {
+	kind:   string, // "ball" | "rod" | "mesh" (a box arrives as a mesh)
+	layer:  string, // "solid" when the file said nothing
+	part:   string, // the part it rode, "" for none
+	at:     V3,
+	r:      f32,
+	a:      V3,
+	b:      V3,
+	w:      f32,
+	points: [dynamic]V3, // mesh, document space
+	faces:  [dynamic][dynamic]u16,
+	tris:   [dynamic]u16,
+}
+
+// A box as its eight points and six outward faces.
+box_mesh_3d :: proc(sh: ^Shape3, points: ^[dynamic]V3, faces: ^[dynamic][dynamic]u16) {
+	h := sh.size / 2
+	R := linalg.matrix3_from_quaternion_f32(quat_from_euler(sh.rotate))
+	signs := [2]f32{-1, 1}
+	for dz in signs {
+		for dy in signs {
+			for dx in signs {
+				append(points, sh.at + R * V3{dx * h.x, dy * h.y, dz * h.z})
+			}
+		}
+	}
+	quads := [6][4]u16{{0, 2, 3, 1}, {4, 5, 7, 6}, {0, 1, 5, 4}, {2, 6, 7, 3}, {0, 4, 6, 2}, {1, 3, 7, 5}}
+	for q in quads {
+		f := make([dynamic]u16, 0, 4)
+		for i in q do append(&f, i)
+		append(faces, f)
+	}
+}
+
+@(private)
+place_collider :: proc(doc: ^Doc3, sh: ^Shape3, T: Xf3, posed: bool, part: string, out: ^[dynamic]Collider3) {
+	c := Collider3{kind = sh.kind, layer = sh.layer == "" ? "solid" : sh.layer, part = part}
+	s: f32 = 1
+	if posed do s = math.pow(abs(linalg.determinant(T)), 1.0 / 3.0)
+	mv :: proc(T: Xf3, posed: bool, p: V3) -> V3 {return posed ? xf3_apply(T, p) : p}
+	switch sh.kind {
+	case "ball":
+		c.at = mv(T, posed, sh.at)
+		c.r = sh.r * s
+	case "rod":
+		c.a = mv(T, posed, sh.a)
+		c.b = mv(T, posed, sh.b)
+		c.w = sh.w * s
+	case "mesh", "box":
+		c.kind = "mesh"
+		if sh.kind == "box" do box_mesh_3d(sh, &c.points, &c.faces)
+		else {
+			for p in sh.points do append(&c.points, p)
+			for f in sh.faces {
+				g := make([dynamic]u16, 0, len(f))
+				append(&g, ..f[:])
+				append(&c.faces, g)
+			}
+		}
+		if posed do for &p in c.points do p = xf3_apply(T, p)
+		if posed && linalg.determinant(T) < 0 {
+			// a mirror turns the winding inside out: turn it back
+			for &f in c.faces do slice_reverse(f[:])
+		}
+		if sh.kind == "mesh" && len(sh.tris) > 0 && len(sh.tris) % 3 == 0 && !(posed && linalg.determinant(T) < 0) {
+			append(&c.tris, ..sh.tris[:])
+		} else {
+			for f in c.faces do for i in 1 ..< len(f) - 1 do append(&c.tris, f[0], f[i], f[i + 1])
+		}
+	case:
+		return
+	}
+	append(out, c)
+}
+
+@(private)
+slice_reverse :: proc(s: []u16) {
+	for i, j := 0, len(s) - 1; i < j; i, j = i + 1, j - 1 do s[i], s[j] = s[j], s[i]
+}
+
+// Every collision shape in document space under `poses`, appended to `out`.
+collision_world_3d :: proc(doc: ^Doc3, poses: []State_Part3, out: ^[dynamic]Collider3) {
+	for &sh in doc.collision {
+		if sh.part == "" {
+			place_collider(doc, &sh, XF3_ID, false, "", out)
+			continue
+		}
+		for &p in doc.parts {
+			src := p.like == "" ? p.name : p.like
+			if src != sh.part do continue
+			place_collider(doc, &sh, world_xf_3d(doc, poses, p.name), true, p.name, out)
+		}
+	}
+}
+
+destroy_colliders_3d :: proc(cs: ^[dynamic]Collider3) {
+	for &c in cs {
+		delete(c.points)
+		for &f in c.faces do delete(f)
+		delete(c.faces)
+		delete(c.tris)
+	}
+	delete(cs^)
 }
 
 // ------------------------------------------------------------ chains in 3D

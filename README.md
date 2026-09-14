@@ -30,6 +30,7 @@ tris index the points) is checked by the validator in `packages/core`:
     npx fart bake enemies/bat.fart         # write tris into each poly (or mesh)
     npx fart project pistol.fart --view left --view top   # 2D views of a 3D file (1.3)
     npx fart gltf pistol.fart                             # the model as a .glb, animations included
+    npx fart hull hut.fart --part table                   # a convex hull into collision, riding the part (1.4)
 
 `spec/examples/manifest.json` is the conformance corpus: files that must
 load, files that must be refused, and the error code each refusal

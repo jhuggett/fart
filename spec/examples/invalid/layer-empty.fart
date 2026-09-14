@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "space": "3d",
+  "parts": [
+    {
+      "name": "a"
+    }
+  ],
+  "collision": [
+    {
+      "kind": "ball",
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "r": 1,
+      "layer": ""
+    }
+  ]
+}

@@ -22,7 +22,8 @@
     "like": "a part is like itself, like a part that is itself like another, or carries its own shapes or anchors",
     "ref.chain": "a target names a constraint the document does not have",
     "space": "a space the reader does not know (1.3)",
-    "face": "a mesh face with fewer than three indices, or an index past the last point (1.3)"
+    "face": "a mesh face with fewer than three indices, or an index past the last point (1.3)",
+    "convex": "a collision mesh is not convex: a point lies in front of the named face (1.4)"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
@@ -371,6 +372,43 @@
       "valid": true,
       "space": "3d",
       "note": "1.3: a chain in 3D with a pole, a target on a state and on an inline key"
+    },
+    {
+      "file": "valid/hut.fart",
+      "valid": true,
+      "space": "3d",
+      "warnings": [
+        "unknown"
+      ],
+      "note": "1.4: wall boxes, a floor, a door flap with posed collision and open/closed states, a table with a surface top, a lamp with a trigger ball; an engine's own field rides along"
+    },
+    {
+      "file": "invalid/collision-concave.fart",
+      "valid": false,
+      "code": "convex"
+    },
+    {
+      "file": "invalid/collision-unknown-part.fart",
+      "valid": false,
+      "code": "ref.part"
+    },
+    {
+      "file": "invalid/collision-unknown-part-2d.fart",
+      "valid": false,
+      "code": "ref.part",
+      "note": "posed collision works in 2D too"
+    },
+    {
+      "file": "invalid/box-in-shapes.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "box is a collision kind, never drawn"
+    },
+    {
+      "file": "invalid/layer-empty.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a layer is a name: non-empty"
     }
   ]
 }
