@@ -1,5 +1,18 @@
 # fastart -- the Fast Art Format
 
+## A note on pronunciation
+
+This is a serious project for serious people. To forestall any
+confusion:
+
+- A `.fart` file is pronounced **dot-f-art** file. It holds Fast Art.
+- Scene files, arriving shortly under the extension `.shart`, are
+  pronounced **dot-s-h-art**. They hold scenes of Fast Art.
+
+Any resemblance to a potentially humorous word is unintentional. We ask
+that readers, contributors and users maintain a level of maturity and
+dignity sufficient to their station.
+
 JSON-backed vector art for games: shapes, recolorable palette tokens,
 re-posable parts, states. The `.fart` file is the contract; the rest of
 this repo exists to write it, read it, and check it.
