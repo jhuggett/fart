@@ -128,7 +128,8 @@
             0,
             0
           ],
-          "r": 4.1
+          "r": 4.1,
+          "texture": "plating"
         },
         {
           "kind": "poly",
@@ -342,6 +343,20 @@
         0
       ],
       "r": 4.8
+    }
+  ],
+  "textures": [
+    {
+      "name": "plating",
+      "cell": [
+        6,
+        6
+      ],
+      "maps": {
+        "color": {
+          "ref": "../textures/plating.fart"
+        }
+      }
     }
   ]
 }

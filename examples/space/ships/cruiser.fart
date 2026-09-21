@@ -272,6 +272,7 @@
               -23.5
             ]
           ],
+          "texture": "plating",
           "tris": [
             8,
             0,
@@ -1001,15 +1002,18 @@
       ]
     }
   ],
-  "palette": [
+  "textures": [
     {
-      "name": "ink",
-      "rgb": [
-        200,
-        195,
-        185,
-        255
-      ]
+      "name": "plating",
+      "cell": [
+        6,
+        6
+      ],
+      "maps": {
+        "color": {
+          "ref": "../textures/plating.fart"
+        }
+      }
     }
   ]
 }

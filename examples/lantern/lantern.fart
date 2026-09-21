@@ -2,6 +2,20 @@
   "version": 1,
   "space": "3d",
   "name": "lantern",
+  "textures": [
+    {
+      "name": "hammered",
+      "cell": [
+        4,
+        4
+      ],
+      "maps": {
+        "color": {
+          "ref": "textures/hammered.fart"
+        }
+      }
+    }
+  ],
   "palette": [
     {
       "name": "iron",
@@ -446,6 +460,10 @@
               31
             ]
           ],
+          "texture": "hammered",
+          "mapping": {
+            "scale": 1
+          },
           "tris": [
             0,
             2,

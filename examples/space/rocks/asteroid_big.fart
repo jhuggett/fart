@@ -140,6 +140,7 @@
               -8.25
             ]
           ],
+          "texture": "craters",
           "tris": [
             10,
             0,
@@ -360,6 +361,20 @@
         9,
         10
       ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "craters",
+      "cell": [
+        8,
+        8
+      ],
+      "maps": {
+        "color": {
+          "ref": "../textures/craters.fart"
+        }
+      }
     }
   ]
 }

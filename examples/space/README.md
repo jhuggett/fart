@@ -1,5 +1,20 @@
 # space
 
+`scenes/patrol.shart` places the set as a scene (a Scene Hierarchy of
+Art): the station spinning with a fighter docked at its north socket, a
+wing of three fighters as a turned group with a laser bolt hung from
+the lead's gun, the cruiser with a missile on its muzzle, a pirate
+raider recoloured by its palette, drones, a group of tumbling rocks, a
+bobbing crate, an explosion mid-boom. Open it on the shelf, press play;
+`npx fart flatten examples/space/scenes/patrol.shart --t 0.5` lists the
+seventeen instances placed.
+
+Hulls wear `textures/plating.fart` (seams and rivets over a 6 by 6 cell)
+and rocks `textures/craters.fart`, laid on by the generator: textures are
+drawings, tiled (format 1.5). Uranus paints them; a game gets the
+pattern coordinates and rasterises the drawing itself, or takes the PNGs
+from `fart bake --textures`.
+
 A top-down space set, made to exercise the whole format. Open the folder
 in the studio (or `make serve DIR=examples/space` for a browser) and it
 is a project.

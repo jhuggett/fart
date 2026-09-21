@@ -9,6 +9,10 @@ projections come from the command line:
 
     npx fart project examples/pistol/flintlock.fart --view left --view top --outline ink:0.25
 
+The stock wears a wood grain: `textures/grain.fart`, a drawing tiled
+over an 8 by 6 cell, box mapped (format 1.5). The projected files keep
+it, with a mapping per face.
+
 In the side view the hammer, frizzen and trigger turn about the view
 axis, so the 2D file is a real rig: parents kept, poses exact, the
 `cock` and `fire` clips tweened. In the top and front views those turns

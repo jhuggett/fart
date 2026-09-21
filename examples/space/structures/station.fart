@@ -608,7 +608,8 @@
             0,
             0
           ],
-          "r": 8.5
+          "r": 8.5,
+          "texture": "plating"
         },
         {
           "kind": "circle",
@@ -798,6 +799,20 @@
         0
       ],
       "r": 19
+    }
+  ],
+  "textures": [
+    {
+      "name": "plating",
+      "cell": [
+        6,
+        6
+      ],
+      "maps": {
+        "color": {
+          "ref": "../textures/plating.fart"
+        }
+      }
     }
   ]
 }

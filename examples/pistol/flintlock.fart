@@ -2,6 +2,20 @@
   "version": 1,
   "space": "3d",
   "name": "flintlock",
+  "textures": [
+    {
+      "name": "grain",
+      "cell": [
+        8,
+        6
+      ],
+      "maps": {
+        "color": {
+          "ref": "textures/grain.fart"
+        }
+      }
+    }
+  ],
   "palette": [
     {
       "name": "wood",
@@ -259,6 +273,10 @@
               10
             ]
           ],
+          "texture": "grain",
+          "mapping": {
+            "scale": 1
+          },
           "tris": [
             10,
             0,

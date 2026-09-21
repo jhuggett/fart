@@ -49,6 +49,20 @@
       ]
     }
   ],
+  "textures": [
+    {
+      "name": "grain",
+      "cell": [
+        8,
+        6
+      ],
+      "maps": {
+        "color": {
+          "ref": "textures/grain.fart"
+        }
+      }
+    }
+  ],
   "parts": [
     {
       "name": "stock",
@@ -57,16 +71,6 @@
         1.6
       ],
       "shapes": [
-        {
-          "kind": "circle",
-          "color": "brass",
-          "shade": 0.88,
-          "at": [
-            -6,
-            9.9
-          ],
-          "r": 1.15
-        },
         {
           "kind": "line",
           "color": "brass",
@@ -159,7 +163,28 @@
             2,
             1,
             0
-          ]
+          ],
+          "texture": "grain",
+          "mapping": {
+            "xf": [
+              -1,
+              0,
+              0,
+              1,
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "kind": "circle",
+          "color": "brass",
+          "shade": 0.88,
+          "at": [
+            -6,
+            9.9
+          ],
+          "r": 1.15
         },
         {
           "kind": "line",
@@ -1164,17 +1189,17 @@
           ]
         },
         {
-          "part": "stock",
-          "offset": [
-            0,
-            1.6
-          ]
-        },
-        {
           "part": "barrel",
           "offset": [
             -2,
             0
+          ]
+        },
+        {
+          "part": "stock",
+          "offset": [
+            0,
+            1.6
           ]
         }
       ]
@@ -1219,17 +1244,17 @@
           ]
         },
         {
-          "part": "stock",
-          "offset": [
-            0,
-            1.6
-          ]
-        },
-        {
           "part": "barrel",
           "offset": [
             -2,
             0
+          ]
+        },
+        {
+          "part": "stock",
+          "offset": [
+            0,
+            1.6
           ]
         }
       ]
@@ -1276,17 +1301,17 @@
           "rotate": -0.35
         },
         {
-          "part": "stock",
-          "offset": [
-            0,
-            1.6
-          ]
-        },
-        {
           "part": "barrel",
           "offset": [
             -2,
             0
+          ]
+        },
+        {
+          "part": "stock",
+          "offset": [
+            0,
+            1.6
           ]
         }
       ]
@@ -1330,19 +1355,19 @@
           ]
         },
         {
+          "part": "barrel",
+          "offset": [
+            -2,
+            0
+          ]
+        },
+        {
           "part": "stock",
           "offset": [
             0,
             1.6
           ],
           "rotate": 0.35
-        },
-        {
-          "part": "barrel",
-          "offset": [
-            -2,
-            0
-          ]
         }
       ]
     }

@@ -9,11 +9,29 @@ const OUT = new URL(".", import.meta.url).pathname;
 const rod = (color, a, b, w) => ({ kind: "rod", color, a, b, w });
 const ball = (color, at, r) => ({ kind: "ball", color, at, r });
 
+// hammered iron: dents as circles over a small cell (1.5), box mapped onto the dish and cap
+const hammered = {
+	version: 1,
+	name: "hammered",
+	palette: [{ name: "dent", rgb: [52, 50, 58, 255] }, { name: "gleam", rgb: [110, 108, 116, 255] }],
+	parts: [
+		{
+			name: "dents", pivot: [0, 0],
+			shapes: [
+				...[[0.7, 0.8], [2.1, 0.5], [3.4, 1.2], [1.2, 2.2], [2.8, 2.6], [0.4, 3.3], [2.0, 3.6], [3.5, 3.0]].map(([x, y]) => ({ kind: "circle", color: "dent", at: [x, y], r: 0.42 })),
+				...[[0.6, 0.65], [2.0, 0.35], [3.3, 1.05], [1.1, 2.05], [2.7, 2.45], [0.3, 3.15], [1.9, 3.45], [3.4, 2.85]].map(([x, y]) => ({ kind: "circle", color: "gleam", at: [x, y], r: 0.16 })),
+			],
+		},
+	],
+	states: [{ name: "all", parts: [{ part: "dents" }] }],
+};
+
 // y down: the base sits at +y, the loop hangs above at -y; the lantern faces -z
 const lantern = {
 	version: 1,
 	space: "3d",
 	name: "lantern",
+	textures: [{ name: "hammered", cell: [4, 4], maps: { color: { ref: "textures/hammered.fart" } } }],
 	palette: [
 		{ name: "iron", rgb: [70, 68, 74, 255] },
 		{ name: "brass", rgb: [200, 160, 70, 255] },
@@ -25,7 +43,7 @@ const lantern = {
 		{
 			name: "body", pivot: [0, 0, 0],
 			shapes: [
-				lathe("iron", [[0, 8], [4.5, 8], [4.8, 6.5], [4, 6], [0, 6]], "y", 10), // the base dish
+				{ ...lathe("iron", [[0, 8], [4.5, 8], [4.8, 6.5], [4, 6], [0, 6]], "y", 10), texture: "hammered", mapping: { scale: 1 } }, // the base dish
 				lathe("brass", [[0, -8], [2.5, -8], [3.4, -6.5], [3.6, -5.8], [0, -5.8]], "y", 10), // the cap
 				lathe("glass", [[0, -5.8], [3.0, -5.8], [3.2, 0], [3.0, 6], [0, 6]], "y", 8), // the glass
 				...[0, 1, 2, 3].map((k) => rod("iron", [3.1 * Math.cos((k / 4) * Math.PI * 2 + Math.PI / 4), -5.8, 3.1 * Math.sin((k / 4) * Math.PI * 2 + Math.PI / 4)], [3.1 * Math.cos((k / 4) * Math.PI * 2 + Math.PI / 4), 6, 3.1 * Math.sin((k / 4) * Math.PI * 2 + Math.PI / 4)], 0.5)),
@@ -66,6 +84,8 @@ const write = (rel, doc) => {
 	fs.writeFileSync(path.join(OUT, rel), stringifyDoc(doc));
 	console.log("wrote", rel, r.warnings.length ? r.warnings : "");
 };
+fs.mkdirSync(path.join(OUT, "textures"), { recursive: true });
+write("textures/hammered.fart", hammered);
 write("lantern.fart", lantern);
 for (const view of ["left", "front"]) write(`lantern-${view}.fart`, projectDoc(lantern, { view, from: "lantern.fart", outline: { color: "iron", w: 0.2 } }));
 void solveChain3;

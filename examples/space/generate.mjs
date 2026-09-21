@@ -376,9 +376,64 @@ D("pickups/crate.fart", {
 	collision: [P(undefined, [[-3.2, -3.2], [3.2, -3.2], [3.2, 3.2], [-3.2, 3.2]])],
 });
 
+// ---- textures (1.5): drawings tiled over a cell. Hulls get plating, rocks get craters.
+D("textures/plating.fart", {
+	name: "plating",
+	palette: [
+		{ name: "seam", rgb: [0, 0, 0, 70] },
+		{ name: "rivet", rgb: [255, 255, 255, 60] },
+	],
+	parts: [
+		part("plates", [0, 0], [
+			L("seam", [0, 3], [6, 3], 0.25),
+			L("seam", [3, 0], [3, 3], 0.25),
+			L("seam", [1.5, 3], [1.5, 6], 0.25),
+			L("seam", [4.5, 3], [4.5, 6], 0.25),
+			...[[0.5, 0.5], [2.5, 0.5], [3.5, 2.5], [5.5, 2.5], [1.0, 3.5], [2.0, 5.5], [4.0, 3.5], [5.0, 5.5]].map(([x, y]) => C("rivet", [x, y], 0.18)),
+		]),
+	],
+	states: [st("all", [{ part: "plates" }])],
+});
+D("textures/craters.fart", {
+	name: "craters",
+	palette: [
+		{ name: "shadow", rgb: [0, 0, 0, 80] },
+		{ name: "rim", rgb: [255, 255, 255, 40] },
+	],
+	parts: [
+		part("craters", [0, 0], [
+			...[[2, 2, 1.1], [6.2, 1.4, 0.7], [4.4, 5.6, 1.4], [1.2, 6.4, 0.8], [7.0, 6.8, 0.6]].map(([x, y, r]) => C("shadow", [x, y], r)),
+			...[[2, 2, 1.1], [6.2, 1.4, 0.7], [4.4, 5.6, 1.4], [1.2, 6.4, 0.8], [7.0, 6.8, 0.6]].map(([x, y, r]) => L("rim", [x - r * 0.7, y - r * 0.7], [x + r * 0.7, y - r * 0.7], 0.3)),
+		]),
+	],
+	states: [st("all", [{ part: "craters" }])],
+});
+// lay them on: every hull-coloured poly or circle of the ships and the station, every rock
+const texturize = (rel, doc) => {
+	if (!doc.parts || rel.startsWith("textures/") || rel.startsWith("palettes/")) return;
+	const up = rel.includes("/") ? "../" : "";
+	const uses = new Set();
+	for (const p of doc.parts) {
+		for (const sh of p.shapes ?? []) {
+			if (sh.color === "hull" && sh.kind !== "line" && (rel.startsWith("ships/") || rel.startsWith("structures/"))) {
+				sh.texture = "plating";
+				uses.add("plating");
+			} else if (sh.color === "rock" && sh.kind !== "line") {
+				sh.texture = "craters";
+				uses.add("craters");
+			}
+		}
+	}
+	if (!uses.size) return;
+	doc.textures = [];
+	if (uses.has("plating")) doc.textures.push({ name: "plating", cell: [6, 6], maps: { color: { ref: `${up}textures/plating.fart` } } });
+	if (uses.has("craters")) doc.textures.push({ name: "craters", cell: [8, 8], maps: { color: { ref: `${up}textures/craters.fart` } } });
+};
+
 // ---- write, baked (tris, and the rotations pinned targets solve to), and look each one over
 let bad = 0;
 for (const [rel, doc] of Object.entries(docs)) {
+	texturize(rel, doc);
 	bakeTris(doc);
 	for (const st of doc.states ?? []) if (st.targets?.length) solveTargets(doc, st.parts, st.targets);
 	const full = path.join(OUT, rel);

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "stone_height",
+  "palette": [
+    {
+      "name": "mortar",
+      "rgb": [
+        40,
+        40,
+        40,
+        255
+      ]
+    },
+    {
+      "name": "stone",
+      "rgb": [
+        200,
+        200,
+        200,
+        255
+      ]
+    },
+    {
+      "name": "stone_light",
+      "rgb": [
+        230,
+        230,
+        230,
+        255
+      ]
+    }
+  ]
+}

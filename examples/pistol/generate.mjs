@@ -90,10 +90,29 @@ const triggerProfile = [
 	[2.6, 3.0], [3.4, 3.0], [3.7, 4.8], [3.1, 5.5], [2.4, 4.7],
 ];
 
+// the wood grain: a texture is a drawing, tiled over a cell (1.5); the stock is box mapped with it
+const grain = {
+	version: 1,
+	name: "grain",
+	palette: [{ name: "grain", rgb: [86, 54, 30, 255] }, { name: "grain_light", rgb: [150, 104, 62, 255] }],
+	parts: [
+		{
+			name: "grain", pivot: [0, 0],
+			shapes: [
+				...[0.4, 1.3, 2.1, 3.3, 4.2, 5.1].map((y, i) => ({ kind: "poly", color: i % 2 ? "grain_light" : "grain", points: [[0, y], [2.5, y + 0.15], [5, y - 0.1], [8, y + 0.12], [8, y + 0.32], [5, y + 0.12], [2.5, y + 0.37], [0, y + 0.22]] })),
+				{ kind: "circle", color: "grain", at: [5.6, 2.7], r: 0.5 },
+				{ kind: "circle", color: "grain_light", at: [5.6, 2.7], r: 0.22 },
+			],
+		},
+	],
+	states: [{ name: "all", parts: [{ part: "grain" }] }],
+};
+
 const pistol = {
 	version: 1,
 	space: "3d",
 	name: "flintlock",
+	textures: [{ name: "grain", cell: [8, 6], maps: { color: { ref: "textures/grain.fart" } } }],
 	palette: [
 		{ name: "wood", rgb: [122, 82, 48, 255] },
 		{ name: "steel", rgb: [168, 176, 186, 255] },
@@ -104,7 +123,7 @@ const pistol = {
 		{
 			name: "stock", pivot: [0, 1.6, 0],
 			shapes: [
-				extrude("wood", stockProfile, "x", -1.0, 1.0),
+				{ ...extrude("wood", stockProfile, "x", -1.0, 1.0), texture: "grain", mapping: { scale: 1 } },
 				rod("brass", [0, 2.75, -12.5], [0, 2.75, 0.5], 0.35), // the ramrod, proud under the fore-end
 				ball("brass", [0, 9.9, 6.0], 1.15), // the butt cap
 			],
@@ -155,6 +174,8 @@ const write = (rel, doc) => {
 	fs.writeFileSync(path.join(OUT, rel), stringifyDoc(doc));
 	console.log("wrote", rel, r.warnings.length ? r.warnings : "");
 };
+fs.mkdirSync(path.join(OUT, "textures"), { recursive: true });
+write("textures/grain.fart", grain);
 write("flintlock.fart", pistol);
 const outline = { color: "ink", w: 0.25 };
 for (const view of ["left", "top", "front"]) {

@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "name": "patrol",
+  "nodes": [
+    {
+      "name": "station",
+      "ref": "../structures/station.fart",
+      "at": [
+        0,
+        0
+      ],
+      "clip": "spin",
+      "children": [
+        {
+          "name": "docked",
+          "ref": "../ships/fighter.fart",
+          "attach": {
+            "to": "dock_n",
+            "by": "nose"
+          },
+          "state": "idle",
+          "palette": "../palettes/alliance.fart"
+        }
+      ]
+    },
+    {
+      "name": "wing",
+      "at": [
+        -110,
+        70
+      ],
+      "rotate": 0.45,
+      "children": [
+        {
+          "name": "lead",
+          "ref": "../ships/fighter.fart",
+          "clip": "thrust",
+          "children": [
+            {
+              "name": "bolt",
+              "ref": "../projectiles/laser.fart",
+              "attach": {
+                "to": "gun_l",
+                "by": "tip"
+              }
+            }
+          ]
+        },
+        {
+          "name": "left",
+          "ref": "../ships/fighter.fart",
+          "at": [
+            -18,
+            14
+          ],
+          "clip": "bank_left",
+          "t": 0.1
+        },
+        {
+          "name": "right",
+          "ref": "../ships/fighter.fart",
+          "at": [
+            18,
+            14
+          ],
+          "clip": "bank_right",
+          "t": 0.1,
+          "mirror": true
+        }
+      ]
+    },
+    {
+      "name": "cruiser",
+      "ref": "../ships/cruiser.fart",
+      "at": [
+        130,
+        -30
+      ],
+      "rotate": -0.2,
+      "clip": "cruise",
+      "children": [
+        {
+          "name": "missile",
+          "ref": "../projectiles/missile.fart",
+          "attach": {
+            "to": "muzzle",
+            "by": "exhaust"
+          },
+          "clip": "burn"
+        }
+      ]
+    },
+    {
+      "name": "raider",
+      "ref": "../ships/fighter.fart",
+      "at": [
+        70,
+        90
+      ],
+      "rotate": 2.6,
+      "scale": 0.9,
+      "clip": "thrust",
+      "t": 0.2,
+      "palette": "../palettes/pirate.fart"
+    },
+    {
+      "name": "drones",
+      "at": [
+        30,
+        -40
+      ],
+      "children": [
+        {
+          "name": "a",
+          "ref": "../ships/drone.fart",
+          "clip": "grab",
+          "t": 0.3
+        },
+        {
+          "name": "b",
+          "ref": "../ships/drone.fart",
+          "at": [
+            14,
+            -8
+          ],
+          "state": "folded",
+          "scale": 0.8,
+          "mirror": true
+        }
+      ]
+    },
+    {
+      "name": "rocks",
+      "at": [
+        -60,
+        -120
+      ],
+      "children": [
+        {
+          "name": "big",
+          "ref": "../rocks/asteroid_big.fart",
+          "clip": "tumble"
+        },
+        {
+          "name": "small_a",
+          "ref": "../rocks/asteroid_small.fart",
+          "at": [
+            34,
+            10
+          ],
+          "clip": "tumble",
+          "t": 0.7,
+          "scale": 0.8
+        },
+        {
+          "name": "small_b",
+          "ref": "../rocks/asteroid_small.fart",
+          "at": [
+            -30,
+            22
+          ],
+          "clip": "tumble",
+          "t": 1.4,
+          "mirror": true
+        },
+        {
+          "name": "far",
+          "ref": "../rocks/asteroid_big.fart",
+          "at": [
+            70,
+            -30
+          ],
+          "scale": 0.5,
+          "rotate": 1.1
+        }
+      ]
+    },
+    {
+      "name": "crate",
+      "ref": "../pickups/crate.fart",
+      "at": [
+        40,
+        60
+      ],
+      "clip": "bob"
+    },
+    {
+      "name": "boom",
+      "ref": "../effects/explosion.fart",
+      "at": [
+        -160,
+        -10
+      ],
+      "clip": "boom",
+      "t": 0.1
+    }
+  ],
+  "meta": {
+    "note": "a patrol around the station: the space set placed as a scene"
+  }
+}
