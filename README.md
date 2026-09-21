@@ -38,6 +38,7 @@ conforms to it, and none extends it.
     examples/lantern a lantern built with core's box, extrude and lathe helpers, and its projections; a hammered texture on the dish
     examples/cabin   textures end to end: planks and cobbles as drawings, height maps under a palette, a textured hut and crate; camp.shart, a 3D scene
     examples/space/scenes/patrol.shart   the space set placed as a 2D scene
+    examples/models  models made in Uranus by hand: a dog, a flintlock with a pan flash
     skills/fastart   how an agent writes and loads .fart files (make skill installs it)
 
 ## The format
