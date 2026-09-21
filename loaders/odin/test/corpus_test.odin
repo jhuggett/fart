@@ -19,6 +19,7 @@ Case :: struct {
 	valid: bool,
 	code:  string,
 	space: string, // "3d" for the 1.3 3D cases
+	shart: bool, // a scene (.shart)
 }
 Manifest :: struct {
 	cases: []Case,
@@ -42,6 +43,13 @@ corpus :: proc(t: ^testing.T) {
 	for c in m.cases {
 		data, err := os.read_entire_file(fmt.tprintf("%s%s", EXAMPLES, c.file), context.temp_allocator)
 		if !testing.expectf(t, err == nil, "%s should be readable", c.file) do continue
+		if c.shart {
+			context.allocator = context.temp_allocator
+			_, sok := fart.load_scene(data)
+			if c.valid do testing.expectf(t, sok, "%s should load as a scene", c.file)
+			else if c.code == "json" || c.code == "version" do testing.expectf(t, !sok, "%s should be refused (%s)", c.file, c.code)
+			continue
+		}
 		if c.space == "3d" {
 			context.allocator = context.temp_allocator
 			_, ok3 := fart.load_bytes_3d(data)
@@ -326,4 +334,93 @@ collision_3d :: proc(t: ^testing.T) {
 		for p in c.points do if linalg.length(p - fart.V3{10.3, -10, -8}) < 1e-3 do hit2 = true
 		testing.expect(t, hit2, "closed, the flap's box is at rest")
 	}
+}
+
+// 1.5: textures resolve through the resolver; box-mapped and explicit uvs come out of flattening.
+@(test)
+textures_3d :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	data, err := os.read_entire_file(EXAMPLES + "valid/crate.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := fart.load_bytes_3d(data)
+	if !testing.expect(t, ok, "crate loads") do return
+	testing.expect_value(t, len(doc.textures), 1)
+	testing.expect_value(t, doc.textures[0].maps["height"].mode, "mask")
+	resolver :: proc(path: string, user: rawptr) -> ([]byte, bool) {
+		d, e := os.read_entire_file(fmt.tprintf("%svalid/%s", EXAMPLES, path), context.temp_allocator)
+		return d, e == nil
+	}
+	fart.resolve_textures_3d(&doc, resolver, nil)
+	planks, has := doc.texture_docs["planks"]
+	if !testing.expect(t, has, "the texture resolved") do return
+	testing.expect_value(t, len(planks), 3)
+	testing.expect_value(t, planks["glow"].state, "knots")
+	hm := planks["height"]
+	cm := planks["color"]
+	testing.expect(t, fart.color_of(&hm.doc, "board") == {230, 230, 230, 255}, "the height palette is laid over the drawing")
+	testing.expect(t, fart.color_of(&cm.doc, "board") == {150, 105, 60, 255}, "the colour map keeps the drawing's own")
+	ms := make([dynamic]fart.Tri_Mesh, context.temp_allocator)
+	fart.flatten_part(&doc, &doc.parts[0], &ms)
+	testing.expect_value(t, ms[0].texture, "planks")
+	testing.expect_value(t, len(ms[0].uvs), len(ms[0].positions))
+	// the front face (z = -8) reads (x, y)
+	for p, i in ms[0].positions do if p.z == -8 {
+		testing.expect(t, ms[0].uvs[i] == fart.V2{p.x, p.y}, "box mapping on the front face")
+		break
+	}
+	testing.expect_value(t, ms[1].texture, "")
+	testing.expect_value(t, len(ms[1].uvs), 0)
+	// the lid's explicit uvs: every corner reads one of the four the file gives
+	lid_ok := len(ms[2].uvs) == len(ms[2].positions)
+	for uv in ms[2].uvs do if !(uv == fart.V2{0, 0} || uv == fart.V2{8, 0} || uv == fart.V2{8, 8} || uv == fart.V2{0, 8}) do lid_ok = false
+	testing.expect(t, lid_ok, "the lid's explicit uvs")
+}
+
+// A scene flattens: instances placed through their parents and attaches, palettes laid over.
+@(test)
+scenes :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	resolver :: proc(path: string, user: rawptr) -> ([]byte, bool) {
+		d, e := os.read_entire_file(fmt.tprintf("%svalid/%s", EXAMPLES, path), context.temp_allocator)
+		return d, e == nil
+	}
+	data, err := os.read_entire_file(EXAMPLES + "valid/camp.shart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	camp, ok := fart.load_scene(data)
+	if !testing.expect(t, ok, "camp loads") do return
+	testing.expect_value(t, camp.space, "3d")
+	testing.expect(t, abs(camp.nodes[1].rotate3.y - 1.2) < 1e-6, "a 3D turn reads from the raw tree")
+	cache: fart.Scene_Cache
+	placed := make([dynamic]fart.Placed)
+	fart.flatten_scene(&camp, resolver, nil, &cache, &placed)
+	testing.expect_value(t, len(placed), 8)
+	testing.expect_value(t, placed[1].path, "hut/crate")
+	testing.expect(t, abs(placed[1].xf3[0, 3] + 4) < 1e-4 && abs(placed[1].xf3[1, 3] + 8) < 1e-4, "the crate rides the hut")
+	testing.expect_value(t, placed[7].path, "annex/crate")
+	testing.expect(t, abs(placed[7].xf3[0, 3] - 60) < 1e-4, "the nested yard's crate lands at 40 + 20")
+	// the arm hangs from the lamp's pan
+	hut := &placed[0]
+	pan := fart.xf3_apply(fart.world_xf_3d(hut.doc3, hut.poses3[:], "lamp"), {4, -5.4, 4})
+	arm := fart.xf3_apply(placed[2].xf3, {0, 0, 0})
+	testing.expect(t, linalg.length(arm - pan) < 1e-3, "attached at the socket")
+	testing.expect(t, len(placed[3].poses3) == 3, "the guard shows its clip's frame")
+	// 2D: the fleet, its palette laid over
+	fdata, ferr := os.read_entire_file(EXAMPLES + "valid/fleet.shart", context.temp_allocator)
+	if !testing.expect(t, ferr == nil) do return
+	fleet, fok := fart.load_scene(fdata)
+	if !testing.expect(t, fok, "fleet loads") do return
+	placed2 := make([dynamic]fart.Placed)
+	fart.flatten_scene(&fleet, resolver, nil, &cache, &placed2)
+	testing.expect_value(t, len(placed2), 5)
+	testing.expect_value(t, placed2[2].path, "wing/r")
+	testing.expect(t, fart.xf_flipped(placed2[2].xf), "mirrored")
+	// the scene's palette.fart lays over: its first token joins the instance's
+	pdata, perr := os.read_entire_file(EXAMPLES + "valid/palette.fart", context.temp_allocator)
+	if !testing.expect(t, perr == nil) do return
+	pal, pok := fart.load_bytes(pdata)
+	if !testing.expect(t, pok && len(pal.palette) > 0) do return
+	want := pal.palette[0].name
+	has := false
+	for tk in placed2[0].tokens do if tk.name == want do has = true
+	testing.expect(t, has, "the scene's palette lays over the instance's tokens")
 }

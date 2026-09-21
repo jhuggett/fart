@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "palette": [
+    {
+      "name": "c",
+      "rgb": [
+        1,
+        1,
+        1,
+        255
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "a",
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "c",
+          "texture": "nope",
+          "at": [
+            0,
+            0
+          ],
+          "r": 1
+        }
+      ]
+    }
+  ]
+}

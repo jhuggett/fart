@@ -30,6 +30,28 @@ Shape3 :: struct {
 	rotate: V3, // 1.4, box: a pose's turn about at
 	part:   string, // 1.4, collision: the part it rides ("" = document space, at rest)
 	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
+	texture: string, // 1.5: a texture of the document, tiled over the shape; "" for none
+	mapping: Mapping3, // 1.5
+}
+
+// 1.5: a 3D shape's mapping: world units per pattern unit (0 = 1), or explicit pattern coordinates per face corner.
+Mapping3 :: struct {
+	scale: f32,
+	uvs:   [dynamic][dynamic]V2,
+}
+
+// 1.5: one map of a texture: a drawing (a 2D .fart, by relative path), tiled.
+Texture_Map :: struct {
+	ref:     string,
+	palette: string, // a palette file laid over the drawing's tokens; "" for none
+	state:   string, // which of the drawing's states; "" for its first
+	mode:    string, // "paint" (default) | "mask"
+}
+
+Texture :: struct {
+	name: string,
+	cell: V2, // the tile, from [0, 0] in the maps' document space
+	maps: map[string]Texture_Map, // "color" is what a reader paints; the rest are the engine's
 }
 
 Anchor3 :: struct {
@@ -103,7 +125,17 @@ Doc3 :: struct {
 	clips:        [dynamic]Clip3,
 	constraints:  [dynamic]Constraint3,
 	collision:    [dynamic]Shape3,
+	textures:     [dynamic]Texture, // 1.5
 	resolved:     [dynamic]Tok `json:"-"`,
+	// 1.5: filled by resolve_textures_3d; the maps' drawings, by texture name then map name
+	texture_docs: map[string]map[string]Map_Doc `json:"-"`,
+}
+
+// 1.5: a map's drawing, read and ready to draw: the 2D document, the pose to draw, its tokens resolved (the map's palette laid over).
+Map_Doc :: struct {
+	tmap:  Texture_Map,
+	doc:   Doc,
+	state: string, // the state to draw, or "" for every part
 }
 
 // Does the document say space: "3d"? (Cheap: the raw tree, no unmarshal.)
@@ -162,6 +194,46 @@ load_bytes_3d :: proc(data: []byte) -> (doc: Doc3, ok: bool) {
 		doc.constraints[i].has_pole = "pole" in c
 	}
 	return doc, true
+}
+
+// Read every texture's maps through the resolver (paths as written, relative
+// to this document): the drawing, its own palette refs (relative to the
+// drawing), then the map's palette laid over as a swap. A ref that fails is
+// left out; the game draws the token flat.
+resolve_textures_3d :: proc(doc: ^Doc3, resolver: Resolver, user: rawptr) {
+	for &t in doc.textures {
+		by_map := make(map[string]Map_Doc)
+		for name, m in t.maps {
+			data, ok := resolver(m.ref, user)
+			if !ok do continue
+			d, dok := load_bytes(data)
+			if !dok do continue
+			resolve_palettes(&d, resolver, user)
+			if m.palette != "" {
+				if pdata, pok := resolver(m.palette, user); pok {
+					if pal, ppok := load_bytes(pdata); ppok do apply_palette(&d, pal.palette[:])
+				}
+			}
+			st := m.state
+			if st == "" && len(d.states) > 0 do st = d.states[0].name
+			by_map[name] = Map_Doc{tmap = m, doc = d, state = st}
+		}
+		doc.texture_docs[t.name] = by_map
+	}
+}
+
+texture_of_3d :: proc(doc: ^Doc3, name: string) -> ^Texture {
+	for &t in doc.textures do if t.name == name do return &t
+	return nil
+}
+
+// 1.5: box mapping: a face's pattern coordinates from the two axes across its dominant normal, world units over scale.
+box_uv :: proc(p: V3, n: V3, scale: f32) -> V2 {
+	s := scale == 0 ? f32(1) : scale
+	ax, ay, az := abs(n.x), abs(n.y), abs(n.z)
+	if ax >= ay && ax >= az do return {p.z / s, p.y / s}
+	if ay >= az do return {p.x / s, p.z / s}
+	return {p.x / s, p.y / s}
 }
 
 destroy_3d :: proc(doc: ^Doc3) {
@@ -546,6 +618,8 @@ Tri_Mesh :: struct {
 	shade:     f32, // 0 = 1
 	positions: [dynamic]V3, // three per triangle
 	normals:   [dynamic]V3, // the face's, per vertex
+	texture:   string, // 1.5: "" for none
+	uvs:       [dynamic]V2, // 1.5: pattern coordinates per vertex, in the map drawings' units (divide by the cell for 0..1)
 }
 
 // One face's triangles by ear clipping in the face's own plane, as index triples.
@@ -587,7 +661,7 @@ bake_tris_3d :: proc(doc: ^Doc3) {
 }
 
 @(private)
-push_tri :: proc(out: ^Tri_Mesh, a, b, c: V3, outward: V3, oriented: bool) {
+push_tri :: proc(out: ^Tri_Mesh, a, b, c: V3, outward: V3, oriented: bool, scale: f32 = 1) {
 	n := linalg.cross(b - a, c - a)
 	if oriented {
 		mid := (a + b + c) / 3
@@ -596,6 +670,7 @@ push_tri :: proc(out: ^Tri_Mesh, a, b, c: V3, outward: V3, oriented: bool) {
 	nn := linalg.normalize0(n)
 	append(&out.positions, a, b, c)
 	append(&out.normals, nn, nn, nn)
+	if out.texture != "" do append(&out.uvs, box_uv(a, nn, scale), box_uv(b, nn, scale), box_uv(c, nn, scale))
 }
 
 // One shape, flattened: a mesh through its tris (baked or fanned), a
@@ -603,8 +678,29 @@ push_tri :: proc(out: ^Tri_Mesh, a, b, c: V3, outward: V3, oriented: bool) {
 flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, sides := 10) {
 	out.color = sh.color
 	out.shade = sh.shade
+	out.texture = sh.texture
+	scale := sh.mapping.scale
 	switch sh.kind {
 	case "mesh":
+		// explicit uvs (1.5) need the face each triangle came from: triangulate per face here
+		if sh.texture != "" && len(sh.mapping.uvs) == len(sh.faces) {
+			for f, fi in sh.faces {
+				tris := make([dynamic]u16, context.temp_allocator)
+				triangulate_face(sh.points[:], f[:], &tris)
+				uv_of :: proc(f: [dynamic]u16, uvs: [dynamic]V2, idx: u16) -> V2 {
+					for k, ci in f do if k == idx && ci < len(uvs) do return uvs[ci]
+					return {}
+				}
+				for i := 0; i + 2 < len(tris); i += 3 {
+					a, b, c := sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]]
+					nn := linalg.normalize0(linalg.cross(b - a, c - a))
+					append(&out.positions, a, b, c)
+					append(&out.normals, nn, nn, nn)
+					append(&out.uvs, uv_of(f, sh.mapping.uvs[fi], tris[i]), uv_of(f, sh.mapping.uvs[fi], tris[i + 1]), uv_of(f, sh.mapping.uvs[fi], tris[i + 2]))
+				}
+			}
+			return
+		}
 		tris := sh.tris[:]
 		ok := len(tris) % 3 == 0 && len(tris) > 0
 		for i in tris do if int(i) >= len(sh.points) do ok = false
@@ -615,7 +711,7 @@ flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, s
 			tris = fresh[:]
 		}
 		for i := 0; i + 2 < len(tris); i += 3 {
-			push_tri(out, sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]], {}, false)
+			push_tri(out, sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]], {}, false, scale)
 		}
 	case "ball":
 		pt :: proc(c: V3, r: f32, ph, th: f32) -> V3 {
@@ -629,8 +725,8 @@ flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, s
 				th1 := f32(j + 1) / f32(segments) * math.TAU
 				a, b := pt(sh.at, sh.r, ph0, th0), pt(sh.at, sh.r, ph0, th1)
 				c, d := pt(sh.at, sh.r, ph1, th0), pt(sh.at, sh.r, ph1, th1)
-				if i > 0 do push_tri(out, a, c, b, sh.at, true)
-				if i < rings - 1 do push_tri(out, b, c, d, sh.at, true)
+				if i > 0 do push_tri(out, a, c, b, sh.at, true, scale)
+				if i < rings - 1 do push_tri(out, b, c, d, sh.at, true, scale)
 			}
 		}
 	case "rod":
@@ -653,10 +749,10 @@ flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, s
 			q1 := p1 + d
 			mid := (p0 + p1 + q0 + q1) / 4
 			on := sh.a + w * linalg.dot(mid - sh.a, w)
-			push_tri(out, p0, p1, q0, on, true)
-			push_tri(out, p1, q1, q0, on, true)
-			push_tri(out, sh.a, p1, p0, sh.a + w * -1, true) // the near cap faces back along the axis
-			push_tri(out, sh.b, q0, q1, sh.b + w, true) // the far cap faces on
+			push_tri(out, p0, p1, q0, on, true, scale)
+			push_tri(out, p1, q1, q0, on, true, scale)
+			push_tri(out, sh.a, p1, p0, sh.a + w * -1, true, scale) // the near cap faces back along the axis
+			push_tri(out, sh.b, q0, q1, sh.b + w, true, scale) // the far cap faces on
 		}
 	}
 }
@@ -674,6 +770,7 @@ destroy_tri_meshes :: proc(ms: ^[dynamic]Tri_Mesh) {
 	for &m in ms {
 		delete(m.positions)
 		delete(m.normals)
+		delete(m.uvs)
 	}
 	delete(ms^)
 }

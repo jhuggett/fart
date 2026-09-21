@@ -36,4 +36,7 @@ coordinate; `projectDoc(doc3, { view, light, ambient, fps, outline })` is
 shape's `shade` on a resolved colour. Collision (1.4): `collisionWorld`
 / `collisionWorld3` give every solid in document space under a pose,
 boxes expanded, layers set; `hullPart` / `setHull` / `convexHull` derive
-hulls (`fart hull`).
+hulls (`fart hull`). Textures (1.5): `resolveTextures`, `rasterizeMap`,
+`rasterValues`, `textureColor`, `mappingXf`, `boxUV`, `meshUVs`,
+`affineFrom`, `toPng` (`fart bake --textures`); flattened triangles
+carry `uvs` and a `texture` name.

@@ -59,6 +59,13 @@ kept for ordering. Coordinates are rounded to three decimals.
   This is the painter's algorithm; parts that pass through each other
   in depth cannot be drawn right by a 2D reader, so split such parts in
   the source.
+- A textured face (1.5) yields a poly with the same `texture` and a
+  2D `mapping.xf`: the affine map from pattern coordinates to the 2D
+  document, solved from three corners of the face whose pattern
+  coordinates its 3D mapping gives (box mapping or `uvs`). A
+  projection writes the `textures` list through with its refs made
+  relative to the output. A ball or a rod keeps no texture in 2D (its
+  circle or line paints the token).
 - Pivots project; anchors project; an anchor's `dir` becomes an `angle`
   (`atan2` of its projected direction) where the projection is not
   degenerate, and is dropped otherwise.

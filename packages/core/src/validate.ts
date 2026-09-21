@@ -31,7 +31,9 @@ export type ErrorCode =
 	| "ref.chain"
 	| "space"
 	| "face"
-	| "convex";
+	| "convex"
+	| "ref.texture"
+	| "dup.texture";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -55,6 +57,8 @@ export interface ValidateOptions {
 	 * checked against the local palette, with a warning.
 	 */
 	refTokens?: Iterable<string> | null;
+	/** Texture map refs the caller tried to read and could not: each is an `unresolved` warning. */
+	unresolvedRefs?: Iterable<string>;
 }
 
 const KINDS = ["circle", "line", "poly"];
@@ -62,7 +66,12 @@ const KINDS3 = ["mesh", "ball", "rod"];
 const RESERVED_KINDS = ["ring", "path"];
 const SPACES = ["2d", "3d"];
 // "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
-const KNOWN_TOP = ["version", "space", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "meta", "resolved"];
+const KNOWN_TOP = ["version", "space", "name", "palette_refs", "palette", "parts", "states", "clips", "constraints", "collision", "textures", "meta", "resolved"];
+const TEXTURE_FIELDS = ["texture", "mapping"];
+const KNOWN_TEXTURE = ["name", "cell", "maps"];
+const KNOWN_MAP = ["ref", "palette", "state", "mode"];
+const KNOWN_MAPPING2 = ["at", "angle", "scale", "xf"];
+const KNOWN_MAPPING3 = ["scale", "uvs"];
 const RESERVED_TOP: string[] = [];
 const KNOWN_PART = ["name", "parent", "pivot", "shapes", "anchors", "meta", "like"];
 const KNOWN_CLIP = ["name", "loop", "keys"];
@@ -208,8 +217,63 @@ function checkShape(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
-	ctx.unknown(sh, drawn ? KNOWN_SHAPE[kind] : [...KNOWN_SHAPE[kind], ...COLLISION_FIELDS], [], path);
+	if (drawn) checkTextureFields(ctx, sh, path, 2, 0);
+	ctx.unknown(sh, drawn ? [...KNOWN_SHAPE[kind], ...TEXTURE_FIELDS] : [...KNOWN_SHAPE[kind], ...COLLISION_FIELDS], [], path);
 	return kind;
+}
+
+/** 1.5: a shape's texture name (checked against the textures later) and its mapping. */
+function checkTextureFields(ctx: Ctx, sh: Obj, path: string, dim: 2 | 3, faces: number) {
+	if ("texture" in sh) ctx.name(sh.texture, `${path}/texture`);
+	if (!("mapping" in sh)) return;
+	const mp = `${path}/mapping`;
+	if (!ctx.object(sh.mapping, mp)) return;
+	const m = sh.mapping;
+	if ("scale" in m) ctx.number(m.scale, `${mp}/scale`);
+	if (dim === 2) {
+		if ("at" in m) ctx.vec2(m.at, `${mp}/at`);
+		if ("angle" in m) ctx.number(m.angle, `${mp}/angle`);
+		if ("xf" in m && !(Array.isArray(m.xf) && m.xf.length === 6 && m.xf.every(isNum))) ctx.err("schema", `${mp}/xf`, "an xf is six numbers [a, b, c, d, e, f]");
+		ctx.unknown(m, KNOWN_MAPPING2, [], mp);
+	} else {
+		if ("uvs" in m && ctx.array(m.uvs, `${mp}/uvs`)) {
+			if (m.uvs.length !== faces) ctx.err("schema", `${mp}/uvs`, `uvs has one list per face; got ${m.uvs.length} for ${faces} faces`);
+			m.uvs.forEach((f, i) => {
+				if (ctx.array(f, `${mp}/uvs/${i}`)) f.forEach((uv, j) => ctx.vec2(uv, `${mp}/uvs/${i}/${j}`));
+			});
+		}
+		ctx.unknown(m, KNOWN_MAPPING3, [], mp);
+	}
+}
+
+/** 1.5: a texture: a name, a cell, at least one map with a relative ref. */
+function checkTexture(ctx: Ctx, t: unknown, path: string): { name: string | null; refs: string[] } {
+	const refs: string[] = [];
+	if (!ctx.object(t, path)) return { name: null, refs };
+	const named = ctx.name(t.name, `${path}/name`);
+	ctx.vec2(t.cell, `${path}/cell`);
+	if (!("maps" in t)) ctx.err("schema", `${path}/maps`, "a texture has maps");
+	else if (ctx.object(t.maps, `${path}/maps`)) {
+		const keys = Object.keys(t.maps);
+		if (!keys.length) ctx.err("schema", `${path}/maps`, "a texture has at least one map");
+		for (const k of keys) {
+			const mp = `${path}/maps/${k}`;
+			if (!k) ctx.err("schema", mp, "a map's name is not empty");
+			const m = t.maps[k];
+			if (!ctx.object(m, mp)) continue;
+			if (!("ref" in m)) ctx.err("schema", `${mp}/ref`, "a map names a drawing: a relative path");
+			else if (ctx.name(m.ref, `${mp}/ref`)) {
+				if (isAbsolutePath(m.ref)) ctx.err("path", `${mp}/ref`, "a map's ref is relative to this file, never absolute");
+				else refs.push(m.ref);
+			}
+			if ("palette" in m && ctx.name(m.palette, `${mp}/palette`) && isAbsolutePath(m.palette)) ctx.err("path", `${mp}/palette`, "a map's palette is relative to this file, never absolute");
+			if ("state" in m) ctx.name(m.state, `${mp}/state`);
+			if ("mode" in m && m.mode !== "paint" && m.mode !== "mask") ctx.err("schema", `${mp}/mode`, "mode is paint or mask");
+			ctx.unknown(m, KNOWN_MAP, [], mp);
+		}
+	}
+	ctx.unknown(t, KNOWN_TEXTURE, [], path);
+	return { name: named ? (t.name as string) : null, refs };
 }
 
 /** 1.4: a collision shape's part (checked against the parts later) and layer. */
@@ -334,7 +398,8 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
-	ctx.unknown(sh, drawn ? SHAPE3_FIELDS : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
+	if (drawn) checkTextureFields(ctx, sh, path, 3, kind === "mesh" && Array.isArray(sh.faces) ? sh.faces.length : -1);
+	ctx.unknown(sh, drawn ? [...SHAPE3_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
 	return kind;
 }
 
@@ -644,6 +709,23 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 			if (isObj(sh) && isName(sh.part) && !partSet.has(sh.part)) ctx.err("ref.part", `/collision/${i}/part`, `no part named "${sh.part}"`);
 		});
 	}
+
+	// textures (1.5): names unique, refs relative; shapes name ones the document has
+	const textureNames: (string | null)[] = [];
+	if ("textures" in doc && ctx.array(doc.textures, "/textures")) {
+		doc.textures.forEach((t, i) => textureNames.push(checkTexture(ctx, t, `/textures/${i}`).name));
+		checkDuplicates(ctx, textureNames, "dup.texture", "/textures", "textures");
+	}
+	const textureSet = new Set(textureNames.filter((n): n is string => n !== null));
+	if (Array.isArray(doc.parts)) {
+		doc.parts.forEach((p, i) => {
+			if (!isObj(p) || !Array.isArray(p.shapes)) return;
+			p.shapes.forEach((sh, j) => {
+				if (isObj(sh) && isName(sh.texture) && !textureSet.has(sh.texture)) ctx.err("ref.texture", `/parts/${i}/shapes/${j}/texture`, `no texture named "${sh.texture}"`);
+			});
+		});
+	}
+	for (const ref of opts.unresolvedRefs ?? []) ctx.warn("unresolved", "/textures", `${ref} could not be read, so that map was not checked`);
 
 	if ("meta" in doc) ctx.object(doc.meta, "/meta");
 	ctx.unknown(doc, KNOWN_TOP, RESERVED_TOP, "");

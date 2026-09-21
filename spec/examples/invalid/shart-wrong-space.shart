@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "space": "3d",
+  "nodes": [
+    {
+      "name": "a",
+      "ref": "../valid/chest.fart"
+    }
+  ]
+}

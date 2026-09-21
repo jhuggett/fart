@@ -7,6 +7,7 @@
 
 import type { Anchor, Anchor3, Clip, Clip3, ClipKey, ClipKey3, Doc, Doc3, Part, Part3, Shape, Shape3, State, StatePart, StatePart3, Vec2, Vec3 } from "./types.ts";
 import { triangulate, xfApply, xfFlipped, xfInvert, xfMul, type Xf } from "./geometry.ts";
+import { affineFrom, meshUVs } from "./textures.ts";
 import { solveTargets3 } from "./ik3.ts";
 import {
 	anchorsOf3,
@@ -52,6 +53,8 @@ export interface ProjectOptions {
 	outline?: { color: string; w: number };
 	/** Recorded in meta.projected.from: where the source is, relative to the output. */
 	from?: string;
+	/** projectFrame only: a map laid in front of every part's world map (a scene placing this document) */
+	instance?: Xf3;
 }
 
 export const DEFAULT_LIGHT: Vec3 = [-1, -2, -3];
@@ -96,6 +99,8 @@ interface RestPart {
 	part: Part3;
 	/** geometry in view space (the view turn applied), through `like` */
 	shapes: Shape3[];
+	/** the same shapes as authored, for pattern coordinates */
+	raw: Shape3[];
 	anchors: Anchor3[];
 	pivot: Vec3;
 }
@@ -143,7 +148,7 @@ export function projectFrame(src: Doc3, poses: readonly StatePart3[] | undefined
 		const rp = rest.get(sp.part);
 		const index = parts.findIndex((p) => p.name === sp.part);
 		if (!rp || index < 0) continue;
-		const w = W.get(sp.part) ?? IDENT3;
+		const w = opts.instance ? xf3Mul(opts.instance, W.get(sp.part) ?? IDENT3) : (W.get(sp.part) ?? IDENT3);
 		const M = xf3Mul(V, xf3Mul(w, Vinv));
 		const F = xf3Mul(V, w);
 		const { shapes, depth } = projectShapes(rp, M, light, ambient, opts.outline);
@@ -170,7 +175,7 @@ function restParts(src: Doc3, V: Xf3): Map<string, RestPart> {
 			return { ...sh, a: move(sh.a), b: move(sh.b) };
 		});
 		const anchors: Anchor3[] = anchorsOf3(src, part).map((a) => ({ ...a, at: move(a.at), ...(a.dir ? { dir: xf3ApplyDir(V, a.dir) } : {}) }));
-		rest.set(part.name, { part, shapes, anchors, pivot: move(pivotOf3(part)) });
+		rest.set(part.name, { part, shapes, raw: shapesOf3(src, part), anchors, pivot: move(pivotOf3(part)) });
 	}
 	return rest;
 }
@@ -191,6 +196,7 @@ function projectShapes(rest: RestPart, M: Xf3, light: Vec3, ambient: number, out
 	rest.shapes.forEach((sh, si) => {
 		if (sh.kind === "mesh") {
 			const pts = sh.points.map((p) => xf3Apply(M, p));
+			const uvs = sh.texture ? meshUVs(rest.raw[si]) : undefined;
 			const visible: boolean[] = [];
 			sh.faces.forEach((face, fi) => {
 				if (face.length < 3 || face.some((i) => i >= pts.length)) {
@@ -211,6 +217,12 @@ function projectShapes(rest: RestPart, M: Xf3, light: Vec3, ambient: number, out
 				const points = face.map((i) => flat(pts[i]));
 				const depth = face.reduce((acc, i) => acc + pts[i][2], 0) / face.length;
 				const poly: Shape = { kind: "poly", color: sh.color, shade: shadeOf(n, sh.shade), points, tris: triangulate(points) };
+				if (sh.texture && uvs) {
+					// the pattern's affine onto the projected face, from three corners that are not collinear
+					const xf = affineFrom(uvs[fi].slice(0, 3), points.slice(0, 3)) ?? affineFrom([uvs[fi][0], uvs[fi][1], uvs[fi][uvs[fi].length - 1]], [points[0], points[1], points[points.length - 1]]);
+					poly.texture = sh.texture;
+					if (xf) poly.mapping = { xf };
+				}
 				items.push({ depth, shape: poly, src: si, face: fi });
 			});
 			if (outline) {
@@ -450,6 +462,7 @@ export function projectDoc(src: Doc3, opts: ProjectOptions = {}): Doc {
 	if (src.name !== undefined) doc.name = src.name;
 	if (src.palette_refs) doc.palette_refs = [...src.palette_refs];
 	if (src.palette) doc.palette = src.palette.map((t) => ({ ...t }));
+	if (src.textures) doc.textures = JSON.parse(JSON.stringify(src.textures));
 	doc.parts = [...out2d, ...variantParts];
 	if (src.states) doc.states = states;
 	if (src.clips) doc.clips = clips;

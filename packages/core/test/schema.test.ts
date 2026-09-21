@@ -9,17 +9,19 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import AjvModule from "ajv/dist/2020.js";
-import { validate } from "../src/index.ts";
+import { validate, validateScene } from "../src/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const spec = resolve(here, "../../../spec");
 const schema = JSON.parse(await readFile(join(spec, "fart.schema.json"), "utf8"));
-const manifest = JSON.parse(await readFile(join(spec, "examples/manifest.json"), "utf8")) as { cases: { file: string }[] };
+const manifest = JSON.parse(await readFile(join(spec, "examples/manifest.json"), "utf8")) as { cases: { file: string; shart?: boolean }[] };
+const shartSchema = JSON.parse(await readFile(join(spec, "shart.schema.json"), "utf8"));
 
 // Node hands ESM the CommonJS module object; the class is its default
 const Ajv2020 = (AjvModule as unknown as { default: typeof AjvModule.default }).default ?? AjvModule;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const bySchema = ajv.compile(schema);
+const byShartSchema = ajv.compile(shartSchema);
 const STRUCTURAL = new Set(["version", "schema", "path", "space"]);
 
 test("the schema compiles in strict mode", () => {
@@ -34,9 +36,9 @@ for (const c of manifest.cases) {
 		} catch {
 			return; // not JSON: nothing for a schema to say
 		}
-		const schemaOk = bySchema(raw);
-		const report = validate(raw, { refTokens: [] });
+		const schemaOk = c.shart ? byShartSchema(raw) : bySchema(raw);
+		const report = c.shart ? validateScene(raw, { refs: new Map() }) : validate(raw, { refTokens: [] });
 		const structuralOk = !report.errors.some((e) => STRUCTURAL.has(e.code));
-		assert.equal(schemaOk, structuralOk, JSON.stringify({ ajv: bySchema.errors, ours: report.errors }, null, 1));
+		assert.equal(schemaOk, structuralOk, JSON.stringify({ ajv: c.shart ? byShartSchema.errors : bySchema.errors, ours: report.errors }, null, 1));
 	});
 }

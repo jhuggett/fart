@@ -2,8 +2,13 @@ package raylib_spin
 
 // The fifty lines for 3D: load a 3D .fart, flatten each part into a
 // raylib mesh with the light baked into its vertex colours, and draw the
-// parts through their world maps every frame while a clip plays. Run
-// from the repo root: odin run loaders/odin/examples/raylib_spin
+// parts through their world maps every frame while a clip plays. A
+// textured shape (1.5) gets its texture's colour map rasterised into a
+// render texture by drawing the map's 2D .fart with raylib, then
+// sampled with the flattened uvs. Run from the repo root:
+//
+//     odin run loaders/odin/examples/raylib_spin            # the flintlock
+//     odin run loaders/odin/examples/raylib_spin -- spec/examples/valid/crate.fart
 //
 // Space plays the next clip; drag turns the camera.
 
@@ -11,21 +16,95 @@ import "core:fmt"
 import "core:math/linalg"
 import "core:os"
 import rl "vendor:raylib"
+import rlgl "vendor:raylib/rlgl"
 import fart "../.."
 
-FILE :: #directory + "/../../../../examples/pistol/flintlock.fart"
+DEFAULT_FILE :: #directory + "/../../../../examples/pistol/flintlock.fart"
+TEX_PX :: 64 // pixels per cell unit when a map is rasterised
 LIGHT :: fart.V3{-1, -2, -3} // toward the light, rest space of the whole model
 AMBIENT :: f32(0.4)
 
 Part_Draw :: struct {
-	part:   ^fart.Part3,
-	meshes: [dynamic]rl.Mesh,
+	part:      ^fart.Part3,
+	meshes:    [dynamic]rl.Mesh,
+	materials: [dynamic]rl.Material, // one per mesh: flat, or the texture's
+}
+
+// The fifty lines for 2D, in raylib: draw a 2D .fart's state into the
+// current render target, `k` pixels per unit, offset so the cell's
+// [0, 0] lands at the top-left.
+draw_2d :: proc(doc: ^fart.Doc, state: string, k: f32) {
+	st := fart.state_of(doc, state)
+	poses: []fart.State_Part = st != nil ? st.parts[:] : nil
+	draw_shapes :: proc(doc: ^fart.Doc, part: ^fart.Part, W: fart.Xf, k: f32) {
+		for &sh in fart.shapes_of(doc, part) {
+			c := fart.color_of(doc, sh.color)
+			c = fart.shade_color(c, sh.shade)
+			col := rl.Color{c[0], c[1], c[2], c[3]}
+			s := fart.xf_scale(W)
+			to :: proc(W: fart.Xf, p: fart.V2, k: f32) -> rl.Vector2 {
+				q := fart.xf_apply(W, p)
+				return {q.x * k, q.y * k}
+			}
+			switch sh.kind {
+			case "circle":
+				rl.DrawCircleV(to(W, sh.at, k), sh.r * s * k, col)
+			case "line":
+				rl.DrawLineEx(to(W, sh.a, k), to(W, sh.b, k), sh.w * s * k, col)
+				rl.DrawCircleV(to(W, sh.a, k), sh.w * s * k / 2, col)
+				rl.DrawCircleV(to(W, sh.b, k), sh.w * s * k / 2, col)
+			case "poly":
+				tris := sh.tris
+				if len(tris) < 3 {
+					fart.triangulate(sh.points[:], &tris)
+				}
+				for i := 0; i + 2 < len(tris); i += 3 {
+					a, b, cc := to(W, sh.points[tris[i]], k), to(W, sh.points[tris[i + 1]], k), to(W, sh.points[tris[i + 2]], k)
+					rl.DrawTriangle(a, b, cc, col)
+					rl.DrawTriangle(a, cc, b, col) // either winding
+				}
+			}
+		}
+	}
+	if poses == nil {
+		for &p in doc.parts do draw_shapes(doc, &p, fart.XF_ID, k)
+		return
+	}
+	for sp in poses {
+		part := fart.part_of(doc, sp.part)
+		if part == nil do continue
+		draw_shapes(doc, part, fart.world_xf(doc, poses, part.name), k)
+	}
+}
+
+// A texture's colour map as a GPU texture: one cell, drawn three times
+// across so shapes that cross the cell's edge wrap, then cropped.
+rasterize_color_map :: proc(doc: ^fart.Doc3, name: string) -> (rl.Texture2D, bool) {
+	tex := fart.texture_of_3d(doc, name)
+	maps, has := doc.texture_docs[name]
+	if tex == nil || !has do return {}, false
+	color, hc := maps["color"]
+	if !hc do return {}, false
+	w, h := i32(tex.cell.x * TEX_PX), i32(tex.cell.y * TEX_PX)
+	rt := rl.LoadRenderTexture(w, h)
+	rl.BeginTextureMode(rt)
+	rl.ClearBackground(rl.BLANK)
+	for oy in -1 ..= 1 do for ox in -1 ..= 1 {
+		rlgl.PushMatrix()
+		rlgl.Translatef(f32(ox) * tex.cell.x * TEX_PX, f32(oy) * tex.cell.y * TEX_PX, 0)
+		draw_2d(&color.doc, color.state, TEX_PX)
+		rlgl.PopMatrix()
+	}
+	rl.EndTextureMode()
+	rl.SetTextureWrap(rt.texture, .REPEAT)
+	return rt.texture, true
 }
 
 main :: proc() {
-	data, err := os.read_entire_file(FILE, context.allocator)
+	file := len(os.args) > 1 ? os.args[1] : DEFAULT_FILE
+	data, err := os.read_entire_file(file, context.allocator)
 	if err != nil {
-		fmt.eprintln("cannot read", FILE, err)
+		fmt.eprintln("cannot read", file, err)
 		return
 	}
 	doc, dok := fart.load_bytes_3d(data)
@@ -33,9 +112,28 @@ main :: proc() {
 		fmt.eprintln("not a 3D .fart")
 		return
 	}
-	rl.InitWindow(900, 600, "fastart: flintlock.fart")
+	// palette refs and texture maps are relative to the file
+	dir := file
+	for i := len(file) - 1; i >= 0; i -= 1 do if file[i] == '/' {
+		dir = file[:i + 1]
+		break
+	}
+	resolver :: proc(path: string, user: rawptr) -> ([]byte, bool) {
+		dir := (cast(^string)user)^
+		d, e := os.read_entire_file(fmt.tprintf("%s%s", dir, path), context.allocator)
+		return d, e == nil
+	}
+	fart.resolve_palettes_3d(&doc, resolver, &dir)
+	fart.resolve_textures_3d(&doc, resolver, &dir)
+	rl.InitWindow(900, 600, "fastart")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
+	// the textures' colour maps, rasterised once
+	textures := make(map[string]rl.Texture2D)
+	for &t in doc.textures {
+		if tx, ok := rasterize_color_map(&doc, t.name); ok do textures[t.name] = tx
+	}
+	flat := rl.LoadMaterialDefault()
 
 	// every part's shapes as raylib meshes, once; the light is baked into
 	// the colours (a real game lights in a shader and keeps the normals)
@@ -53,6 +151,9 @@ main :: proc() {
 			verts := make([]f32, n * 3)
 			norms := make([]f32, n * 3)
 			cols := make([]u8, n * 4)
+			tex, textured := textures[tm.texture]
+			cell := textured ? fart.texture_of_3d(&doc, tm.texture).cell : fart.V2{1, 1}
+			uvs := make([]f32, n * 2)
 			base := fart.color_of_3d(&doc, tm.color)
 			for i in 0 ..< n {
 				q := fart.to_y_up(tm.positions[i])
@@ -61,18 +162,26 @@ main :: proc() {
 				norms[i * 3], norms[i * 3 + 1], norms[i * 3 + 2] = nn.x, nn.y, nn.z
 				lit := max(0, linalg.dot(tm.normals[i], light))
 				shade := (tm.shade == 0 ? 1 : tm.shade) * (AMBIENT + (1 - AMBIENT) * lit)
-				c := fart.shade_color(base, shade)
+				// a textured face: the light on white, the map supplies the colour where it paints (the token shows through elsewhere)
+				c := fart.shade_color(textured ? {255, 255, 255, 255} : base, shade)
 				cols[i * 4], cols[i * 4 + 1], cols[i * 4 + 2], cols[i * 4 + 3] = c[0], c[1], c[2], c[3]
+				if textured {
+					uvs[i * 2], uvs[i * 2 + 1] = tm.uvs[i].x / cell.x, tm.uvs[i].y / cell.y
+				}
 			}
 			m.vertices = raw_data(verts)
 			m.normals = raw_data(norms)
 			m.colors = raw_data(cols)
+			if textured do m.texcoords = raw_data(uvs)
 			rl.UploadMesh(&m, false)
 			append(&pd.meshes, m)
+			mat := rl.LoadMaterialDefault()
+			if textured do rl.SetMaterialTexture(&mat, .ALBEDO, tex)
+			append(&pd.materials, mat)
 		}
 		append(&draws, pd)
 	}
-	material := rl.LoadMaterialDefault()
+	_ = flat
 
 	camera := rl.Camera3D{position = {30, 18, 40}, target = {0, -2, 0}, up = {0, 1, 0}, fovy = 40, projection = .PERSPECTIVE}
 	clip_i := 0
@@ -103,7 +212,7 @@ main :: proc() {
 			for &pd in draws {
 				if pd.part.name != sp.part do continue
 				W := fart.Y_UP * fart.world_xf_3d(&doc, frame[:], pd.part.name) // the pose, in engine space
-				for m in pd.meshes do rl.DrawMesh(m, material, rl.Matrix(W))
+				for m, mi in pd.meshes do rl.DrawMesh(m, pd.materials[mi], rl.Matrix(W))
 			}
 		}
 		rl.EndMode3D()

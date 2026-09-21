@@ -17,6 +17,51 @@ export interface Token {
 	[extra: string]: unknown;
 }
 
+/** Since 1.5: a 2D shape's mapping from pattern coordinates to its space: a placement, or the affine map itself. */
+export interface Mapping2 {
+	at?: Vec2;
+	angle?: number;
+	scale?: number;
+	/** [a, b, c, d, e, f]: x' = a x + c y + e, y' = b x + d y + f; wins over at/angle/scale */
+	xf?: [number, number, number, number, number, number];
+	[extra: string]: unknown;
+}
+/** Since 1.5: a 3D shape's mapping: world units per pattern unit, or explicit pattern coordinates per face corner. */
+export interface Mapping3 {
+	scale?: number;
+	uvs?: Vec2[][];
+	[extra: string]: unknown;
+}
+/** Since 1.5: what a textured shape carries. */
+export interface TextureFields2 {
+	texture?: string;
+	mapping?: Mapping2;
+}
+export interface TextureFields3 {
+	texture?: string;
+	mapping?: Mapping3;
+}
+/** Since 1.5: one map of a texture: a drawing, tiled. */
+export interface TextureMap {
+	/** a relative path to a 2D art file */
+	ref: string;
+	/** a relative path to a palette file laid over the drawing's tokens */
+	palette?: string;
+	/** which of the drawing's states to draw; absent: the first, else every part */
+	state?: string;
+	/** paint (default): its colours over the token; mask: the token times its value */
+	mode?: "paint" | "mask";
+	[extra: string]: unknown;
+}
+export interface Texture {
+	name: string;
+	/** [w, h]: the tile, from [0, 0] in the maps' document space */
+	cell: Vec2;
+	/** by name; "color" is what a reader paints, the rest are the engine's */
+	maps: Record<string, TextureMap>;
+	[extra: string]: unknown;
+}
+
 /** Since 1.4, on a collision shape: the part it rides (its rest space), and an engine's layer. */
 export interface CollisionFields {
 	part?: string;
@@ -25,7 +70,7 @@ export interface CollisionFields {
 	meta?: Record<string, unknown>;
 }
 
-export interface CircleShape extends CollisionFields {
+export interface CircleShape extends CollisionFields, TextureFields2 {
 	kind: "circle";
 	/** A palette token. Required inside a part, optional in collision. */
 	color?: string;
@@ -36,7 +81,7 @@ export interface CircleShape extends CollisionFields {
 	[extra: string]: unknown;
 }
 
-export interface LineShape extends CollisionFields {
+export interface LineShape extends CollisionFields, TextureFields2 {
 	kind: "line";
 	color?: string;
 	shade?: number;
@@ -47,7 +92,7 @@ export interface LineShape extends CollisionFields {
 	[extra: string]: unknown;
 }
 
-export interface PolyShape extends CollisionFields {
+export interface PolyShape extends CollisionFields, TextureFields2 {
 	kind: "poly";
 	color?: string;
 	shade?: number;
@@ -169,6 +214,8 @@ export interface Doc {
 	clips?: Clip[];
 	constraints?: Constraint[];
 	collision?: Shape[];
+	/** Since 1.5 */
+	textures?: Texture[];
 	meta?: Record<string, unknown>;
 	[extra: string]: unknown;
 }
@@ -176,7 +223,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 4;
+export const FORMAT_MINOR = 5;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -185,7 +232,7 @@ export const FORMAT_MINOR = 4;
 /** [x, y, z]. */
 export type Vec3 = [number, number, number];
 
-export interface MeshShape extends CollisionFields {
+export interface MeshShape extends CollisionFields, TextureFields3 {
 	kind: "mesh";
 	color?: string;
 	shade?: number;
@@ -197,7 +244,7 @@ export interface MeshShape extends CollisionFields {
 	[extra: string]: unknown;
 }
 
-export interface BallShape extends CollisionFields {
+export interface BallShape extends CollisionFields, TextureFields3 {
 	kind: "ball";
 	color?: string;
 	shade?: number;
@@ -206,7 +253,7 @@ export interface BallShape extends CollisionFields {
 	[extra: string]: unknown;
 }
 
-export interface RodShape extends CollisionFields {
+export interface RodShape extends CollisionFields, TextureFields3 {
 	kind: "rod";
 	color?: string;
 	shade?: number;
@@ -302,6 +349,7 @@ export interface Doc3 {
 	clips?: Clip3[];
 	constraints?: Constraint[];
 	collision?: CollisionShape3[];
+	textures?: Texture[];
 	meta?: Record<string, unknown>;
 	[extra: string]: unknown;
 }

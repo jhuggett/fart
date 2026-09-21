@@ -1,4 +1,4 @@
-# Fast Art Format (.fart) — v1.4
+# Fast Art Format (.fart) — v1.5
 
 JSON-backed vector art for games. The format is the contract: any editor
 that writes it and any engine that reads it agree through this document
@@ -6,11 +6,11 @@ alone. Scope: describing drawable, recolorable, re-posable art, flat or
 (since 1.3) low-poly solid. Nothing else — no scenes, no logic, no engine
 data (that's what `meta` is for).
 
-It is called `.fart` on purpose. The format does not take itself
-seriously so that you don't have to: it is plain JSON, small enough to
-read, write, and diff by hand (or by a language model), and it drops into
-any engine that can parse JSON. Prototype with it. Ship with it if you
-like. Nobody is going to stop you either way.
+The format is expressed in JSON. It is intended to be authored by hand
+or by program, to be read and compared without tooling, and to be
+interpreted by any runtime capable of parsing JSON. It is suitable for
+prototyping and for shipped work alike; the specification draws no
+distinction between the two.
 
 The machine-readable half of this document is `fart.schema.json` beside
 it, and the conformance corpus in `examples/` (see **Validation**).
@@ -426,6 +426,79 @@ authoring-side first (model once, project to any 2D view; see
 - Nothing here changes a 2D document: a 2D file is a 1.2 file, byte for
   byte, unless it uses `shade`.
 
+## Textures (1.5)
+
+A texture is a set of **maps**, and every map is a drawing: a 2D Fast
+Art file tiled over a cell. There are no bitmaps in the format. The
+colour map is what a reader paints; every other map (`height`, `glow`,
+`rough`, whatever a game invents) is a scalar field the format carries
+and the engine reads, the way it carries `layer` on collision.
+
+```json
+"textures": [
+  {"name": "planks", "cell": [8, 8], "maps": {
+    "color":  {"ref": "textures/planks.fart"},
+    "height": {"ref": "textures/planks.fart", "palette": "palettes/height.fart", "mode": "mask"},
+    "glow":   {"ref": "textures/planks.fart", "state": "knots"}
+  }}
+]
+```
+
+- `cell` is `[w, h]` in the map drawings' own units: the tile is the
+  rectangle from `[0, 0]` to `[w, h]` of each map's document space, and
+  the drawing repeats with that period. **Pattern coordinates** are that
+  document space.
+- A map names a `ref`: a relative path (as `palette_refs` are) to a 2D
+  art file. Its tokens resolve through that file's own palette and refs;
+  a `palette` (a relative path to a palette file) is then laid over
+  them, as a swap. A `state` picks which of the drawing's states to
+  draw; absent, its first state, or every part in file order. Since
+  one drawing under two palettes is two maps, maps of one texture line
+  up for free.
+- `mode` is `paint` (the default) or `mask`. Read as **colour**, a
+  `paint` map's resolved colour lies over the shape's token where it
+  paints, and the token shows where it does not; a `mask` map
+  multiplies the token by its **value**. Read as a **scalar**, a map's
+  value at a point is the painted colour's luminance
+  (`0.2126 r + 0.7152 g + 0.0722 b`, over 255) times its alpha times the
+  shape's `shade`, and 0 where nothing is painted. `shade` on the
+  textured shape multiplies the colour last, as ever.
+- A texture's `name` is unique among textures (`dup.texture`); a shape
+  that names a texture the document lacks is `ref.texture`; a map's ref
+  must be relative (`path`); a texture has at least one map (`schema`).
+  A ref that cannot be read is the `unresolved` warning, like a palette.
+
+A shape takes a texture by name, with a **mapping** from pattern
+coordinates to its own space:
+
+```json
+{"kind": "poly", "color": "wood", "texture": "planks", "mapping": {"at": [4, 0], "angle": 0.2, "scale": 1.5}, "points": [...]}
+{"kind": "mesh", "color": "wood", "texture": "planks", "mapping": {"scale": 2}, "points": [...], "faces": [...]}
+```
+
+- **2D**: `mapping` is `{at, angle, scale}` (pattern space placed with
+  its origin at `at`, turned by `angle`, scaled by `scale`; all
+  optional, identity by default) or `{xf}`, the affine map from pattern
+  coordinates to document space as six numbers `[a, b, c, d, e, f]`
+  (`x' = a x + c y + e`, `y' = b x + d y + f`), which is what a projector
+  writes. A circle or a line is filled by the pattern over its area like
+  a poly.
+- **3D**: `mapping` is `{scale, uvs}`, both optional. Without `uvs` a
+  mesh is **box mapped**: each face takes pattern coordinates from the
+  two axes across its dominant normal, in world units over `scale`
+  (default 1): a face facing ±x reads `(z, y)`, ±y reads `(x, z)`,
+  ±z reads `(x, y)`. So planks line up across a wall with nothing
+  authored. `uvs` are explicit pattern coordinates per face and corner,
+  `uvs[face][corner]`, one pair per point of that face. A ball or a rod
+  is box mapped as the mesh it flattens to. A face's mapping reaches
+  its projection as a 2D `xf` (see `PROJECT.md`).
+- A part drawn `like` another has its source's textures.
+- Loaders hand a renderer the pattern coordinates per corner and the
+  texture's name; rasterising a map is a drawing job (the reference
+  loaders do it in fifty lines, and `fart bake --textures` writes the
+  pixels for a build). Readers that predate 1.5 draw the shape's token
+  flat and keep the fields.
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -520,6 +593,8 @@ the same from any tool:
 | `ref.chain` | a target names a constraint the document does not have           |
 | `space`     | a space the reader does not know (1.3)                          |
 | `convex`    | a collision mesh is not convex: a point lies in front of the named face (1.4) |
+| `ref.texture` | a shape names a texture the document does not have (1.5)       |
+| `dup.texture` | two textures share a name (1.5)                                |
 | `face`      | a mesh face with fewer than three indices, or an index past the last point (1.3) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
@@ -559,6 +634,9 @@ the corpus only requires it to load every valid file and refuse those two.
   that a collision `mesh` is convex (error `convex`). A file that uses
   none of them is a 1.3 file; a 1.3 reader reads posed collision at
   rest and refuses a `box` at the schema stage.
+- 1.5 added `textures` (maps that are drawings, tiled over a cell) and
+  `texture` + `mapping` on shapes. A file without them is a 1.4 file; a
+  1.4 reader draws textured shapes flat.
 
 ## Reserved for later
 

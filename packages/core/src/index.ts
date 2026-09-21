@@ -16,3 +16,6 @@ export * from "./solids.ts";
 export * from "./ik3.ts";
 export * from "./gltf.ts";
 export * from "./collision.ts";
+export * from "./textures.ts";
+export * from "./png.ts";
+export * from "./scene.ts";

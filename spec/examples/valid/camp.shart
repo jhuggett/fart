@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "space": "3d",
+  "name": "camp",
+  "palette_refs": [
+    "palettes/height.fart"
+  ],
+  "nodes": [
+    {
+      "name": "hut",
+      "ref": "hut.fart",
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "state": "open",
+      "children": [
+        {
+          "name": "crate",
+          "ref": "crate.fart",
+          "at": [
+            -4,
+            -8,
+            -2
+          ],
+          "scale": 0.4,
+          "meta": {
+            "loot": "rope"
+          }
+        },
+        {
+          "name": "arm",
+          "ref": "reach3d.fart",
+          "attach": {
+            "to": "pan"
+          },
+          "scale": 0.3
+        }
+      ]
+    },
+    {
+      "name": "guard",
+      "ref": "reach3d.fart",
+      "at": [
+        18,
+        0,
+        4
+      ],
+      "rotate": [
+        0,
+        1.2,
+        0
+      ],
+      "clip": "grab",
+      "t": 0.2,
+      "mirror": true
+    },
+    {
+      "name": "rocks",
+      "at": [
+        -24,
+        0,
+        0
+      ],
+      "children": [
+        {
+          "name": "a",
+          "ref": "cube.fart"
+        },
+        {
+          "name": "b",
+          "ref": "cube.fart",
+          "at": [
+            6,
+            0,
+            3
+          ],
+          "scale": 0.6,
+          "mirror": true
+        }
+      ]
+    },
+    {
+      "name": "annex",
+      "ref": "yard.shart",
+      "at": [
+        40,
+        0,
+        0
+      ]
+    }
+  ],
+  "meta": {
+    "weather": "clear"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "a",
+      "ref": "../valid/chest.fart",
+      "state": "ajar"
+    }
+  ]
+}

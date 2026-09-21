@@ -180,6 +180,29 @@ export function rodMesh(rod: RodShape, sides = 10): MeshShape {
 	return windOutward(m);
 }
 
+/** Box mapping (1.5): a face's pattern coordinates from the two axes across its dominant normal, world units over scale. */
+export function boxUV(p: Vec3, normal: Vec3, scale = 1): Vec2 {
+	const s = scale === 0 ? 1 : scale;
+	const ax = Math.abs(normal[0]);
+	const ay = Math.abs(normal[1]);
+	const az = Math.abs(normal[2]);
+	if (ax >= ay && ax >= az) return [p[2] / s, p[1] / s];
+	if (ay >= az) return [p[0] / s, p[2] / s];
+	return [p[0] / s, p[1] / s];
+}
+
+/** A shape's pattern coordinates per face and corner (1.5): its explicit uvs, else box mapped over the mesh it is. */
+export function meshUVs(sh: Shape3): Vec2[][] {
+	const m = asMesh(sh);
+	const mapping = sh.mapping;
+	if (mapping?.uvs && mapping.uvs.length === m.faces.length) return mapping.uvs;
+	const scale = mapping?.scale ?? 1;
+	return m.faces.map((f) => {
+		const n = faceNormal(m.points, f);
+		return f.map((i) => boxUV(m.points[i], n, scale));
+	});
+}
+
 /** A shape as a mesh: itself, or its ball or rod tessellated. */
 export function asMesh(sh: Shape3): MeshShape {
 	if (sh.kind === "mesh") return sh;
@@ -196,6 +219,9 @@ export interface TriMesh {
 	normals: Float32Array;
 	/** triangles */
 	count: number;
+	/** 1.5: the texture's name, and pattern coordinates per vertex (u, v), when the shape has one */
+	texture?: string;
+	uvs?: Float32Array;
 }
 
 /** Flatten one shape. Meshes use their baked tris when they have them. */
@@ -209,6 +235,24 @@ export function triMesh(sh: Shape3): TriMesh {
 	const count = tris.length / 3;
 	const positions = new Float32Array(count * 9);
 	const normals = new Float32Array(count * 9);
+	// a textured shape: pattern coordinates per corner, by face, so a triangle's corners look them up
+	let uvs: Float32Array | undefined;
+	let cornerUV: Map<number, Vec2> | undefined;
+	if (sh.texture) {
+		uvs = new Float32Array(count * 6);
+		const perFace = meshUVs(sh);
+		cornerUV = new Map();
+		m.faces.forEach((f, fi) => f.forEach((idx, ci) => cornerUV!.set(fi * 1e6 + idx, perFace[fi][ci])));
+	}
+	// which face each triangle came from: baked tris lose that, so fall back to the box of the triangle itself
+	const faceOfTri = (t: number): number => {
+		let acc = 0;
+		for (let fi = 0; fi < m.faces.length; fi++) {
+			acc += m.faces[fi].length - 2;
+			if (t < acc) return fi;
+		}
+		return -1;
+	};
 	for (let t = 0; t < count; t++) {
 		const a = m.points[tris[t * 3]];
 		const b = m.points[tris[t * 3 + 1]];
@@ -217,9 +261,19 @@ export function triMesh(sh: Shape3): TriMesh {
 		[a, b, c].forEach((p, k) => {
 			positions.set(p, t * 9 + k * 3);
 			normals.set(n, t * 9 + k * 3);
+			if (uvs && cornerUV) {
+				const fi = faceOfTri(t);
+				const uv = cornerUV.get(fi * 1e6 + tris[t * 3 + k]) ?? boxUV(p, n, sh.mapping?.scale ?? 1);
+				uvs.set(uv, t * 6 + k * 2);
+			}
 		});
 	}
-	return { color: sh.color, shade: sh.shade, positions, normals, count };
+	const out: TriMesh = { color: sh.color, shade: sh.shade, positions, normals, count };
+	if (uvs) {
+		out.texture = sh.texture;
+		out.uvs = uvs;
+	}
+	return out;
 }
 
 /** Every shape of a part (through `like`), flattened. */

@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jhuggett/fart/main/spec/shart.schema.json",
+  "title": "Scene Hierarchy of Art (.shart), version 1.0",
+  "description": "A scene: a tree of placed instances of .fart files and other .shart files. This schema checks structure; spec/SHART.md holds meaning, and a validator with the referenced files adds the cross-file checks. Unknown fields are allowed everywhere.",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "space": {
+      "enum": [
+        "2d",
+        "3d"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "palette_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relpath"
+      }
+    },
+    "meta": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relpath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)[^/\\\\]"
+    },
+    "node2": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "ref": {
+          "$ref": "#/$defs/relpath",
+          "description": "A .fart (an instance) or a .shart (a scene placed whole). Absent: a group."
+        },
+        "at": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "rotate": {
+          "type": "number"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/name"
+        },
+        "clip": {
+          "$ref": "#/$defs/name"
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "palette": {
+          "$ref": "#/$defs/relpath"
+        },
+        "attach": {
+          "type": "object",
+          "required": [
+            "to"
+          ],
+          "properties": {
+            "to": {
+              "$ref": "#/$defs/name"
+            },
+            "by": {
+              "$ref": "#/$defs/name"
+            }
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node2"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "node3": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "ref": {
+          "$ref": "#/$defs/relpath",
+          "description": "A .fart (an instance) or a .shart (a scene placed whole). Absent: a group."
+        },
+        "at": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotate": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/name"
+        },
+        "clip": {
+          "$ref": "#/$defs/name"
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "palette": {
+          "$ref": "#/$defs/relpath"
+        },
+        "attach": {
+          "type": "object",
+          "required": [
+            "to"
+          ],
+          "properties": {
+            "to": {
+              "$ref": "#/$defs/name"
+            },
+            "by": {
+              "$ref": "#/$defs/name"
+            }
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node3"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "root2": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "ref": {
+          "$ref": "#/$defs/relpath",
+          "description": "A .fart (an instance) or a .shart (a scene placed whole). Absent: a group."
+        },
+        "at": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "rotate": {
+          "type": "number"
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/name"
+        },
+        "clip": {
+          "$ref": "#/$defs/name"
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "palette": {
+          "$ref": "#/$defs/relpath"
+        },
+        "attach": false,
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node2"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "root3": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "ref": {
+          "$ref": "#/$defs/relpath",
+          "description": "A .fart (an instance) or a .shart (a scene placed whole). Absent: a group."
+        },
+        "at": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotate": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "state": {
+          "$ref": "#/$defs/name"
+        },
+        "clip": {
+          "$ref": "#/$defs/name"
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0
+        },
+        "palette": {
+          "$ref": "#/$defs/relpath"
+        },
+        "attach": false,
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node3"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "space": {
+        "const": "3d"
+      }
+    },
+    "required": [
+      "space"
+    ]
+  },
+  "then": {
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/root3"
+        }
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/root2"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "a",
+      "ref": "../valid/chest.fart",
+      "children": [
+        {
+          "name": "b",
+          "ref": "../valid/minimal.fart",
+          "attach": {
+            "to": "nowhere"
+          }
+        }
+      ]
+    }
+  ]
+}

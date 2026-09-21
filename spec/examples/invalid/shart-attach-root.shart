@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "a",
+      "ref": "../valid/minimal.fart",
+      "attach": {
+        "to": "x"
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "space": "3d",
+  "name": "yard",
+  "nodes": [
+    {
+      "name": "chest",
+      "ref": "chest3d.fart",
+      "state": "open"
+    },
+    {
+      "name": "crate",
+      "ref": "crate.fart",
+      "at": [
+        20,
+        0,
+        0
+      ],
+      "rotate": [
+        0,
+        0.4,
+        0
+      ]
+    }
+  ]
+}

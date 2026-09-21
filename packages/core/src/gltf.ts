@@ -16,6 +16,8 @@ export interface GltfOptions {
 	tokens?: readonly Token[];
 	/** animation samples per second, default 24 */
 	fps?: number;
+	/** 1.5: a PNG of each texture's colour map, by texture name; textured primitives sample it with wrapping */
+	images?: Record<string, Uint8Array>;
 }
 
 const FLOAT = 5126;
@@ -35,8 +37,8 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 	let byteLength = 0;
 	const bufferViews: Record<string, unknown>[] = [];
 	const accessors: Record<string, unknown>[] = [];
-	const pushView = (data: Float32Array, target?: number): number => {
-		const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+	const pushView = (data: Float32Array | Uint8Array, target?: number): number => {
+		const bytes = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 		const pad = (4 - (bytes.length % 4)) % 4;
 		chunks.push(bytes);
 		if (pad) chunks.push(new Uint8Array(pad));
@@ -46,9 +48,9 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		byteLength += bytes.length + pad;
 		return bufferViews.length - 1;
 	};
-	const pushAccessor = (data: Float32Array, type: "SCALAR" | "VEC3" | "VEC4", target?: number, bounds = false): number => {
+	const pushAccessor = (data: Float32Array, type: "SCALAR" | "VEC2" | "VEC3" | "VEC4", target?: number, bounds = false): number => {
 		const view = pushView(data, target);
-		const n = type === "SCALAR" ? 1 : type === "VEC3" ? 3 : 4;
+		const n = type === "SCALAR" ? 1 : type === "VEC2" ? 2 : type === "VEC3" ? 3 : 4;
 		const acc: Record<string, unknown> = { bufferView: view, componentType: FLOAT, count: data.length / n, type };
 		if (bounds) {
 			const min = new Array(n).fill(Infinity);
@@ -64,6 +66,19 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		return accessors.length - 1;
 	};
 
+	// textures (1.5): an image and a material per texture that has pixels
+	const materials: Record<string, unknown>[] = [{ name: "flat", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 }, doubleSided: false }];
+	const images: Record<string, unknown>[] = [];
+	const textures: Record<string, unknown>[] = [];
+	const materialOf = new Map<string, number>();
+	for (const [name, png] of Object.entries(opts.images ?? {})) {
+		if (!(doc.textures ?? []).some((t) => t.name === name)) continue;
+		const view = pushView(png);
+		images.push({ name, mimeType: "image/png", bufferView: view });
+		textures.push({ name, source: images.length - 1, sampler: 0 });
+		materials.push({ name, pbrMetallicRoughness: { baseColorTexture: { index: textures.length - 1 }, baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 } });
+		materialOf.set(name, materials.length - 1);
+	}
 	// meshes: one per part with geometry of its own; `like` parts share the source's
 	const meshes: Record<string, unknown>[] = [];
 	const meshOf = new Map<string, number>();
@@ -89,11 +104,21 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 			const rgba = shadeColor(colorOf(tokens, tm.color ?? ""), tm.shade);
 			const col = new Float32Array((tm.positions.length / 3) * 4);
 			for (let v = 0; v < tm.positions.length / 3; v++) col.set([rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3] / 255], v * 4);
-			primitives.push({
-				attributes: { POSITION: pushAccessor(pos, "VEC3", ARRAY_BUFFER, true), NORMAL: pushAccessor(nor, "VEC3", ARRAY_BUFFER), COLOR_0: pushAccessor(col, "VEC4", ARRAY_BUFFER) },
-				material: 0,
-				mode: 4,
-			});
+			const attributes: Record<string, number> = { POSITION: pushAccessor(pos, "VEC3", ARRAY_BUFFER, true), NORMAL: pushAccessor(nor, "VEC3", ARRAY_BUFFER), COLOR_0: pushAccessor(col, "VEC4", ARRAY_BUFFER) };
+			let material = 0;
+			if (tm.texture && tm.uvs) {
+				// pattern coordinates in cell units become 0..1 per tile; glTF wraps them
+				const tex = (doc.textures ?? []).find((t) => t.name === tm.texture);
+				const cell = tex?.cell ?? [1, 1];
+				const uv = new Float32Array(tm.uvs.length);
+				for (let i = 0; i < tm.uvs.length; i += 2) {
+					uv[i] = tm.uvs[i] / cell[0];
+					uv[i + 1] = tm.uvs[i + 1] / cell[1];
+				}
+				attributes.TEXCOORD_0 = pushAccessor(uv, "VEC2", ARRAY_BUFFER);
+				material = materialOf.get(tm.texture) ?? 0;
+			}
+			primitives.push({ attributes, material, mode: 4 });
 		}
 		if (primitives.length) {
 			meshes.push({ name: src, primitives });
@@ -167,12 +192,17 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		scenes: [{ name: doc.name ?? "fart", nodes: roots }],
 		nodes,
 		meshes,
-		materials: [{ name: "flat", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 }, doubleSided: false }],
+		materials,
 		accessors,
 		bufferViews,
 		buffers: [{ byteLength }],
 	};
 	if (animations.length) gltf.animations = animations;
+	if (images.length) {
+		gltf.images = images;
+		gltf.textures = textures;
+		gltf.samplers = [{ magFilter: 9728, minFilter: 9728, wrapS: 10497, wrapT: 10497 }];
+	}
 
 	// the container: header, a JSON chunk padded with spaces, a BIN chunk padded with zeros
 	const json = new TextEncoder().encode(JSON.stringify(gltf));

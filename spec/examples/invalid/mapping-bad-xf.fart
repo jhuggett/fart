@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "palette": [
+    {
+      "name": "c",
+      "rgb": [
+        1,
+        1,
+        1,
+        255
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "t",
+      "cell": [
+        1,
+        1
+      ],
+      "maps": {
+        "color": {
+          "ref": "textures/planks.fart"
+        }
+      }
+    }
+  ],
+  "parts": [
+    {
+      "name": "a",
+      "shapes": [
+        {
+          "kind": "circle",
+          "color": "c",
+          "texture": "t",
+          "mapping": {
+            "xf": [
+              1,
+              0,
+              0
+            ]
+          },
+          "at": [
+            0,
+            0
+          ],
+          "r": 1
+        }
+      ]
+    }
+  ]
+}

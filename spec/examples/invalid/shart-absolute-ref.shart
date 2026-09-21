@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "name": "a",
+      "ref": "/x.fart"
+    }
+  ]
+}

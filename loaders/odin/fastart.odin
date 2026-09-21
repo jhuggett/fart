@@ -22,6 +22,24 @@ Shape :: struct {
 	tris:   [dynamic]u16, // baked triangulation (index triples)
 	part:   string, // 1.4, collision: the part it rides ("" = document space, at rest)
 	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
+	texture: string, // 1.5: a texture of the document, tiled over the shape; "" for none
+	mapping: Mapping2, // 1.5
+}
+
+// 1.5: a 2D shape's mapping from pattern coordinates to its space: a placement, or the affine itself (xf wins when six long).
+Mapping2 :: struct {
+	at:    V2,
+	angle: f32,
+	scale: f32, // 0 = 1
+	xf:    [dynamic]f32,
+}
+
+// 1.5: the mapping as an affine map from pattern coordinates to the shape's space.
+mapping_xf :: proc(m: ^Mapping2) -> Xf {
+	if len(m.xf) == 6 do return {m.xf[0], m.xf[1], m.xf[2], m.xf[3], m.xf[4], m.xf[5]}
+	s := m.scale == 0 ? f32(1) : m.scale
+	c, sn := math.cos(m.angle) * s, math.sin(m.angle) * s
+	return {c, sn, -sn, c, m.at.x, m.at.y}
 }
 
 // 1.4: a 2D solid in document space under a pose (see collision_world).
@@ -158,8 +176,9 @@ Doc :: struct {
 	clips:        [dynamic]Clip,
 	constraints:  [dynamic]Constraint,
 	// optional: shapes an engine may treat as solid (a line is a capsule).
-	// Never drawn; rest-space, state-independent.
 	collision:    [dynamic]Shape,
+	// 1.5: textures, the same struct the 3D loader reads (fastart3d.odin)
+	textures:     [dynamic]Texture,
 	// filled by resolve_palettes; never written
 	resolved:     [dynamic]Tok `json:"-"`,
 }

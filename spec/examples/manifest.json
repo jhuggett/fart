@@ -23,12 +23,14 @@
     "ref.chain": "a target names a constraint the document does not have",
     "space": "a space the reader does not know (1.3)",
     "face": "a mesh face with fewer than three indices, or an index past the last point (1.3)",
-    "convex": "a collision mesh is not convex: a point lies in front of the named face (1.4)"
+    "convex": "a collision mesh is not convex: a point lies in front of the named face (1.4)",
+    "ref.texture": "a shape names a texture the document does not have (1.5)",
+    "dup.texture": "two textures share a name (1.5)"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
     "reserved": "a field or value this version reserves for later (children)",
-    "unresolved": "a palette_ref could not be read, so token references were not checked"
+    "unresolved": "a palette_ref or a texture map's ref could not be read, so what it supplies was not checked"
   },
   "cases": [
     {
@@ -409,6 +411,143 @@
       "valid": false,
       "code": "schema",
       "note": "a layer is a name: non-empty"
+    },
+    {
+      "file": "valid/textures/planks.fart",
+      "valid": true,
+      "note": "1.5: a drawing that is a texture's map: boards and gaps over an 8 by 8 cell, a knots state"
+    },
+    {
+      "file": "valid/palettes/height.fart",
+      "valid": true,
+      "note": "1.5: a palette that turns the planks drawing into a height map"
+    },
+    {
+      "file": "valid/crate.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.5: a box-mapped crate with a colour map, a masked height map under another palette, a glow map from a state; a lid with explicit uvs"
+    },
+    {
+      "file": "valid/floor.fart",
+      "valid": true,
+      "note": "1.5: a 2D poly and a circle filled with a texture, mapped by at/angle/scale and by xf"
+    },
+    {
+      "file": "invalid/texture-unknown.fart",
+      "valid": false,
+      "code": "ref.texture"
+    },
+    {
+      "file": "invalid/texture-dup.fart",
+      "valid": false,
+      "code": "dup.texture"
+    },
+    {
+      "file": "invalid/texture-no-maps.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "a texture has at least one map"
+    },
+    {
+      "file": "invalid/texture-absolute-ref.fart",
+      "valid": false,
+      "code": "path"
+    },
+    {
+      "file": "invalid/mapping-bad-xf.fart",
+      "valid": false,
+      "code": "schema",
+      "note": "an xf is six numbers"
+    },
+    {
+      "file": "valid/camp.shart",
+      "valid": true,
+      "shart": true,
+      "space": "3d",
+      "note": "shart 1.0: a 3D camp: a hut open, a crate inside, an arm hung from the lamp's socket, a guard mid-clip, mirrored, recoloured; a group of rocks; a nested yard"
+    },
+    {
+      "file": "valid/yard.shart",
+      "valid": true,
+      "shart": true,
+      "space": "3d",
+      "note": "shart 1.0: a scene placed by another"
+    },
+    {
+      "file": "valid/fleet.shart",
+      "valid": true,
+      "shart": true,
+      "note": "shart 1.0: a 2D scene: a hero mid-wave, a turned group, a mirrored instance, a gem attached to a chest's hinge"
+    },
+    {
+      "file": "invalid/shart-no-version.shart",
+      "valid": false,
+      "shart": true,
+      "code": "version"
+    },
+    {
+      "file": "invalid/shart-dup-node.shart",
+      "valid": false,
+      "shart": true,
+      "code": "dup.node"
+    },
+    {
+      "file": "invalid/shart-absolute-ref.shart",
+      "valid": false,
+      "shart": true,
+      "code": "path"
+    },
+    {
+      "file": "invalid/shart-attach-root.shart",
+      "valid": false,
+      "shart": true,
+      "code": "schema",
+      "note": "attach on a root node has nothing to attach to"
+    },
+    {
+      "file": "invalid/shart-wrong-space.shart",
+      "valid": false,
+      "shart": true,
+      "code": "space",
+      "note": "a 2D file in a 3D scene"
+    },
+    {
+      "file": "invalid/shart-unknown-state.shart",
+      "valid": false,
+      "shart": true,
+      "code": "ref.state"
+    },
+    {
+      "file": "invalid/shart-unknown-anchor.shart",
+      "valid": false,
+      "shart": true,
+      "code": "ref.anchor"
+    },
+    {
+      "file": "invalid/shart-cycle.shart",
+      "valid": false,
+      "shart": true,
+      "code": "cycle"
+    },
+    {
+      "file": "invalid/shart-bad-rotate-2d.shart",
+      "valid": false,
+      "shart": true,
+      "code": "schema",
+      "note": "a 2D turn is a number"
     }
-  ]
+  ],
+  "shart_codes": {
+    "json": "not JSON",
+    "version": "version missing, not an integer, or newer than 1",
+    "schema": "structure the schema rejects, or attach where it cannot apply",
+    "path": "an absolute ref, palette or palette_ref",
+    "dup.node": "two siblings share a name",
+    "space": "a space the reader does not know, or a ref of the other space",
+    "ref.state": "the referenced file lacks the state",
+    "ref.clip": "the referenced file lacks the clip",
+    "ref.anchor": "the referenced file lacks the anchor",
+    "cycle": "a scene that reaches itself"
+  }
 }
