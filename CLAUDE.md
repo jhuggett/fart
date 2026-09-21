@@ -1,6 +1,6 @@
 # fastart
 
-JSON vector art for games (`.fart`, and yes, on purpose). The format is
+JSON vector art for games (`.fart`). The format is
 the contract: `spec/FORMAT.md` + `spec/fart.schema.json` + the corpus in
 `spec/examples` change together and are tagged `format-vX.Y.Z`. Tools
 follow the spec, never the other way round.
@@ -12,7 +12,7 @@ follow the spec, never the other way round.
   -out:/tmp/spin "-extra-linker-flags:-isysroot $(xcrun --show-sdk-path)"`.
   A copy lives in the user's game (qftebl2/fastart): copy it over after
   changing the loader and build the game.
-- `studio/`: Uranus, the app ("the fastart studio. It emits farts."): Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
+- `studio/`: Uranus, the app ("the reference editor for the Fast Art Format"): Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
   serve) + Preact frontend. `studio/DESIGN.md` governs the UI language;
   `frontend/src/state/actions.ts` is the one command registry. Every
   canvas view is a state (there is no separate draw mode); a clip is a
@@ -28,7 +28,19 @@ follow the spec, never the other way round.
   own. `make check-save` proves it end to end in a headless browser; run
   it after touching editor.ts's disk code.
 - `make` lists the shortcuts; `make test` runs everything.
+- Self-update: `studio/update.go` (version from the embedded
+  `build/config.yml`, GitHub `studio-v*` releases, platform asset by
+  suffix, swap in place, relaunch); `state/update.ts` + `ui/UpdateBadge.tsx`
+  in the frontend. `FASTART_VERSION=0.1.0` makes a build believe it is
+  old; `FASTART_LIVE=1 go test -run TestUpdateLive ./studio` talks to
+  GitHub for real.
 - Writing `.fart` files: follow `skills/fastart/SKILL.md`.
+- Scenes: `.shart` (Scene Hierarchy of Art), `spec/SHART.md` +
+  `spec/shart.schema.json`, shart cases in the corpus manifest carry
+  `"shart": true`. Core: `scene.ts` (validateScene, loadScene,
+  flattenScene, sceneCollision); Odin: `shart.odin` (load_scene,
+  flatten_scene with a Scene_Cache). `fart validate` takes scenes, `fart
+  flatten` lists their instances.
 - 3D (format 1.3): `spec/PROJECT.md` is the projection contract; core's
   `space3.ts` + `project.ts` implement it, `fart project` drives it,
   `examples/pistol/generate.mjs` is the proof. In the studio a 3D file
@@ -40,6 +52,9 @@ follow the spec, never the other way round.
   Solid helpers live in core's `solids.ts` (use them in generators), 3D
   chains in `ik3.ts`, glTF export in `gltf.ts` (`fart gltf`), collision
   (1.4: posed by `part`, `box`, `layer`, convexity, hulls) in
-  `collision.ts` (`fart hull`); the Odin
+  `collision.ts` (`fart hull`), textures (1.5: maps that are drawings,
+  box mapping, a software rasteriser, `fart bake --textures`) in
+  `textures.ts` + `png.ts`; the studio renders maps in
+  `state/textures.ts` for the 2D painter's patterns and WebGL; the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.

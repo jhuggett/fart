@@ -6,30 +6,38 @@ This is a serious project for serious people. To forestall any
 confusion:
 
 - A `.fart` file is pronounced **dot-f-art** file. It holds Fast Art.
-- Scene files, arriving shortly under the extension `.shart`, are
-  pronounced **dot-s-h-art**. They hold scenes of Fast Art.
+- A `.shart` file is a **Scene Hierarchy of Art**, pronounced
+  **dot-s-h-art**. It composes `.fart` files into a scene.
 
 Any resemblance to a potentially humorous word is unintentional. We ask
 that readers, contributors and users maintain a level of maturity and
 dignity sufficient to their station.
 
-JSON-backed vector art for games: shapes, recolorable palette tokens,
-re-posable parts, states. The `.fart` file is the contract; the rest of
-this repo exists to write it, read it, and check it.
+## Abstract
 
-It is called `.fart` on purpose. The format does not take itself
-seriously so that you don't have to: it is plain JSON, small enough to
-read, write and diff by hand (or by a language model), and it drops into
-any engine that can parse JSON. Prototype with it. Ship with it if you
-like.
+fastart is a specification, accompanied by reference implementations,
+for the description of two- and three-dimensional vector art intended
+for consumption by interactive software. A document of the Fast Art
+Format enumerates shapes; the colour slots those shapes reference; the
+parts into which shapes are grouped; and the states, clips, constraints
+and textures by which those parts are posed, animated and surfaced. A
+document of the Scene Hierarchy of Art composes such documents into a
+scene. Both are expressed in JSON, and are designed to be authored by
+hand or by program, inspected without tooling, and interpreted by any
+runtime capable of parsing JSON.
 
-    spec/            the format: FORMAT.md, fart.schema.json, the conformance corpus
+The specification is the authority. Every tool in this repository
+conforms to it, and none extends it.
+
+    spec/            the format: FORMAT.md, fart.schema.json, the conformance corpus; SHART.md and shart.schema.json for scenes
     packages/core    @fastart/core: the format as a TypeScript library + `fart` CLI
     loaders/odin     the reference Odin loader (and its corpus test)
-    studio/          Uranus, the fastart studio: the editor as a desktop app (Wails 3 + web). It emits farts.
-    examples/space   a sample project: ships, a station, rocks, palettes to swap
-    examples/pistol  a flintlock modelled once in 3D, projected to its side, top and front (1.3)
-    examples/lantern a lantern built with core's box, extrude and lathe helpers, and its projections
+    studio/          Uranus, the reference editor for the Fast Art Format, as a desktop application (Wails 3 + web)
+    examples/space   a sample project: ships, a station, rocks, palettes to swap; hull plating and craters as textures (1.5)
+    examples/pistol  a flintlock modelled once in 3D, projected to its side, top and front (1.3); a wood-grain texture on the stock
+    examples/lantern a lantern built with core's box, extrude and lathe helpers, and its projections; a hammered texture on the dish
+    examples/cabin   textures end to end: planks and cobbles as drawings, height maps under a palette, a textured hut and crate; camp.shart, a 3D scene
+    examples/space/scenes/patrol.shart   the space set placed as a 2D scene
     skills/fastart   how an agent writes and loads .fart files (make skill installs it)
 
 ## The format
@@ -44,6 +52,9 @@ tris index the points) is checked by the validator in `packages/core`:
     npx fart project pistol.fart --view left --view top   # 2D views of a 3D file (1.3)
     npx fart gltf pistol.fart                             # the model as a .glb, animations included
     npx fart hull hut.fart --part table                   # a convex hull into collision, riding the part (1.4)
+    npx fart bake --textures out/ --px 64 crate.fart      # every texture map as a PNG (1.5); textures are drawings, tiled
+    npx fart validate camp.shart                          # a scene, checked with its files in hand
+    npx fart flatten camp.shart --t 0.5                   # a scene's instances, placed: what a renderer draws
 
 `spec/examples/manifest.json` is the conformance corpus: files that must
 load, files that must be refused, and the error code each refusal
@@ -66,10 +77,22 @@ loop in Odin and raylib (flatten each part to triangles once, draw them
 through `Y_UP * world_xf_3d` every frame, chains solved live), and `fart
 gltf` writes a `.glb` for any other engine.
 
+## Scenes
+
+A `.shart` (Scene Hierarchy of Art) is a tree of placed instances of
+`.fart` files and other scenes: each with a pose, a state or a moment
+of a clip, a palette laid over, children riding it or hanging from one
+of its sockets. A shart draws nothing of its own, so one cabin file is
+every cabin in the scene. `spec/SHART.md` is the contract; the loaders
+flatten a scene into the list a renderer draws (`flattenScene`,
+`flatten_scene`) and gather its solids (`sceneCollision`).
+
 ## The studio
 
 `make install` builds the app into `~/Applications/Uranus.app` and
-replaces it there on every run, so pin that one to the Dock. ⌘J in the
+replaces it there on every run, so pin that one to the Dock. A released
+build updates itself: it checks GitHub for a newer `studio-v*` release
+and offers it top right (Help › Check for Updates… asks at once). ⌘J in the
 app asks your own Claude Code to change the open file: it reads, edits
 (one undo step), renders and validates through the editor itself.
 

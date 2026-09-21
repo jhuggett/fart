@@ -2,7 +2,7 @@
 # and land on one GitHub release. macOS is signed and notarized when the
 # secrets exist (MACOS_CERT_P12 base64, MACOS_CERT_PASSWORD, APPLE_ID,
 # APPLE_TEAM_ID, APPLE_APP_PASSWORD); without them the bundle is ad-hoc
-# signed and Gatekeeper will grumble on first launch.
+# signed and Gatekeeper asks for confirmation on first launch.
 name: studio release
 
 on:
@@ -138,7 +138,7 @@ jobs:
           overwrite_files: true
           generate_release_notes: true
           body: |
-            Uranus, the fastart studio. It emits farts.
+            Uranus, the reference editor for the Fast Art Format
 
             The macOS build is ad-hoc signed: the first launch needs a right-click → Open
             (or `xattr -d com.apple.quarantine Uranus.app`). Windows and Linux builds are

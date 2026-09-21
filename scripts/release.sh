@@ -49,7 +49,7 @@ echo "== publishing"
 PREV=$(git describe --tags --match 'studio-v*' --abbrev=0 "$TAG^" 2>/dev/null || true)
 NOTES=$(mktemp)
 {
-  echo "Uranus, the fastart studio. It emits farts."
+  echo "Uranus, the reference editor for the Fast Art Format"
   echo
   echo "**macOS (universal, Apple silicon and Intel).** The bundle is ad-hoc signed: on first launch, right-click → Open (or run \`xattr -d com.apple.quarantine Uranus.app\`). Windows and Linux builds are added by the release workflow when it finishes."
   echo
