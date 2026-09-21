@@ -1,6 +1,7 @@
 import { explorer, toggleExplorer, toggleFolder, tree, type TreeNode } from "../state/explorer.ts";
 import { project, openDoc, refreshFiles, goBrowse } from "../state/project.ts";
 import { md } from "../state/model.ts";
+import { sc } from "../state/scene.ts";
 import { I } from "./Icons.tsx";
 import { ed } from "../state/editor.ts";
 import { stripExt } from "../state/paths.ts";
@@ -15,7 +16,7 @@ function menuAt(e: MouseEvent, items: ReturnType<typeof fileMenu>) {
 }
 
 function Row({ node, depth }: { node: TreeNode; depth: number }) {
-	const cur = ed.path.value ?? md.path.value;
+	const cur = ed.path.value ?? md.path.value ?? sc.path.value;
 	if (node.kind === "folder") {
 		const open = explorer.expanded.value.has(node.path);
 		return (

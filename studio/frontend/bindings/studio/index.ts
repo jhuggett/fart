@@ -12,5 +12,7 @@ export type {
     ChatInfo,
     ServeInfo,
     Text,
-    ToolCall
+    ToolCall,
+    UpdateInfo,
+    UpdateProgress
 } from "./models.js";

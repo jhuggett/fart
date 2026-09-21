@@ -6,11 +6,11 @@ version: '3'
 # This information is used to generate the build assets.
 info:
   companyName: "fastart" # The name of the company
-  productName: "Uranus" # The name of the application: the fastart studio. It emits farts.
+  productName: "Uranus" # The name of the application: the reference editor for the Fast Art Format
   productIdentifier: "com.fastart.studio" # The unique product identifier
-  description: "the fastart studio. It emits farts." # The application description
+  description: "the reference editor for the Fast Art Format" # The application description
   copyright: "(c) 2026 Joel Huggett" # Copyright text
-  comments: "It is called .fart on purpose." # Comments
+  comments: "A specification-driven vector art format for interactive software." # Comments
   version: "0.4.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
@@ -28,7 +28,7 @@ info:
 #   # The company/organisation name for templates and project settings
 #   company: "My Company"
 #   # Additional comments to embed in Info.plist metadata
-#   comments: "It is called .fart on purpose."
+#   comments: "A specification-driven vector art format for interactive software."
 
 # Dev mode configuration
 dev_mode:

@@ -9,6 +9,15 @@ import { drawDoc, fillShape, outlineShape, tracePoly, ident } from "./draw.ts";
 import { ix, handlesOf, worldHandles, scaleGrips, poseLever, frameW, partXf, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
 import { ed, curPart, curClip, curTokName, selShape, shapeAt, colShape, poseOfCur, frame, parts, shapesIn, anchorsIn } from "../state/editor.ts";
 import { canvasColors } from "../state/theme.ts";
+import type { TexturePattern } from "../state/textures.ts";
+import type { PatternSource } from "./draw.ts";
+
+/** The store's rendered maps as the painter wants them. */
+export function patternsOf(ps: Map<string, TexturePattern>): Map<string, PatternSource> {
+	const out = new Map<string, PatternSource>();
+	for (const [name, p] of ps) out.set(name, { canvas: p.canvas, mode: p.mode, sx: p.sx, sy: p.sy });
+	return out;
+}
 
 export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr: number) {
 	const C = canvasColors();
@@ -34,7 +43,7 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	const fr = frame();
 
 	world();
-	drawDoc(ctx, doc, tokens, { pose: fr, alpha: collide ? 0.22 : 1 });
+	drawDoc(ctx, doc, tokens, { pose: fr, alpha: collide ? 0.22 : 1, patterns: patternsOf(ed.patterns.value) });
 
 	if (collide) {
 		// the lens: solids the game may honour, never drawn by it

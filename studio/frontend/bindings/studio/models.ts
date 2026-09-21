@@ -94,3 +94,31 @@ export interface ToolCall {
     "name": string;
     "args": json$0.RawMessage;
 }
+
+export interface UpdateInfo {
+    "current": string;
+    "latest": string;
+    "available": boolean;
+
+    /**
+     * the release page, and the asset for this machine ("" when the release has none)
+     */
+    "url": string;
+    "assetUrl": string;
+    "asset": string;
+    "size": number;
+    "notes": string;
+}
+
+/**
+ * UpdateProgress: what the frontend shows while an update lands.
+ */
+export interface UpdateProgress {
+    /**
+     * download | unpack | install | done | error
+     */
+    "phase": string;
+    "done": number;
+    "total": number;
+    "message": string;
+}

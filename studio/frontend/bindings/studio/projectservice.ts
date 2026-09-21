@@ -166,6 +166,35 @@ export function ToolReply(id: string, result: string): $CancellablePromise<void>
 }
 
 /**
+ * UpdateApply downloads the asset and installs it in place of this app.
+ * On macOS the .app bundle is replaced; on Linux the binary; on Windows
+ * the binary is swapped by a helper after the app quits. Relaunch with
+ * UpdateRelaunch when it reports done.
+ */
+export function UpdateApply(assetURL: string): $CancellablePromise<void> {
+    return $Call.ByID(401870655, assetURL);
+}
+
+/**
+ * UpdateCheck asks GitHub. Available is true when a newer studio release exists;
+ * AssetURL is empty when it has no build for this machine yet (the workflow may still be running).
+ */
+export function UpdateCheck(): $CancellablePromise<$models.UpdateInfo> {
+    return $Call.ByID(779252731);
+}
+
+/**
+ * UpdateRelaunch starts the installed build and quits this one.
+ */
+export function UpdateRelaunch(): $CancellablePromise<void> {
+    return $Call.ByID(2213810503);
+}
+
+export function Version(): $CancellablePromise<string> {
+    return $Call.ByID(2791456436);
+}
+
+/**
  * WriteAt writes rel under an absolute base folder, making folders on the way.
  */
 export function WriteAt(base: string, rel: string, text: string): $CancellablePromise<void> {

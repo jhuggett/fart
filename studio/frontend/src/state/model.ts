@@ -40,11 +40,14 @@ import {
 	type FramePart,
 	type Issue,
 	type Rgba,
+	type Texture,
+	type TextureMap,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
 import { project, refreshFiles } from "./project.ts";
 import { dirname, joinRel } from "./paths.ts";
 import { clearLocal } from "./local.ts";
+import { loadPatterns, unresolvedOf, type TexturePattern } from "./textures.ts";
 
 export type Tool3 = "select" | "rect" | "circle" | "line" | "poly";
 /** A shape of a part. */
@@ -84,6 +87,8 @@ export const md = {
 	polyPts: signal<Vec2[]>([]),
 	pending: signal<"none" | "pivot">("none"),
 	tokens: signal<Token[]>([]),
+	/** 1.5: the file's textures, resolved and rendered, by name */
+	patterns: signal<Map<string, TexturePattern>>(new Map()),
 	shared: signal<Token[]>([]),
 	unresolved: signal<string[]>([]),
 	issues: signal<Issue[]>([]),
@@ -206,8 +211,10 @@ export function mutate(fn: (d: Doc3) => void, merge?: string) {
 		pushUndo();
 		mergeKey = merge ?? null;
 	}
+	const texBefore = JSON.stringify(md.doc.value.textures ?? []);
 	fn(md.doc.value);
 	touch();
+	if (JSON.stringify(md.doc.value.textures ?? []) !== texBefore) void reloadPatterns();
 }
 export function endGesture() {
 	mergeKey = null;
@@ -320,8 +327,19 @@ async function resolveShared(d: Doc3, rel: string): Promise<{ shared: Token[]; u
 }
 
 function check(d: Doc3) {
-	const r = validate(d, { refTokens: md.unresolved.value.length ? null : md.shared.value.map((t) => t.name) });
+	const r = validate(d, { refTokens: md.unresolved.value.length ? null : md.shared.value.map((t) => t.name), unresolvedRefs: unresolvedOf(md.patterns.value) });
 	md.issues.value = [...r.errors, ...r.warnings];
+}
+
+/** The textures changed: read and render them again. */
+export async function reloadPatterns() {
+	const rel = md.path.value;
+	if (!rel) return;
+	const p = await loadPatterns(md.doc.value, rel);
+	if (md.path.value !== rel) return;
+	md.patterns.value = p;
+	check(md.doc.value);
+	md.rev.value++;
 }
 
 /** Open a 3D file in the model screen. The text was read by the caller. */
@@ -364,6 +382,7 @@ export async function openModel(rel: string, text: string): Promise<boolean> {
 		md.rev.value++;
 	});
 	check(d);
+	void reloadPatterns();
 	lastFlush = docText();
 	// the checkpoint beside it, or one made now
 	const ck = await shell.readFile(root(), `${rel}~`);
@@ -878,6 +897,86 @@ export function extrudeView(pts: Vec2[], depth: number, thick: number, color: st
 	const points = viewPts.map((p) => round3(xf3Apply(inv, p)));
 	const flipped = xf3Det(inv) < 0;
 	return { kind: "mesh", color, points, faces: flipped ? faces.map((f) => [...f].reverse()) : faces };
+}
+
+// ------------------------------------------------------------- textures (1.5)
+
+export function textures(): Texture[] {
+	return doc().textures ?? [];
+}
+export function addTexture(name: string, ref: string): number {
+	mutate((d) => (d.textures ??= []).push({ name, cell: [8, 8], maps: { color: { ref } } }));
+	return textures().length - 1;
+}
+export function deleteTexture(i: number) {
+	const t = textures()[i];
+	if (!t) return;
+	mutate((d) => {
+		d.textures!.splice(i, 1);
+		for (const p of d.parts ?? []) for (const sh of p.shapes ?? []) if (sh.texture === t.name) {
+			delete sh.texture;
+			delete sh.mapping;
+		}
+	});
+}
+export function renameTexture(i: number, name: string) {
+	const t = textures()[i];
+	if (!t || !name || textures().some((q) => q !== t && q.name === name)) return;
+	const old = t.name;
+	mutate((d) => {
+		d.textures![i].name = name;
+		for (const p of d.parts ?? []) for (const sh of p.shapes ?? []) if (sh.texture === old) sh.texture = name;
+	});
+}
+export function setTextureCell(i: number, axis: 0 | 1, v: number) {
+	mutate((d) => {
+		const c = [...d.textures![i].cell] as Vec2;
+		c[axis] = Math.max(0.01, v);
+		d.textures![i].cell = c;
+	}, `tex-cell-${i}-${axis}`);
+}
+export function setMap(i: number, map: string, patch: Partial<TextureMap>) {
+	mutate((d) => {
+		const m = d.textures![i].maps[map];
+		if (!m) return;
+		for (const [k, v] of Object.entries(patch)) {
+			if (v === undefined || v === "" || (k === "mode" && v === "paint")) delete (m as Record<string, unknown>)[k];
+			else (m as Record<string, unknown>)[k] = v;
+		}
+	});
+}
+export function addMap(i: number, map: string) {
+	const t = textures()[i];
+	if (!t || !map || t.maps[map]) return;
+	const ref = t.maps.color?.ref ?? Object.values(t.maps)[0]?.ref ?? "";
+	mutate((d) => (d.textures![i].maps[map] = { ref }));
+}
+export function deleteMap(i: number, map: string) {
+	const t = textures()[i];
+	if (!t || Object.keys(t.maps).length <= 1) return;
+	mutate((d) => delete d.textures![i].maps[map]);
+}
+/** The selected shape takes a texture ("" for none), box mapped at scale 1. */
+export function setSelTexture(name: string) {
+	const s = md.sel.value;
+	if (!s) return;
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape];
+		if (name) sh.texture = name;
+		else {
+			delete sh.texture;
+			delete sh.mapping;
+		}
+	});
+}
+export function setSelMappingScale(v: number) {
+	const s = md.sel.value;
+	if (!s) return;
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape];
+		if (!sh.texture) return;
+		sh.mapping = { ...(sh.mapping ?? {}), scale: Math.max(0.01, v) };
+	}, "map-scale");
 }
 
 // ------------------------------------------------------------- tokens, document

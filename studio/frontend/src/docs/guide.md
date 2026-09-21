@@ -1,10 +1,10 @@
 # Uranus
 
-The fastart studio. It emits farts.
-
-The editor for Fast Art Format files. It edits `.fart` files; that is all
-it does. It knows nothing about any game or engine, and it is called
-what it is called on purpose.
+Uranus is the reference editor for the Fast Art Format. It edits `.fart`
+documents and `.shart` scenes, and nothing else: it holds no knowledge
+of any game or engine, and it confers none. Its function is to produce
+files that conform to the specification, and to show them as a
+conforming reader would.
 
 ## Projects
 
@@ -286,6 +286,24 @@ draws, two fingers pan and pinch. Every change streams back to disk. No
 cloud, no app store: your machine serves, your tablet draws. From a
 terminal, `studio --serve some/dir` does the same without a window.
 
+## Textures
+
+A texture is a set of maps, and every map is a drawing: a 2D file of
+the project tiled over a **cell**. There are no bitmaps. In the
+inspector's **Textures** section give a texture a name, its cell, and
+its maps: the **color** map is what is painted; a **height**, **glow**
+or any other map is the same idea for the game to read (grey levels
+read as a value). One drawing under another **palette** or **state** is
+another map, so they line up for free. **open** edits the drawing.
+
+A shape takes a texture in its section: in 2D with a placement (where
+the pattern's origin lands, its turn, its size); in the model screen
+with a **size** only, since faces are box mapped: each face reads the
+two world axes across its normal, so planks line up across a wall
+with nothing authored. **paint** lays the map's colours over the
+shape's slot where it paints; **mask** multiplies the slot by the
+map's value. A palette swap still recolours the slot underneath.
+
 ## Shade
 
 A shape may carry a **shade** (in the inspector, under its numbers):
@@ -347,6 +365,47 @@ the same four regions with the model turned under a **view**.
   `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with
   its animations for any other engine. Chains work in 3D with a `pole`
   in place of `bend`; the model screen does not show them yet.
+
+## Scenes
+
+A `.shart` file (a Scene Hierarchy of Art, dot-s-h-art) composes the
+project's files into a scene and draws nothing of its own. **New scene**
+or **new 3D scene** on the shelf makes one; opening one lands in the
+scene screen.
+
+- **Nodes** on the left are the tree: an **instance** places a file of
+  the project, a **scene** places another scene whole, a **group** is a
+  frame for its children. Children ride their parents. In a 2D scene
+  the list is paint order; raise and lower move a node among its
+  siblings.
+- **Place** with **+ instance** (a file of the project of the scene's
+  space, under the chosen node or at the root) or **+ group**. Click an
+  instance on the canvas to choose its node; **drag** it to move it,
+  arrows nudge; its fields are on the right: where it sits, its turn
+  and size, mirror, what it **shows** (a state, or a clip at a time), a
+  **palette** laid over it, and **hangs from**: a socket of the parent's
+  art, by one of its own anchors, positions and directions matched, so a
+  lantern hangs from a swinging hook.
+- The scene's own **palettes** lay over every instance, in order: one
+  night palette darkens the camp.
+- **Play** runs every clip in the scene from its `t`. A 3D scene has a
+  view like the model screen: pick one, or drag on nothing to orbit.
+- The file on disk is the scene, as ever: edits land at once, ⌘S is the
+  checkpoint. `npx fart validate camp.shart` checks a scene with its
+  files in hand, `npx fart flatten camp.shart` lists what a renderer
+  would draw, and the loaders' `flattenScene` / `flatten_scene` give a
+  game the same list.
+
+## Updates
+
+The app looks at GitHub a moment after it starts, and every few hours,
+for a newer Uranus. When there is one a small window appears top right:
+**Update** downloads the release for this machine, replaces the app in
+place and offers a **Restart**; **×** puts it away for now. **Help ›
+Check for Updates…** (or the command palette) asks at once. A release
+whose build for this machine is still on its way offers the release
+page instead. On macOS the new app is not quarantined, since you asked
+for it here. In a browser (Serve) there is nothing to update.
 
 ## Files a tool refused
 

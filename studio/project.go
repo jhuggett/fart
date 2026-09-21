@@ -46,7 +46,7 @@ func rooted(root, rel string) (string, error) {
 	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }
 
-// listFiles finds every .fart below root, as sorted slash-relative paths.
+// listFiles finds every .fart and .shart below root, as sorted slash-relative paths.
 // Dotfiles, node_modules and the .fart~ checkpoints stay out of the shelf.
 func listFiles(root string) ([]string, error) {
 	out := []string{}
@@ -64,7 +64,7 @@ func listFiles(root string) ([]string, error) {
 		if d.IsDir() && name == "node_modules" {
 			return filepath.SkipDir
 		}
-		if !d.IsDir() && strings.HasSuffix(name, ".fart") {
+		if !d.IsDir() && (strings.HasSuffix(name, ".fart") || strings.HasSuffix(name, ".shart")) {
 			rel, rerr := filepath.Rel(root, path)
 			if rerr == nil {
 				out = append(out, filepath.ToSlash(rel))

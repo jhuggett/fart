@@ -100,12 +100,46 @@ export interface Shell {
 	log(msg: string): void;
 	/** the menu bar chose a command (by id) */
 	onMenu(cb: (id: string) => void): void;
+	/** self-update (the app only): the version this is, what is newer on GitHub, and the steps */
+	readonly updates: boolean;
+	version(): Promise<string>;
+	updateCheck(): Promise<UpdateInfo>;
+	updateApply(assetUrl: string): Promise<void>;
+	updateRelaunch(): Promise<void>;
+	onUpdate(cb: (p: UpdateProgress) => void): void;
+}
+
+export interface UpdateInfo {
+	current: string;
+	latest: string;
+	available: boolean;
+	url: string;
+	assetUrl: string;
+	asset: string;
+	size: number;
+	notes: string;
+}
+export interface UpdateProgress {
+	phase: "download" | "unpack" | "install" | "done" | "error";
+	done: number;
+	total: number;
+	message: string;
 }
 
 // Over HTTP the server owns the project: root is always "" and the API
 // is relative. Dialogs and recents do not exist on a tablet.
 class HttpShell implements Shell {
 	readonly kind = "http" as const;
+	readonly updates = false;
+	async version() {
+		return "";
+	}
+	async updateCheck(): Promise<UpdateInfo> {
+		return { current: "", latest: "", available: false, url: "", assetUrl: "", asset: "", size: 0, notes: "" };
+	}
+	async updateApply() {}
+	async updateRelaunch() {}
+	onUpdate() {}
 	async pickFolder() {
 		return null;
 	}

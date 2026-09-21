@@ -33,7 +33,7 @@ export function relativeTo(fromDir: string, target: string): string {
 }
 
 export function stripExt(name: string): string {
-	return name.endsWith(".fart") ? name.slice(0, -5) : name;
+	return name.endsWith(".fart") ? name.slice(0, -5) : name.endsWith(".shart") ? name.slice(0, -6) : name;
 }
 
 export function under(path: string, dir: string): boolean {

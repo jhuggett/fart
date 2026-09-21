@@ -85,6 +85,21 @@ words gain a coordinate, not a vocabulary:
 Everything else is the editor's: states, clips, the pivot and lever,
 the timeline, the inspector, undo, the file on disk as the document.
 
+A scene (`.shart`, a Scene Hierarchy of Art) opens the **scene
+screen**: the same regions, the canvas showing the placed files.
+
+| word       | in the file     | what it is                                                  |
+|------------|-----------------|-------------------------------------------------------------|
+| node       | `nodes[]`       | a placed thing: an instance of a file, a scene placed whole, or a group |
+| instance   | `ref` to a .fart | one file, placed; the same file placed twice is two instances |
+| group      | a node with no `ref` | a frame for children, nothing drawn                    |
+| shows      | `state` / `clip` + `t` | what an instance shows: a state, or a moment of a clip |
+| hangs from | `attach`        | a child on a socket of its parent's art (`to`), by its own anchor (`by`) |
+| palettes   | `palette_refs`, `palette` | laid over every instance, then over one          |
+
+Nodes are chosen by clicking their art; they drag along the canvas (or
+the view plane), nudge with arrows, raise and lower among siblings.
+
 ## The keys
 
 Figma's letters, because everyone's hands already know them.

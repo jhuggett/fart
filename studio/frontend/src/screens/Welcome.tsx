@@ -10,7 +10,7 @@ export function Welcome() {
 		<div class="app">
 			<div class="topbar">
 				<span class="brand">Uranus</span>
-				<span class="sub">the fastart studio · it emits farts</span>
+				<span class="sub">the reference editor for the Fast Art Format</span>
 				<div class="spacer" />
 				<ThemeButton label />
 				<button class="btn ghost" onClick={() => goDocs("guide")}>

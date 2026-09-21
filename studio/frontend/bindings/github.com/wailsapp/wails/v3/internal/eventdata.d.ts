@@ -16,6 +16,7 @@ declare module "@wailsio/runtime" {
             "menu": string;
             "open-files": string;
             "tool": main$0.ToolCall;
+            "update": main$0.UpdateProgress;
         }
     }
 }

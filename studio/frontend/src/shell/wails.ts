@@ -3,7 +3,7 @@
 
 import * as Project from "../../bindings/studio/projectservice.js";
 import { Events } from "@wailsio/runtime";
-import type { Shell, ChatEvent, ToolCall } from "./shell.ts";
+import type { Shell, ChatEvent, ToolCall, UpdateInfo, UpdateProgress } from "./shell.ts";
 
 export class WailsShell implements Shell {
 	readonly kind = "wails" as const;
@@ -123,6 +123,23 @@ export class WailsShell implements Shell {
 	log(msg: string) {
 		console.log(msg);
 		void Project.Log(msg).catch(() => {});
+	}
+	readonly updates = true;
+	version() {
+		return Project.Version();
+	}
+	async updateCheck(): Promise<UpdateInfo> {
+		const i = await Project.UpdateCheck();
+		return { current: i.current ?? "", latest: i.latest ?? "", available: !!i.available, url: i.url ?? "", assetUrl: i.assetUrl ?? "", asset: i.asset ?? "", size: Number(i.size ?? 0), notes: i.notes ?? "" };
+	}
+	updateApply(assetUrl: string) {
+		return Project.UpdateApply(assetUrl);
+	}
+	updateRelaunch() {
+		return Project.UpdateRelaunch();
+	}
+	onUpdate(cb: (p: UpdateProgress) => void) {
+		Events.On("update", (ev) => cb(ev.data as unknown as UpdateProgress));
 	}
 	onMenu(cb: (id: string) => void) {
 		Events.On("menu", (ev: { data: string }) => cb(ev.data));

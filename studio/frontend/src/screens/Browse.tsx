@@ -7,6 +7,7 @@ import { ChatPanel } from "../ui/ChatPanel.tsx";
 import { shell } from "../shell/shell.ts";
 import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { drawThumb } from "../canvas/draw.ts";
+import { drawSceneThumb } from "../canvas/scene3.ts";
 import { theme } from "../state/theme.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import { Explorer, ExplorerButton } from "../ui/Explorer.tsx";
@@ -18,7 +19,10 @@ function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 	const ref = useRef<HTMLCanvasElement>(null);
 	const rev = theme.rev.value;
 	useEffect(() => {
-		if (ref.current && thumb) drawThumb(ref.current, thumb.doc, thumb.tokens);
+		if (ref.current && thumb) {
+			if (thumb.scene) drawSceneThumb(ref.current, { placed: thumb.scene.placed, space3d: !!thumb.space3d });
+			else drawThumb(ref.current, thumb.doc, thumb.tokens);
+		}
 	}, [thumb, rev]);
 	const dir = dirname(rel);
 	const pal = thumb ? isPaletteFile(thumb.doc) : false;
@@ -34,7 +38,7 @@ function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 			<canvas ref={ref} />
 			<div class="label">
 				<div class="n">{stripExt(basename(rel))}</div>
-				<div class="d">{[dir ? `${dir}/` : "", pal ? "palette" : ""].filter(Boolean).join(" · ")}</div>
+				<div class="d">{[dir ? `${dir}/` : "", pal ? "palette" : "", thumb?.scene ? (thumb.space3d ? "3D scene" : "scene") : thumb?.space3d ? "3D" : ""].filter(Boolean).join(" · ")}</div>
 			</div>
 		</div>
 	);
@@ -83,6 +87,12 @@ export function Browse() {
 				</button>
 				<button class="btn ghost" title="a 3D model: solids to draw in any view and project to 2D files" onClick={() => run("file.newModel")}>
 					new 3D model
+				</button>
+				<button class="btn ghost" title="a scene: files of the project placed, posed, recoloured (a .shart)" onClick={() => run("file.newScene")}>
+					new scene
+				</button>
+				<button class="btn ghost" title="a 3D scene" onClick={() => run("file.newScene3d")}>
+					new 3D scene
 				</button>
 				{shell.chat && (
 					<button class={`btn ghost ${chat.open.value ? "active" : ""}`} title="ask Claude  (⌘ J)" onClick={toggleChat}>

@@ -30,6 +30,7 @@ func init() {
 	application.RegisterEvent[string]("menu")
 	application.RegisterEvent[ChatEvent]("chat")
 	application.RegisterEvent[ToolCall]("tool")
+	application.RegisterEvent[UpdateProgress]("update")
 }
 
 func main() {
@@ -78,7 +79,7 @@ func main() {
 
 	app := application.New(application.Options{
 		Name:        "Uranus",
-		Description: "the fastart studio. It emits farts.",
+		Description: "the reference editor for the Fast Art Format",
 		Services: []application.Service{
 			application.NewService(proj),
 		},

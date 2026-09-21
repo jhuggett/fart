@@ -14,6 +14,7 @@ import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import { ChatPanel } from "../ui/ChatPanel.tsx";
 import { ColorPicker } from "../ui/ColorPicker.tsx";
 import { ModelCanvas } from "../canvas/ModelCanvas.tsx";
+import { TexturesPanel } from "../ui/Textures.tsx";
 import { view } from "../canvas/view.ts";
 import { explorer } from "../state/explorer.ts";
 import { chat, toggleChat } from "../state/chat.ts";
@@ -76,6 +77,16 @@ import {
 	save,
 	projectViews,
 	hullOfPart,
+	textures,
+	addTexture,
+	deleteTexture,
+	renameTexture,
+	setTextureCell,
+	setMap,
+	addMap,
+	deleteMap,
+	setSelTexture,
+	setSelMappingScale,
 	type Tool3,
 } from "../state/model.ts";
 
@@ -495,6 +506,23 @@ function Inspector3() {
 					<div class="fields">
 						<Num label="shade" value={sh.shade ?? 1} min={0} onChange={(v) => setShapeNumber(sel, "shade", v)} title="lighting on the slot's colour, on top of the view's light" wide />
 					</div>
+					{textures().length > 0 && (
+						<div class="line" title="a texture of the file, box mapped over the shape's faces">
+							<span class="k">texture</span>
+							<select class="num" value={sh.texture ?? ""} onChange={(e) => setSelTexture((e.target as HTMLSelectElement).value)}>
+								<option value="">none</option>
+								{textures().map((t) => (
+									<option value={t.name}>{t.name}</option>
+								))}
+							</select>
+						</div>
+					)}
+					{sh.texture && (
+						<div class="fields">
+							<Num label="size" value={sh.mapping?.scale ?? 1} min={0.01} step={0.25} onChange={setSelMappingScale} title="world units per pattern unit: 2 makes the pattern twice as big" wide />
+							{sh.mapping?.uvs && <span class="chip" title="explicit pattern coordinates per corner, from the file">uvs</span>}
+						</div>
+					)}
 					{sh.kind === "ball" && (
 						<div class="fields">
 							<Num label="x" value={sh.at[0]} onChange={(v) => setShapeCoord(sel, "at", 0, v)} />
@@ -673,6 +701,20 @@ function Inspector3() {
 			</div>
 			<Hdr title="Document" />
 			<Text label="name" value={md.doc.value.name ?? ""} onChange={setDocName} />
+			<TexturesPanel
+				api={{
+					textures: textures(),
+					rel: md.path.value ?? "",
+					add: addTexture,
+					remove: deleteTexture,
+					rename: renameTexture,
+					cell: setTextureCell,
+					map: setMap,
+					addMap,
+					removeMap: deleteMap,
+					freshName,
+				}}
+			/>
 			<Hdr title="Colours" hint="the file's colour slots: a shape names a slot" />
 			{palette().map((t, k) => (
 				<div class="row" onContextMenu={(e) => (e.preventDefault(), openContextMenu(e.clientX, e.clientY, [{ label: "Rename", run: () => (renaming.value = { kind: "token", index: k }) }, { label: "Delete colour", danger: true, run: () => deleteToken(k) }]))}>

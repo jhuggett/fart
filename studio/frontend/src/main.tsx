@@ -14,6 +14,8 @@ void boot();
 // screen mapping. Read-only in spirit; nothing in the app uses it.
 import { ed, applyExternalDoc, revertToCheckpoint, flushNow } from "./state/editor.ts";
 import { md, projectViews } from "./state/model.ts";
+import { sc } from "./state/scene.ts";
+import { update } from "./state/update.ts";
 import { view, toScreen, toWorld } from "./canvas/view.ts";
 import { frameW, partXf, worldPivot, poseLever, chainGrabs } from "./canvas/interact.ts";
-(globalThis as { fastart?: unknown }).fastart = { ed, md, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, applyExternalDoc, revertToCheckpoint, flushNow };
+(globalThis as { fastart?: unknown }).fastart = { ed, md, sc, update, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, applyExternalDoc, revertToCheckpoint, flushNow };

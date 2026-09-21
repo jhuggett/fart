@@ -1042,6 +1042,43 @@ code,
 	border-color: var(--danger);
 	color: var(--danger);
 }
+/* self-update: the little window top right */
+.update {
+	position: fixed;
+	top: 44px;
+	right: 14px;
+	z-index: 31;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	background: var(--raised);
+	border: 1px solid var(--edge-strong);
+	border-radius: 10px;
+	padding: 6px 8px 6px 12px;
+	font-size: var(--fs-small);
+	color: var(--text);
+	box-shadow: var(--shadow);
+}
+.update .what .sub {
+	color: var(--text-3);
+}
+.update .bar {
+	display: inline-block;
+	width: 120px;
+	height: 6px;
+	border-radius: 3px;
+	background: var(--edge);
+	overflow: hidden;
+}
+.update .bar .fill {
+	display: block;
+	height: 100%;
+	background: var(--accent);
+	transition: width 0.15s;
+}
+.update a.btn {
+	text-decoration: none;
+}
 .toast {
 	position: fixed;
 	left: 50%;

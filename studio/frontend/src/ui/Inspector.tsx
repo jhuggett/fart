@@ -60,7 +60,18 @@ import {
 	targetOf,
 	clearTarget,
 	setTokenEmissive,
+	textures,
+	addTexture,
+	deleteTexture,
+	renameTexture,
+	setTextureCell,
+	setMap,
+	addMap,
+	deleteMap,
+	setSelTexture,
+	setSelMapping,
 } from "../state/editor.ts";
+import { TexturesPanel } from "./Textures.tsx";
 import { renaming, openContextMenu, type MenuItem } from "../state/menu.ts";
 import { paletteFiles } from "../state/project.ts";
 import { askNewPalette } from "./fileMenu.ts";
@@ -162,6 +173,26 @@ function ShapeSection({ sh, collision }: { sh: Shape; collision: boolean }) {
 			{n === 1 && !collision && (
 				<div class="fields">
 					<Num label="shade" value={sh.shade ?? 1} min={0} onChange={(v) => setShapeNumber(sh, "shade", null, v)} title="lighting on the slot's colour: 1 as is, below darker, above brighter. A palette swap keeps it." wide />
+				</div>
+			)}
+			{!collision && textures().length > 0 && (
+				<div class="line" title="a texture of the file, tiled over the shape, over its colour">
+					<span class="k">texture</span>
+					<select class="num" value={sh.texture ?? ""} onChange={(e) => setSelTexture((e.target as HTMLSelectElement).value)}>
+						<option value="">none</option>
+						{textures().map((t) => (
+							<option value={t.name}>{t.name}</option>
+						))}
+					</select>
+				</div>
+			)}
+			{n === 1 && !collision && sh.texture && (
+				<div class="fields" title="where the pattern's origin lands, its turn and its size, in this shape's space">
+					<Num label="x" value={sh.mapping?.at?.[0] ?? 0} onChange={(v) => setSelMapping({ at: [v, sh.mapping?.at?.[1] ?? 0] }, "map-x")} />
+					<Num label="y" value={sh.mapping?.at?.[1] ?? 0} onChange={(v) => setSelMapping({ at: [sh.mapping?.at?.[0] ?? 0, v] }, "map-y")} />
+					<Num label="turn°" value={(sh.mapping?.angle ?? 0) * DEG} step={5} onChange={(v) => setSelMapping({ angle: v / DEG }, "map-angle")} />
+					<Num label="size" value={sh.mapping?.scale ?? 1} min={0.01} step={0.1} onChange={(v) => setSelMapping({ scale: v }, "map-scale")} />
+					{sh.mapping?.xf && <span class="chip" title="an affine mapping, as a projection writes it; typing a number replaces it with a placement">projected</span>}
 				</div>
 			)}
 			<div class="line" style="margin-top:8px;gap:6px">
@@ -466,6 +497,20 @@ function DocumentSection() {
 					</span>
 				</div>
 			</Section>
+			<TexturesPanel
+				api={{
+					textures: textures(),
+					rel: ed.path.value ?? "",
+					add: addTexture,
+					remove: deleteTexture,
+					rename: renameTexture,
+					cell: setTextureCell,
+					map: setMap,
+					addMap,
+					removeMap: deleteMap,
+					freshName,
+				}}
+			/>
 			<Section title="Colours" hint="the file's colour slots: a shape names a slot, this says what it means today. Change one and every shape follows.">
 				{toks.map((t, k) => (
 					<div class={`row ${k === ed.curTok.value ? "active" : ""}`} onClick={() => (ed.curTok.value = k)} onDblClick={() => (renaming.value = { kind: "token", index: k })}>

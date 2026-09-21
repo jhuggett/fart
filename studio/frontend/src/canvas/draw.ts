@@ -3,7 +3,16 @@
 // a `map` so the same code draws rest space and a posed state.
 
 import { canvasColors } from "../state/theme.ts";
-import { colorOf, cssColor, docBounds, drawList, shadeColor, xfApply, type Doc, type Shape, type StatePart, type Token, type Vec2, shapesOf } from "@fastart/core";
+import { colorOf, cssColor, docBounds, drawList, mappingXf, shadeColor, xfApply, xfMul, type Doc, type Shape, type StatePart, type Token, type Vec2, type Xf, shapesOf } from "@fastart/core";
+
+/** A texture's colour map, rendered: what the painter tiles (see state/textures.ts). */
+export interface PatternSource {
+	canvas: HTMLCanvasElement | null;
+	mode?: "paint" | "mask";
+	/** pixels per drawing unit in the canvas, along x and y */
+	sx: number;
+	sy: number;
+}
 
 export type Map2 = (p: Vec2) => Vec2;
 export const ident: Map2 = (p) => p;
@@ -19,7 +28,7 @@ export function tracePoly(ctx: CanvasRenderingContext2D, pts: readonly Vec2[], m
 	ctx.closePath();
 }
 
-export function fillShape(ctx: CanvasRenderingContext2D, sh: Shape, css: string, map: Map2 = ident, scale = 1) {
+export function fillShape(ctx: CanvasRenderingContext2D, sh: Shape, css: string | CanvasPattern, map: Map2 = ident, scale = 1) {
 	ctx.fillStyle = css;
 	ctx.strokeStyle = css;
 	switch (sh.kind) {
@@ -96,15 +105,34 @@ export interface DrawOptions {
 	/** A state name or a pose list (a clip frame); absent draws every part at rest. */
 	pose?: string | readonly StatePart[];
 	alpha?: number;
+	/** 1.5: rendered colour maps by texture name; a textured shape is filled with its pattern over its token */
+	patterns?: Map<string, PatternSource>;
 }
 
-/** The whole picture, in world units (set the transform first). */
+/**
+ * The whole picture, in world units (set the transform first). A
+ * textured shape (1.5) paints its token, then its pattern through the
+ * mapping: pattern space → the shape's rest space → the world, with the
+ * canvas's pixels scaled back to drawing units.
+ */
 export function drawDoc(ctx: CanvasRenderingContext2D, doc: Doc, tokens: readonly Token[], opts: DrawOptions = {}) {
 	ctx.globalAlpha = opts.alpha ?? 1;
 	for (const { part, xf, scale } of drawList(doc, opts.pose)) {
 		const map: Map2 = (p) => xfApply(xf, p);
 		for (const sh of shapesOf(doc, part)) {
-			fillShape(ctx, sh, cssColor(shadeColor(colorOf(tokens, sh.color ?? ""), sh.shade)), map, scale);
+			const base = shadeColor(colorOf(tokens, sh.color ?? ""), sh.shade);
+			fillShape(ctx, sh, cssColor(base), map, scale);
+			const src = sh.texture ? opts.patterns?.get(sh.texture) : undefined;
+			if (!src?.canvas) continue;
+			const pattern = ctx.createPattern(src.canvas, "repeat");
+			if (!pattern) continue;
+			const M: Xf = xfMul(xfMul(xf, mappingXf(sh.mapping)), [1 / src.sx, 0, 0, 1 / src.sy, 0, 0]);
+			pattern.setTransform(new DOMMatrix([M[0], M[1], M[2], M[3], M[4], M[5]]));
+			const op = ctx.globalCompositeOperation;
+			if (src.mode === "mask") ctx.globalCompositeOperation = "multiply";
+			// shade applies to the pattern too: dim it with the token's shade through alpha on a dark layer is wrong; keep the token's shade on the base only
+			fillShape(ctx, sh, pattern, map, scale);
+			ctx.globalCompositeOperation = op;
 		}
 	}
 	ctx.globalAlpha = 1;

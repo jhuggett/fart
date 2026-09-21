@@ -3,21 +3,24 @@
 // it and the ways a project gets opened (dialog, drop, argv, the Finder).
 
 import { signal, batch } from "@preact/signals";
-import { parseDoc, resolvePalettes, stringifyDoc, isPaletteFile, as3d, projectDoc, type Doc, type Token } from "@fastart/core";
+import { parseDoc, parseScene, loadScene, flattenScene, resolvePalettes, stringifyDoc, isPaletteFile, as3d, projectDoc, type Doc, type Token, type LoadedScene, type Placed } from "@fastart/core";
 import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
 import { openModel, leaveModel, md } from "./model.ts";
+import { openScene, leaveScene, sc } from "./scene.ts";
 import { ask, confirm } from "./prompt.ts";
 import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
 import { refreshSetup } from "./setup.ts";
 
-export type Screen = "welcome" | "browse" | "edit" | "model" | "docs" | "setup";
+export type Screen = "welcome" | "browse" | "edit" | "model" | "scene" | "docs" | "setup";
 
 export interface Thumb {
 	doc: Doc;
 	tokens: Token[];
 	/** 1.3: the file is a 3D model; the thumb is its front view */
 	space3d?: boolean;
+	/** a .shart: the scene, loaded, and its instances placed for the thumb */
+	scene?: { scene: LoadedScene; placed: Placed[] };
 }
 
 export const project = {
@@ -87,6 +90,7 @@ export async function openProject(root: string) {
 	while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
+	if (sc.path.value) await leaveScene();
 	batch(() => {
 		project.root.value = r;
 		project.name.value = basename(r);
@@ -136,12 +140,14 @@ export async function forgetRecent(root: string) {
 export async function goWelcome() {
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
+	if (sc.path.value) await leaveScene();
 	project.screen.value = "welcome";
 }
 
 export async function goBrowse() {
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
+	if (sc.path.value) await leaveScene();
 	project.screen.value = "browse";
 	await refreshFiles();
 }
@@ -157,7 +163,7 @@ export function leaveDocs() {
 }
 
 export function goSetup() {
-	if (project.screen.value !== "setup") project.setupBack.value = project.screen.value === "edit" || project.screen.value === "model" ? "browse" : project.screen.value;
+	if (project.screen.value !== "setup") project.setupBack.value = project.screen.value === "edit" || project.screen.value === "model" || project.screen.value === "scene" ? "browse" : project.screen.value;
 	project.screen.value = "setup";
 }
 
@@ -176,6 +182,19 @@ export async function refreshFiles() {
 		files.map(async (rel) => {
 			const text = await shell.readFile(root, rel);
 			if (text === null) return;
+			if (rel.endsWith(".shart")) {
+				// a scene: read what it names, place it, for the shelf
+				const { raw } = parseScene(text);
+				if (!raw) return;
+				try {
+					const dir = dirname(rel);
+					const loaded = await loadScene(raw, (ref) => shell.readFile(root, joinRel(dir, ref)), "", [], basename(rel));
+					thumbs.set(rel, { doc: { version: 1, name: raw.name }, tokens: [], space3d: raw.space === "3d", scene: { scene: loaded, placed: flattenScene(loaded) } });
+				} catch {
+					// a scene that cannot be read stays off the shelf
+				}
+				return;
+			}
 			let doc: Doc | null = null;
 			try {
 				const r = parseDoc(text);
@@ -208,6 +227,18 @@ export async function openDoc(rel: string): Promise<boolean> {
 	const root = project.root.value;
 	// a 3D file goes to the model screen; anything else (or nothing yet) to the editor
 	const text = root === null ? null : await shell.readFile(root, rel);
+	if (rel.endsWith(".shart")) {
+		if (text === null) {
+			project.error.value = `${rel} could not be read`;
+			return false;
+		}
+		if (ed.path.value) await leaveFile();
+		if (md.path.value) await leaveModel();
+		const ok = await openScene(rel, text);
+		if (ok) project.screen.value = "scene";
+		return ok;
+	}
+	if (sc.path.value) await leaveScene();
 	if (text !== null && /"space"\s*:\s*"3d"/.test(text)) {
 		let is3d = false;
 		try {
@@ -226,6 +257,26 @@ export async function openDoc(rel: string): Promise<boolean> {
 	const ok = await openFile(rel);
 	if (ok) project.screen.value = "edit";
 	return ok;
+}
+
+/** A new scene (.shart), empty, of a space; then the scene screen. */
+export async function newScene(name: string, space3d: boolean) {
+	const root = project.root.value;
+	if (root === null) return;
+	const rel = name.endsWith(".shart") ? name : `${name}.shart`;
+	if (project.files.value.includes(rel)) {
+		project.error.value = `${rel} already exists`;
+		return;
+	}
+	const scene = { version: 1, ...(space3d ? { space: "3d" } : {}), name: basename(rel.replace(/\.shart$/, "")), nodes: [] };
+	try {
+		await shell.writeFile(root, rel, JSON.stringify(scene, null, 2) + "\n");
+	} catch (e) {
+		project.error.value = `could not write ${rel}: ${String(e)}`;
+		return;
+	}
+	await refreshFiles();
+	await openDoc(rel);
 }
 
 /** A new 3D file: a part, a colour, a state; then the model screen. */
@@ -250,7 +301,7 @@ export async function newModel(name: string) {
 
 /** The project's palette files: colours and no parts. */
 export function paletteFiles(): string[] {
-	return [...project.thumbs.value].filter(([, t]) => isPaletteFile(t.doc)).map(([rel]) => rel).sort();
+	return [...project.thumbs.value].filter(([, t]) => !t.scene && isPaletteFile(t.doc)).map(([rel]) => rel).sort();
 }
 
 /** The files that draw from a palette file, by its project path. */

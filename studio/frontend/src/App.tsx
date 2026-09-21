@@ -11,12 +11,16 @@ import { Welcome } from "./screens/Welcome.tsx";
 import { Browse } from "./screens/Browse.tsx";
 import { Editor } from "./screens/Editor.tsx";
 import { Model } from "./screens/Model.tsx";
+import { SceneScreen } from "./screens/Scene.tsx";
+import { sc } from "./state/scene.ts";
 import { md, curClip as curClip3 } from "./state/model.ts";
 import { Docs } from "./screens/Docs.tsx";
 import { Setup } from "./screens/Setup.tsx";
 import { Prompt, Confirm } from "./ui/Prompt.tsx";
 import { ContextMenu } from "./ui/ContextMenu.tsx";
 import { CommandPalette } from "./ui/CommandPalette.tsx";
+import { UpdateBadge } from "./ui/UpdateBadge.tsx";
+import { scheduleUpdateChecks } from "./state/update.ts";
 
 initCommands();
 
@@ -40,6 +44,7 @@ function onKey(e: KeyboardEvent) {
 		else if (screen === "edit") ix.space = true;
 		else if (screen === "model" && curClip3()) run("clip.play");
 		else if (screen === "model") md.space = true;
+		else if (screen === "scene") run("clip.play");
 		return;
 	}
 	const id = KEYMAP[k];
@@ -51,6 +56,7 @@ function onKeyUp(e: KeyboardEvent) {
 	if (e.code === "Space") {
 		ix.space = false;
 		md.space = false;
+		sc.space = false;
 	}
 }
 
@@ -59,6 +65,7 @@ export function App() {
 		window.addEventListener("keydown", onKey);
 		window.addEventListener("keyup", onKeyUp);
 		shell.onMenu((id) => void run(id));
+		scheduleUpdateChecks();
 		return () => {
 			window.removeEventListener("keydown", onKey);
 			window.removeEventListener("keyup", onKeyUp);
@@ -72,12 +79,14 @@ export function App() {
 			{screen === "browse" && <Browse />}
 			{screen === "edit" && <Editor />}
 			{screen === "model" && <Model />}
+			{screen === "scene" && <SceneScreen />}
 			{screen === "docs" && <Docs />}
 			{screen === "setup" && <Setup />}
 			<Prompt />
 			<Confirm />
 			<ContextMenu />
 			<CommandPalette />
+			<UpdateBadge />
 			{err && (
 				<div class="toast" onClick={() => (project.error.value = null)}>
 					{err}

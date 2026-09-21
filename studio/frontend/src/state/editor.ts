@@ -21,6 +21,8 @@ import {
 	type State,
 	type StatePart,
 	type Token,
+	type Texture,
+	type TextureMap,
 	type Vec2,
 	type Issue,
 	type Rgba,
@@ -40,6 +42,7 @@ import {
 	type Anchor,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
+import { loadPatterns, unresolvedOf, type TexturePattern } from "./textures.ts";
 import { confirm } from "./prompt.ts";
 import { project } from "./project.ts";
 import { dirname, joinRel, relativeTo } from "./paths.ts";
@@ -60,6 +63,8 @@ export const ed = {
 	path: signal<string | null>(null),
 	/** every token in lookup order: shared refs first, local last */
 	tokens: signal<Token[]>([]),
+	/** 1.5: the file's textures, resolved and rendered, by name */
+	patterns: signal<Map<string, TexturePattern>>(new Map()),
 	/** the tokens palette_refs supplied, read-only here */
 	shared: signal<Token[]>([]),
 	/** palette_refs that could not be read */
@@ -298,8 +303,10 @@ export function mutate(fn: (d: Doc) => void, merge?: string) {
 		pushUndo();
 		mergeKey = merge ?? null;
 	}
+	const texBefore = JSON.stringify(ed.doc.value.textures ?? []);
 	fn(doc());
 	touch();
+	if (JSON.stringify(ed.doc.value.textures ?? []) !== texBefore) void reloadPatterns();
 }
 
 export function endGesture() {
@@ -308,6 +315,7 @@ export function endGesture() {
 
 function restore(snap: Snap) {
 	const refsBefore = JSON.stringify(ed.doc.value.palette_refs ?? []);
+	const texBefore = JSON.stringify(ed.doc.value.textures ?? []);
 	batch(() => {
 		ed.doc.value = JSON.parse(snap.doc) as Doc;
 		ed.curState.value = snap.state;
@@ -322,6 +330,7 @@ function restore(snap: Snap) {
 	markDirty();
 	scheduleFlush(); // an undo is a change the disk must see too
 	if (JSON.stringify(ed.doc.value.palette_refs ?? []) !== refsBefore) void reloadShared();
+	else if (JSON.stringify(ed.doc.value.textures ?? []) !== texBefore) void reloadPatterns();
 }
 
 export function undo() {
@@ -619,6 +628,16 @@ async function resolveShared(d: Doc, rel: string): Promise<{ shared: Token[]; un
 	return { shared: resolved.tokens.slice(0, resolved.tokens.length - (d.palette?.length ?? 0)), unresolved: resolved.unresolved };
 }
 
+/** The textures changed (or a map's file did): read and render them again. */
+export async function reloadPatterns() {
+	const rel = ed.path.value;
+	if (!rel) return;
+	const p = await loadPatterns(ed.doc.value, rel);
+	if (ed.path.value !== rel) return;
+	ed.patterns.value = p;
+	ed.rev.value++;
+}
+
 /** The refs changed (linked, unlinked, undone): read them again and look the file over. */
 export async function reloadShared() {
 	const rel = ed.path.value;
@@ -626,7 +645,8 @@ export async function reloadShared() {
 	const d = ed.doc.value;
 	const { shared, unresolved } = await resolveShared(d, rel);
 	if (ed.path.value !== rel) return;
-	const r = validate(d, { refTokens: unresolved.length ? null : shared.map((t) => t.name) });
+	await reloadPatterns();
+	const r = validate(d, { refTokens: unresolved.length ? null : shared.map((t) => t.name), unresolvedRefs: unresolvedOf(ed.patterns.value) });
 	batch(() => {
 		ed.shared.value = shared;
 		ed.unresolved.value = unresolved;
@@ -780,6 +800,7 @@ export async function openFile(rel: string): Promise<boolean> {
 	diskMtime = await shell.stat(root(), rel);
 	await adoptCheckpoint(rel, text);
 	startWatch(rel);
+	void reloadPatterns();
 	return true;
 }
 
@@ -1570,4 +1591,85 @@ export function setTokenColor(k: number, rgb: Rgba) {
 	mutate((d) => {
 		d.palette![k].rgb = rgb;
 	}, `token-${k}`);
+}
+
+// ------------------------------------------------------------- textures (1.5)
+
+export function textures(): Texture[] {
+	return doc().textures ?? [];
+}
+export function addTexture(name: string, ref: string): number {
+	mutate((d) => (d.textures ??= []).push({ name, cell: [8, 8], maps: { color: { ref } } }));
+	return textures().length - 1;
+}
+export function deleteTexture(i: number) {
+	const t = textures()[i];
+	if (!t) return;
+	mutate((d) => {
+		d.textures!.splice(i, 1);
+		for (const p of d.parts ?? []) for (const sh of p.shapes ?? []) if (sh.texture === t.name) {
+			delete sh.texture;
+			delete sh.mapping;
+		}
+	});
+}
+export function renameTexture(i: number, name: string) {
+	const t = textures()[i];
+	if (!t || !name || textures().some((q) => q !== t && q.name === name)) return;
+	const old = t.name;
+	mutate((d) => {
+		d.textures![i].name = name;
+		for (const p of d.parts ?? []) for (const sh of p.shapes ?? []) if (sh.texture === old) sh.texture = name;
+	});
+}
+export function setTextureCell(i: number, axis: 0 | 1, v: number) {
+	mutate((d) => {
+		const c = [...d.textures![i].cell] as Vec2;
+		c[axis] = Math.max(0.01, v);
+		d.textures![i].cell = c;
+	}, `tex-cell-${i}-${axis}`);
+}
+export function setMap(i: number, map: string, patch: Partial<TextureMap>) {
+	mutate((d) => {
+		const m = d.textures![i].maps[map];
+		if (!m) return;
+		for (const [k, v] of Object.entries(patch)) {
+			if (v === undefined || v === "" || (k === "mode" && v === "paint")) delete (m as Record<string, unknown>)[k];
+			else (m as Record<string, unknown>)[k] = v;
+		}
+	});
+}
+export function addMap(i: number, map: string) {
+	const t = textures()[i];
+	if (!t || !map || t.maps[map]) return;
+	const ref = t.maps.color?.ref ?? Object.values(t.maps)[0]?.ref ?? "";
+	mutate((d) => (d.textures![i].maps[map] = { ref }));
+}
+export function deleteMap(i: number, map: string) {
+	const t = textures()[i];
+	if (!t || Object.keys(t.maps).length <= 1) return;
+	mutate((d) => delete d.textures![i].maps[map]);
+}
+/** The selection takes a texture ("" for none) and a fresh placement. */
+export function setSelTexture(name: string) {
+	mutate(() => {
+		for (const sh of selShapes()) {
+			if (name) sh.texture = name;
+			else {
+				delete sh.texture;
+				delete sh.mapping;
+			}
+		}
+	});
+}
+export function setSelMapping(patch: { at?: Vec2; angle?: number; scale?: number }, merge?: string) {
+	mutate(() => {
+		for (const sh of selShapes()) {
+			if (!sh.texture) continue;
+			const m = { ...(sh.mapping ?? {}) };
+			delete m.xf; // a placement replaces a projected affine
+			Object.assign(m, patch);
+			sh.mapping = m;
+		}
+	}, merge);
 }

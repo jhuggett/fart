@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Uranus
-Comment=the fastart studio. It emits farts.
+Comment=the reference editor for the Fast Art Format
 # The Exec line includes %u to pass the URL to the application
 Exec=/usr/local/bin/Uranus %u
 Terminal=false

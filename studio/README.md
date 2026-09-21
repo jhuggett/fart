@@ -1,6 +1,6 @@
 # Uranus
 
-The fastart studio. It emits farts.
+The reference editor for the Fast Art Format.
 
 The Fast Art Format editor as a desktop app: a thin Go shell (Wails 3)
 around a web frontend (Preact + a canvas). The same frontend also runs

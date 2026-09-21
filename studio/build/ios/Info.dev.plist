@@ -7,7 +7,7 @@
 		<key>CFBundleExecutable</key>
 		<string>Uranus</string>
 		<key>CFBundleGetInfoString</key>
-		<string>It is called .fart on purpose.</string>
+		<string>A specification-driven vector art format for interactive software.</string>
 		<key>CFBundleIdentifier</key>
 		<string>com.fastart.studio.dev</string>
 		<key>CFBundleName</key>
