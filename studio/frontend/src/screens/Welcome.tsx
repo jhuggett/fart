@@ -1,50 +1,71 @@
-import { project, pickFolder, openProject, forgetRecent, goDocs, goSetup } from "../state/project.ts";
+// The launcher: a small window. On the left, the mark and the two ways
+// in (a new project, an existing one); on the right, the projects opened
+// before. A folder or a .fart dropped on it opens too.
+
+import { useEffect } from "preact/hooks";
+import { signal } from "@preact/signals";
+import { project, pickFolder, createProject, openProject, forgetRecent, goDocs, goSetup } from "../state/project.ts";
 import { setup } from "../state/setup.ts";
 import { shell } from "../shell/shell.ts";
 import { basename, pretty } from "../state/paths.ts";
 import { ThemeButton } from "../ui/ThemeMenu.tsx";
+import { I } from "../ui/Icons.tsx";
+
+const version = signal("");
 
 export function Welcome() {
 	const recents = project.recents.value;
+	useEffect(() => {
+		if (shell.updates && !version.value) void shell.version().then((v) => (version.value = v));
+	}, []);
 	return (
-		<div class="app">
-			<div class="topbar">
-				<span class="brand">Uranus</span>
-				<span class="sub">the reference editor for the Fast Art Format</span>
-				<div class="spacer" />
-				<ThemeButton label />
-				<button class="btn ghost" onClick={() => goDocs("guide")}>
-					Docs
-				</button>
-			</div>
-			<div class="welcome">
-				<div>
-					<div class="hdr">Start</div>
-					<div style="display:flex;align-items:center;gap:12px;margin:8px 0 22px">
-						<button class="btn primary" onClick={() => void pickFolder()}>
-							Open Folder…
-						</button>
-						<span class="chip">Cmd+O</span>
-					</div>
-					<p>A folder is a project: every .fart inside it, one shelf.</p>
-					<p>Double-click a .fart in the Finder, or drop one on this window, to open it here.</p>
-					<p>
-						From a terminal: <code class="kbd">studio &lt;folder&gt;</code> or <code class="kbd">studio thing.fart</code>
-					</p>
-					<p style="margin-top:22px">
-						New here? The <a onClick={() => goDocs("guide")}>docs</a> live inside the app: the guide, and the format itself.
-					</p>
-					<p>
-						Working with Claude, or an Odin game? <a onClick={goSetup}>Setup</a> checks what this machine has in place and installs the rest
-						{setup.attention.value ? " (something is missing)" : ""}.
-					</p>
+		<div class="launcher">
+			<div class="launcher-left">
+				<div class="mark">
+					<span class="brand">Uranus</span>
+					<span class="tag">the reference editor for the Fast Art Format</span>
+					{version.value && <span class="ver">{version.value}</span>}
 				</div>
+				<div class="ways">
+					<button class="way" onClick={() => void createProject()}>
+						<span class="ico-box">
+							<I.plus size={16} />
+						</span>
+						<span class="w">
+							<b>Create New Project</b>
+							<small>a folder with assets/ inside</small>
+						</span>
+					</button>
+					<button class="way" onClick={() => void pickFolder()}>
+						<span class="ico-box">
+							<I.folder size={16} />
+						</span>
+						<span class="w">
+							<b>Open Existing Project</b>
+							<small>any folder of .fart files · ⌘⇧O</small>
+						</span>
+					</button>
+				</div>
+				<div class="launcher-foot">
+					<button class="btn ghost small" onClick={() => goDocs("guide")}>
+						Docs
+					</button>
+					{shell.setup && (
+						<button class={`btn ghost small ${setup.attention.value ? "attention" : ""}`} title="agents and loaders: what is in place, what to install" onClick={goSetup}>
+							Setup
+						</button>
+					)}
+					<ThemeButton />
+				</div>
+			</div>
+			<div class="launcher-right">
+				<div class="hdr">Recent Projects</div>
+				{recents.length === 0 && <p class="empty">Projects you open show up here. Drop a folder on this window to open it.</p>}
 				<div class="recent">
-					<div class="hdr">Recent</div>
-					{recents.length === 0 && <p style="color:var(--faint)">Projects you open will show up here.</p>}
 					{recents.map((r) => (
 						<div
 							class="recent-row"
+							key={r}
 							onClick={() =>
 								void shell.isDir(r).then((ok) => {
 									if (ok) return openProject(r);
@@ -53,6 +74,9 @@ export function Welcome() {
 								})
 							}
 						>
+							<span class="glyph">
+								<I.folder size={14} />
+							</span>
 							<span class="n">
 								<b>{basename(r)}</b>
 								<small>{pretty(r, project.home.value)}</small>

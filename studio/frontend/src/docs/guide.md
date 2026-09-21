@@ -8,21 +8,29 @@ conforming reader would.
 
 ## Projects
 
-A folder is a project. Open one with **Open Folder…** (Cmd+O), by
-dropping a folder on the window, by double-clicking a `.fart` in the
-Finder, or from a terminal: `studio some/dir`, `studio thing.fart`.
-Recent projects wait on the welcome screen.
+A folder is a project. The app opens on the **launcher**: **Create New
+Project** makes a folder with `assets/` inside (new assets land there);
+**Open Existing Project** (Cmd+Shift+O) takes any folder of `.fart`
+files; recent projects wait on the right. Dropping a folder on the
+window, double-clicking a `.fart` in the Finder, or `studio some/dir`
+and `studio thing.fart` from a terminal open one too.
 
-An open project is the **shelf**: every `.fart` below the folder as a live
-thumbnail, nested folders and all. Click one to edit. **new file** makes
-one; a name like `enemies/bat` makes the folder too. **Browse** (or
-Cmd+O) brings the shelf back; **Open…** switches projects; **Projects**
-returns to the welcome screen.
+A project is a split view. The **sidebar** on the left (Cmd+B) lists the
+assets as a tree; its **+** adds an asset, a 3D asset, a palette, a scene
+or a 3D scene (a name like `enemies/bat` makes the folder too), and ↻
+re-reads the folder. With nothing open the canvas is the **shelf**, every
+asset as a live thumbnail: click one to open it. Opening an asset pushes
+the sidebar into it (layers, states, clips; a scene's nodes) and its +
+adds to the asset; **‹** goes back to the assets with the asset still on
+the canvas, lit in the tree. Cmd+W closes the asset and shows the shelf.
 
-The **explorer** on the left (☰, or Cmd+B) is the same project as a
-tree, beside the shelf and beside the canvas: click a file to open it
-from anywhere, hover a folder for **+** to start a file inside it. The
-open file is lit, with an amber dot while it has unsaved changes.
+The **project bar** heads the canvas: the project's name, its branch
+when the folder is in a git repository (click to switch), then the
+**asset** and the **state** as quick switchers (Cmd+Shift+P, Cmd+Shift+S).
+The tools float at the bottom of the canvas. The **inspector** on the
+right (Cmd+Alt+0) shows what is selected, else the asset, else the
+project; a click on empty canvas lets go of everything and brings the
+asset back.
 
 ## The editor
 
@@ -91,7 +99,7 @@ click on a swatch opens the picker, a double-click on a name renames it
 (shapes follow), × removes it.
 
 A **palette file** is a `.fart` with colours and no parts: a project's
-shared vocabulary of slots. **new palette** on the shelf makes one (a
+shared vocabulary of slots. **Palette** in the sidebar's + makes one (a
 plain name lands in `palettes/`), and opening one shows only its
 swatches. Link a palette file to an art file under **Shared palettes**
 (+ link); its slots then appear under *From shared*, greyed, to paint
@@ -123,7 +131,7 @@ Claude Code was found.
 
 ## Setup: agents and loaders
 
-**Setup** (on the welcome screen, and in the shelf's top bar) checks
+**Setup** (on the launcher, and under ⋯ in the project bar) checks
 what this machine and the open project's repository have in place for
 fastart, and installs what is missing with one click: the Claude Code
 skill in `~/.claude/skills/fastart` (the format in one page, so Claude
@@ -237,7 +245,7 @@ in-game. Esc deselects, X deletes, C flips back.
 
 ## Themes
 
-The ◐ button in any top bar picks a theme: Graphite (the default),
+The ◐ button in the project bar picks a theme: Graphite (the default),
 Midnight, Moss, Plum, Paper (light), and High contrast, or **System** to
 follow the OS between Graphite and Paper. The canvas grid, selection and
 handles follow the panels. The choice is remembered per device, so a
@@ -254,8 +262,8 @@ Cmd+Z undoes; Cmd+Shift+Z (or Cmd+Y) redoes. `?` opens these docs.
 
 ## The panels
 
-Every panel has a draggable edge: the explorer, the layers column, the
-inspector, and the Ask panel in either dock. Drag to resize, double-click
+Every panel has a draggable edge: the sidebar, the inspector, and the
+Ask panel in either dock. Drag to resize, double-click
 the edge to put it back. Sizes are remembered on this device.
 
 ## Saving is a checkpoint, not a copy
@@ -263,7 +271,7 @@ the edge to put it back. Sizes are remembered on this device.
 The file on disk always mirrors what you see, written a beat after every
 change, so a game hot-reloading the file shows your experiment live.
 **Save** (Cmd+S) marks the checkpoint; leaving the file any other way —
-Browse, opening another file, quitting — rolls the disk back to the last
+closing it, opening another, quitting — rolls the disk back to the last
 checkpoint. The amber dot by the filename means "uncommitted: this rolls
 back unless you Save." The checkpoint also lives beside the file as
 `<name>.fart~`, rewritten at every open and save, so even a crash can't
@@ -279,7 +287,7 @@ studio does not know ride along untouched, load to save.
 
 ## Serve: the tablet workflow
 
-**Serve** on the shelf puts this same editor on your network (port 4747)
+**Serve** (under ⋯ in the project bar) puts this same editor on your network (port 4747)
 and shows the URL and a QR code. Scan it and the editor opens in the
 tablet's browser, on the same project. Draw with the pencil; one finger
 draws, two fingers pan and pinch. Every change streams back to disk. No
@@ -315,8 +323,8 @@ shading the slot instead of picking a darker colour.
 ## 3D models
 
 A file with `"space": "3d"` is a model, not a drawing: mesh, ball and
-rod shapes, three-coordinate points, turns about x, y and z. **New 3D
-model** on the shelf makes one; opening one lands in the model screen,
+rod shapes, three-coordinate points, turns about x, y and z. **3D
+Asset** in the sidebar's + makes one; opening one lands in the model screen,
 the same four regions with the model turned under a **view**.
 
 - **The view** is a turn laid on the model. Pick front, back, left,
@@ -369,8 +377,8 @@ the same four regions with the model turned under a **view**.
 ## Scenes
 
 A `.shart` file (a Scene Hierarchy of Art, dot-s-h-art) composes the
-project's files into a scene and draws nothing of its own. **New scene**
-or **new 3D scene** on the shelf makes one; opening one lands in the
+project's files into a scene and draws nothing of its own. **Scene** or
+**3D Scene** in the sidebar's + makes one; opening one lands in the
 scene screen.
 
 - **Nodes** on the left are the tree: an **instance** places a file of

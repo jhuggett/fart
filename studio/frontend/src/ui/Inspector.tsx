@@ -604,6 +604,8 @@ export function Inspector() {
 	const collide = ed.collide.value;
 	const clip = curClip();
 	const sh = collide ? colShape() : selShape();
+	// a part chosen on purpose (a layer row, a hit, a grip) shows; an empty click on the canvas lets go of it
+	const picked = ed.partPicked.value;
 	return (
 		<div class="panel right inspector">
 			{collide && (sh ? <ShapeSection sh={sh} collision /> : <Section title="Collision" hint="shapes a game may treat as solid; never drawn">
@@ -611,8 +613,8 @@ export function Inspector() {
 			</Section>)}
 			{!collide && clip && <ClipSection />}
 			{!collide && !clip && sh && <ShapeSection sh={sh} collision={false} />}
-			{!collide && <PartSection />}
-			{!collide && !clip && !sh && <DocumentSection />}
+			{!collide && (sh || picked) && <PartSection />}
+			{!collide && !clip && !sh && !picked && <DocumentSection />}
 		</div>
 	);
 }

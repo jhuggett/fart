@@ -18,6 +18,11 @@ export const contextMenu = signal<{ x: number; y: number; items: MenuItem[] } | 
 export function openContextMenu(x: number, y: number, items: MenuItem[]) {
 	contextMenu.value = { x, y, items };
 }
+/** The same menu, dropped from a button's bottom-left corner. */
+export function openMenuBelow(el: HTMLElement, items: MenuItem[]) {
+	const r = el.getBoundingClientRect();
+	contextMenu.value = { x: r.left, y: r.bottom + 4, items };
+}
 export function closeContextMenu() {
 	if (contextMenu.value) contextMenu.value = null;
 }

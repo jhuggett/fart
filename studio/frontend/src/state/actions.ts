@@ -3,11 +3,12 @@
 
 import { register } from "./commands.ts";
 import { ed, save, revertToCheckpoint, undo, redo, copySel, pasteClip, cutSel, dupSel, deleteSel, selOrder, selectAll, endGesture, curClip, curPart, addKey, type Tool } from "./editor.ts";
-import { project, goBrowse, goWelcome, goDocs, pickFolder, newFile, newModel, newScene, toggleServe } from "./project.ts";
+import { project, goBrowse, goWelcome, goDocs, pickFolder, createProject, newFile, newModel, newScene, toggleServe, inWorkspace, switchBranch } from "./project.ts";
 import { view, fitBounds, zoomBy } from "../canvas/view.ts";
 import { escape, polyEnter, selBounds, nudgeWorld } from "../canvas/interact.ts";
 import { toggleChat } from "./chat.ts";
-import { toggleExplorer } from "./explorer.ts";
+import { sidebar, toggleSidebar, toggleInspector, popToAssets, pushAsset, openAsset } from "./sidebar.ts";
+import { askNewPalette } from "../ui/fileMenu.ts";
 import { openPalette, renaming } from "./menu.ts";
 import { ask } from "./prompt.ts";
 import { shell } from "../shell/shell.ts";
@@ -24,9 +25,15 @@ const inEditor = () => project.screen.value === "edit";
 const inModel = () => project.screen.value === "model";
 const inScene = () => project.screen.value === "scene";
 const inAny = () => inEditor() || inModel() || inScene();
-const inProject = () => inAny() || project.screen.value === "browse";
+const inProject = () => inWorkspace();
 const native = () => shell.kind === "wails";
 const setup = () => (inEditor() && ed.curClip.value < 0 && !ed.isPalette.value) || (inModel() && M.md.curClip.value < 0);
+
+/** The quick switchers drop from their segment of the project bar; the key finds the segment. */
+function openSwitcher(which: "asset" | "state") {
+	const el = document.querySelector<HTMLElement>(`.projectbar .seg.${which}`);
+	el?.click();
+}
 
 let nudgeTimer: number | undefined;
 function nudge(dx: number, dy: number) {
@@ -65,12 +72,15 @@ export function initCommands() {
 		{ id: "file.newScene3d", title: "New 3D scene…", group: "File", when: inProject, run: () => void ask("Name the new 3D scene").then((n) => { if (n) void newScene(n, true); }) },
 		{ id: "scene.addInstance", title: "Place a file…", group: "Scene", when: inScene, run: () => void askInstance() },
 		{ id: "scene.addGroup", title: "Add a group", group: "Scene", when: inScene, run: addGroupNow },
-		{ id: "file.new", title: "New file…", group: "File", when: inProject, run: () => void ask("Name the new file").then((n) => { if (n) void newFile(n); }) },
-		{ id: "file.newModel", title: "New 3D model…", group: "File", when: inProject, run: () => void ask("Name the new model").then((n) => { if (n) void newModel(n); }) },
+		{ id: "file.new", title: "New asset…", group: "File", when: inProject, run: () => void ask("Name the new asset", "", { hint: "a name like enemies/bat makes the folder too" }).then((n) => { if (n) void newFile(n); }) },
+		{ id: "file.newModel", title: "New 3D asset…", group: "File", when: inProject, run: () => void ask("Name the new 3D asset").then((n) => { if (n) void newModel(n); }) },
+		{ id: "file.newPalette", title: "New palette…", group: "File", when: inProject, run: () => void askNewPalette("") },
 		{ id: "model.project", title: "Project to 2D views…", group: "File", when: inModel, run: () => void askProject() },
-		{ id: "file.browse", title: "Browse the shelf", group: "File", when: inAny, run: () => void goBrowse() },
-		{ id: "file.openFolder", title: "Open folder…", group: "File", when: native, run: () => void pickFolder() },
-		{ id: "file.projects", title: "Projects", group: "File", when: () => native() && inProject(), run: () => void goWelcome() },
+		{ id: "file.browse", title: "Close the asset (show the shelf)", group: "File", when: inAny, run: () => void goBrowse() },
+		{ id: "file.newProject", title: "New project…", group: "File", when: native, run: () => void createProject() },
+		{ id: "file.openFolder", title: "Open project…", group: "File", when: native, run: () => void pickFolder() },
+		{ id: "file.projects", title: "Close the project", group: "File", when: () => native() && inProject(), run: () => void goWelcome() },
+		{ id: "git.switch", title: "Switch branch…", group: "File", when: () => inProject() && project.branches.value.length > 0, run: () => void ask("Switch to which branch?", project.branch.value, { hint: project.branches.value.join(" · ") }).then((b) => { if (b) void switchBranch(b.trim()); }) },
 		{ id: "file.serve", title: "Serve on the network", group: "File", when: () => native() && inProject(), run: () => void toggleServe() },
 
 		{ id: "edit.undo", title: "Undo", group: "Edit", when: inAny, run: either(undo, M.undo, S.undo) },
@@ -159,7 +169,12 @@ export function initCommands() {
 				() => (M.md.collide.value = !M.md.collide.value),
 			),
 		},
-		{ id: "view.explorer", title: "Explorer", group: "View", when: inProject, run: toggleExplorer },
+		{ id: "view.sidebar", title: "Sidebar", group: "View", when: inProject, run: toggleSidebar },
+		{ id: "view.inspector", title: "Inspector", group: "View", when: inProject, run: toggleInspector },
+		{ id: "sidebar.back", title: "Sidebar: back to the assets", group: "View", when: () => inProject() && sidebar.view.value === "asset", run: popToAssets },
+		{ id: "sidebar.asset", title: "Sidebar: into the asset", group: "View", when: () => inAny() && !!openAsset() && sidebar.view.value === "assets", run: pushAsset },
+		{ id: "asset.switch", title: "Switch asset…", group: "View", when: inProject, run: () => openSwitcher("asset") },
+		{ id: "state.switch", title: "Switch state…", group: "View", when: () => inEditor() || inModel(), run: () => openSwitcher("state") },
 
 		{ id: "clip.play", title: "Play / pause", group: "Clip", when: () => (inEditor() && !!curClip()) || (inModel() && !!M.curClip()) || inScene(), run: either(() => (ed.playing.value = !ed.playing.value), () => (M.md.playing.value = !M.md.playing.value), () => (S.sc.playing.value = !S.sc.playing.value)) },
 		{ id: "clip.addKey", title: "Add a key at the playhead", group: "Clip", when: () => (inEditor() && !!curClip()) || (inModel() && !!M.curClip()), run: either(addKey, M.addKey) },

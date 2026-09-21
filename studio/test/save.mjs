@@ -49,6 +49,9 @@ try {
 	await page.goto("http://localhost:4747/");
 	await page.waitForTimeout(1200);
 	const open = async (name) => {
+		// the sidebar is inside the open asset once one is open: back to the assets first
+		await page.evaluate(() => (fastart.sidebar.view.value = "assets"));
+		await page.waitForTimeout(100);
 		const folder = page.locator(".tree-row.folder", { hasText: "ships" });
 		if (!(await folder.locator(".caret.open").count())) await folder.click();
 		await page.waitForTimeout(150);
@@ -82,9 +85,13 @@ try {
 	check("the mtime advanced", mtime(file) > m0);
 	check("no temp files left", tmps().length === 0, tmps().join(","));
 	check("the document is dirty", await dirty());
-	const status = await page.evaluate(() => [...document.querySelectorAll(".topbar .sub")].map((e) => e.textContent.trim()).find((t) => t.startsWith("on disk")) ?? "");
-	check("the toolbar says when it wrote", /on disk \d\d:\d\d:\d\d/.test(status), status || `written=${await page.evaluate(() => fastart.ed.written.value)}`);
-	check("the explorer marks the file", (await page.locator(".tree-row.leaf.active .dot").count()) === 1);
+	// the Save button's tooltip carries the last write; the tree (back at the assets) marks the file
+	const status = (await page.locator(".projectbar .btn", { hasText: "Save" }).getAttribute("title")) ?? "";
+	check("the project bar says when it wrote", /on disk \d\d:\d\d:\d\d/.test(status), status || `written=${await page.evaluate(() => fastart.ed.written.value)}`);
+	check("the Save button marks the change", (await page.locator(".projectbar .btn .dot").count()) === 1);
+	await page.evaluate(() => (fastart.sidebar.view.value = "assets"));
+	await page.waitForTimeout(100);
+	check("the sidebar marks the file", (await page.locator(".tree-row.leaf.active .dot").count()) === 1);
 
 	await page.locator(".canvas-wrap canvas").click({ position: { x: 30, y: 30 } });
 	await page.keyboard.press("Meta+s");

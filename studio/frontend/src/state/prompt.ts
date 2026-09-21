@@ -8,11 +8,14 @@ export const prompt = {
 	open: signal(false),
 	title: signal(""),
 	value: signal(""),
+	/** a line under the field, when the answer needs a word of context */
+	hint: signal(""),
 };
 
 let pending: ((v: string | null) => void) | null = null;
 
-export function ask(title: string, prefill = ""): Promise<string | null> {
+export function ask(title: string, prefill = "", opts: { hint?: string } = {}): Promise<string | null> {
+	prompt.hint.value = opts.hint ?? "";
 	if (pending) pending(null);
 	prompt.title.value = title;
 	prompt.value.value = prefill;

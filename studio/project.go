@@ -28,6 +28,8 @@ type ProjectService struct {
 	chat   *Chat
 	mu     sync.Mutex
 	queue  []string // paths the OS asked us to open, drained by the frontend
+	workW  int      // the window's working size, kept while the launcher is up
+	workH  int
 }
 
 // rooted joins rel under root, refusing anything that could escape.

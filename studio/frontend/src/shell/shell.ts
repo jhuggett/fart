@@ -86,6 +86,17 @@ export interface Shell {
 	toolReply(id: string, result: string): Promise<void>;
 	onChat(cb: (e: ChatEvent) => void): void;
 	onTool(cb: (t: ToolCall) => void): void;
+	/** a project scaffolded at <parent>/<name>: assets/ and a .gitignore; resolves with its root */
+	newProject(parent: string, name: string): Promise<string>;
+	/** the folder dialog for a new project's home; null when cancelled */
+	pickParentFolder(): Promise<string | null>;
+	/** the branch a folder's repository has checked out; "" outside a repository */
+	branch(dir: string): Promise<string>;
+	branches(dir: string): Promise<string[]>;
+	switchBranch(dir: string, name: string): Promise<void>;
+	/** the window sized for the launcher, or for work */
+	windowLauncher(): Promise<void>;
+	windowWork(): Promise<void>;
 	recents(): Promise<string[]>;
 	pushRecent(root: string): Promise<string[]>;
 	forgetRecent(root: string): Promise<string[]>;
@@ -143,6 +154,21 @@ class HttpShell implements Shell {
 	async pickFolder() {
 		return null;
 	}
+	async newProject(): Promise<string> {
+		throw new Error("a served studio cannot make a project");
+	}
+	async pickParentFolder() {
+		return null;
+	}
+	async branch() {
+		return "";
+	}
+	async branches() {
+		return [];
+	}
+	async switchBranch() {}
+	async windowLauncher() {}
+	async windowWork() {}
 	async isDir() {
 		return false;
 	}

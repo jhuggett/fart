@@ -1,27 +1,23 @@
-// The model screen: a 3D file. The same four regions as the editor,
-// with the model turned under the view on the canvas: parts, states and
-// clips on the left, the inspector on the right, the timeline below when
-// a clip is chosen.
+// The model screen's parts of the workspace: a 3D file. Parts, states and
+// clips for the sidebar, the solids' tools for the floating bar, the model
+// turned under the view on the canvas, the timeline below when a clip is
+// chosen, the inspector. The frame is screens/Workspace.tsx.
 
 import { useEffect } from "preact/hooks";
 import { clipDuration3, cssColor, VIEWS, type Ease, type StatePart3 } from "@fastart/core";
 import { I } from "../ui/Icons.tsx";
 import { Num, Text } from "../ui/Field.tsx";
 import { InlineName } from "../ui/Rename.tsx";
-import { Gutter } from "../ui/Gutter.tsx";
-import { Explorer, ExplorerButton } from "../ui/Explorer.tsx";
-import { ThemeButton } from "../ui/ThemeMenu.tsx";
-import { ChatPanel } from "../ui/ChatPanel.tsx";
 import { ColorPicker } from "../ui/ColorPicker.tsx";
 import { ModelCanvas } from "../canvas/ModelCanvas.tsx";
 import { TexturesPanel } from "../ui/Textures.tsx";
 import { view } from "../canvas/view.ts";
-import { explorer } from "../state/explorer.ts";
-import { chat, toggleChat } from "../state/chat.ts";
-import { project, goDocs, goBrowse } from "../state/project.ts";
+import { project } from "../state/project.ts";
+import { Tools, ToolButtons, type ToolSpec } from "../ui/Tools.tsx";
+import { showIssues } from "../ui/ProjectBar.tsx";
+import type { MenuItem } from "../state/menu.ts";
 import { renaming, openContextMenu } from "../state/menu.ts";
 import { run } from "../state/commands.ts";
-import { shell } from "../shell/shell.ts";
 import { basename } from "../state/paths.ts";
 import { useState } from "preact/hooks";
 import {
@@ -74,7 +70,6 @@ import {
 	setDocName,
 	setView,
 	setTurn,
-	save,
 	projectViews,
 	hullOfPart,
 	textures,
@@ -91,8 +86,8 @@ import {
 } from "../state/model.ts";
 
 const DEG = 180 / Math.PI;
-const TOOLS: { tool: Tool3; label: string; key: string; icon: (p: { size?: number }) => preact.JSX.Element; makes: string }[] = [
-	{ tool: "select", label: "Select", key: "V", icon: I.select, makes: "" },
+const TOOLS: ToolSpec<Tool3>[] = [
+	{ tool: "select", label: "Select", key: "V", icon: I.select },
 	{ tool: "rect", label: "Box", key: "R", icon: I.rect, makes: "drag a rectangle in the view plane: a box, as deep as the depth field" },
 	{ tool: "circle", label: "Ball", key: "O", icon: I.circle, makes: "drag from the centre: a ball" },
 	{ tool: "line", label: "Rod", key: "L", icon: I.line, makes: "drag a line: a rod, half the depth wide" },
@@ -112,85 +107,53 @@ function Hdr(props: { title: string; hint?: string; tail?: string }) {
 
 // ------------------------------------------------------------- top
 
-function ModelToolbar() {
+export function ModelTools() {
+	void md.rev.value;
 	const tool = md.tool.value;
-	const path = md.path.value ?? "";
-	const dirty = md.dirty.value;
-	const written = md.written.value;
-	const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour12: false });
-	const preview = !!curClip();
 	const vn = md.viewName.value;
+	const st = curState();
+	const clip = curClip();
+	const hint = clip
+		? `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`
+		: md.pending.value === "pivot"
+			? "click the canvas to place the pivot"
+			: tool === "poly"
+				? "click a profile in the view plane · click the first point or press Enter to close it into a prism · Esc drops it"
+				: tool !== "select"
+					? `${TOOLS.find((t) => t.tool === tool)?.makes ?? ""}`
+					: st
+						? `state "${st.name}" · drag a shape or a corner along the view plane · the ⌖ moves the part, the lever turns it · drag on nothing to orbit`
+						: "";
 	return (
-		<div class="topbar">
-			<ExplorerButton />
-			<div class="group">
-				{TOOLS.map((t) => (
-					<button
-						class={`tool ${tool === t.tool ? "active" : ""}`}
-						disabled={preview && t.tool !== "select"}
-						title={preview && t.tool !== "select" ? "a clip is a preview; pick a state to model" : `${t.label}  (${t.key})${t.makes ? " · " + t.makes : ""}`}
-						onClick={() => run(`tool.${t.tool}`)}
-					>
-						<t.icon />
-						<span class="lbl">{t.label}</span>
-						<span class="key">{t.key}</span>
-					</button>
-				))}
-			</div>
+		<Tools hint={hint}>
+			<ToolButtons tools={TOOLS} current={tool} disabled={(t) => !!clip && t !== "select"} why="a clip is a preview; pick a state to edit" />
 			<span class="sep" />
 			<label class="field" title="how deep a new box, prism, ball or rod is, along the view axis">
 				<span class="k">depth</span>
 				<input class="num" type="number" step={0.5} min={0.1} value={md.thick.value} onInput={(e) => (md.thick.value = Math.max(0.1, Number((e.target as HTMLInputElement).value) || 0.1))} onKeyDown={(e) => e.stopPropagation()} />
 			</label>
 			<span class="sep" />
-			<select class="num" title="the view: a turn laid on the model. Drag on nothing (or Alt-drag) to orbit" value={vn} onChange={(e) => setView((e.target as HTMLSelectElement).value)}>
+			<select class="num" title={`the view: a turn laid on the model (${vn || "free"}). Drag on nothing (or Alt-drag) to orbit`} value={vn} onChange={(e) => setView((e.target as HTMLSelectElement).value)}>
 				{vn === "" && <option value="">free</option>}
 				{VIEW_NAMES.map((v) => (
 					<option value={v}>{v}</option>
 				))}
 			</select>
-			<button class={`btn ghost ${md.outline.value ? "active" : ""}`} title="show silhouettes, the way --outline projects them" onClick={() => run("model.outline")}>
-				ink
+			<button class={`tool ${md.outline.value ? "active" : ""}`} title="show silhouettes, the way --outline projects them" onClick={() => run("model.outline")}>
+				<I.poly />
 			</button>
-			<button class={`btn ${md.collide.value ? "active" : "ghost"}`} title="the collision solids as wireframes, posed with the frame  (C)" onClick={() => run("view.collision")}>
-				<I.collision /> Collision
+			<button class={`tool ${md.collide.value ? "active" : ""}`} title="the collision solids as wireframes, posed with the frame  (C)" onClick={() => run("view.collision")}>
+				<I.collision />
+				<span class="key">C</span>
 			</button>
-			<button class={`btn ghost ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
+			<button class={`tool ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
 				<I.grid />
 			</button>
 			<span class="sep" />
-			<button class={`btn ${dirty ? "" : "ghost"}`} title="Save keeps this version as the checkpoint to revert to  (⌘ S)" onClick={() => void save()}>
-				Save{dirty ? " •" : ""}
-			</button>
-			{path && (
-				<span class="sub" title="every edit lands in the file itself within a moment; this is the last write">
-					{written ? `on disk ${clock(written)}` : "on disk"}
-				</span>
-			)}
-			<button class="btn ghost" title="write the 2D views a game draws, beside this file" onClick={() => run("model.project")}>
+			<button class="btn small ghost" title="write the 2D views a game draws, beside this file" onClick={() => run("model.project")}>
 				Project…
 			</button>
-			{shell.chat && (
-				<button class={`btn ghost ${chat.open.value ? "active" : ""}`} title="ask Claude to change this file  (⌘ J)" onClick={toggleChat}>
-					Ask
-				</button>
-			)}
-			<div class="spacer" />
-			<span class="sub crumb" title={path}>
-				{dirty && <span class="dot" />}
-				<button class="link" title="back to the shelf  (⌘ O)" onClick={() => void goBrowse()}>
-					{project.name.value || "shelf"}
-				</button>
-				<span class="slash">/</span>
-				{basename(path)}
-				<span class="chip" title="a 3D file: space 3d">3D</span>
-			</span>
-			<span class="sep" />
-			<button class="btn ghost" title="the guide and the format  (?)" onClick={() => goDocs("guide")}>
-				Docs
-			</button>
-			<ThemeButton />
-		</div>
+		</Tools>
 	);
 }
 
@@ -230,11 +193,15 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 			<div
 				class={`layer ${i === cur ? "active" : ""} ${st && !member ? "off" : ""}`}
 				style={{ paddingLeft: `${6 + depth * 14}px` }}
-				onClick={() => (md.curPart.value = i)}
+				onClick={() => {
+					md.curPart.value = i;
+					md.partPicked.value = true;
+				}}
 				onDblClick={() => (renaming.value = { kind: "part", index: i })}
 				onContextMenu={(e) => {
 					e.preventDefault();
 					md.curPart.value = i;
+					md.partPicked.value = true;
 					openContextMenu(e.clientX, e.clientY, partMenu(i));
 				}}
 			>
@@ -274,7 +241,7 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 	);
 }
 
-function LeftPanel() {
+export function ModelSidebar() {
 	void md.rev.value;
 	void renaming.value;
 	const sts = states();
@@ -283,7 +250,7 @@ function LeftPanel() {
 	const curC = md.curClip.value;
 	const ren = renaming.value;
 	return (
-		<div class="panel left">
+		<>
 			<Hdr title="Parts" hint="the parts of this model, children under their parents" />
 			{childrenOf(undefined).map((k) => (
 				<PartRow key={k.p.name} i={k.i} depth={0} />
@@ -358,7 +325,7 @@ function LeftPanel() {
 			<button class="add-row" onClick={addClipNow} disabled={sts.length === 0}>
 				<I.plus size={11} /> clip
 			</button>
-		</div>
+		</>
 	);
 }
 function addStateNow(from?: number) {
@@ -373,7 +340,7 @@ function addClipNow() {
 
 // ------------------------------------------------------------- bottom: the timeline
 
-function ModelTimeline() {
+export function ModelTimeline() {
 	void md.rev.value;
 	const clip = curClip();
 	const playing = md.playing.value;
@@ -483,7 +450,7 @@ function TokenPick({ current, onPick }: { current: string | undefined; onPick: (
 	);
 }
 
-function Inspector3() {
+export function Inspector3() {
 	void md.rev.value;
 	const p = curPart();
 	const i = md.curPart.value;
@@ -494,8 +461,10 @@ function Inspector3() {
 	const preview = !!curClip();
 	const [picking, setPicking] = useState<{ i: number; x: number; y: number } | null>(null);
 	const ren = renaming.value;
+	// a part chosen on purpose (a row, a hit) shows; an empty click on the canvas lets go of it
+	const picked = md.partPicked.value || !!(sh && sel);
 	return (
-		<div class="panel right">
+		<div class="panel right inspector">
 			{sh && sel && (
 				<>
 					<Hdr title="Shape" hint="what is selected on the canvas" tail={sh.kind} />
@@ -570,7 +539,7 @@ function Inspector3() {
 					</div>
 				</>
 			)}
-			{p && (
+			{p && picked && (
 				<>
 					<Hdr title="Part" hint="a part: the unit that poses" tail={p.name} />
 					<div class="line">
@@ -625,7 +594,7 @@ function Inspector3() {
 					</div>
 				</>
 			)}
-			{p && sp && !preview && (
+			{p && picked && sp && !preview && (
 				<>
 					<Hdr title={`In ${curState()?.name ?? "state"}`} hint="where the part's pivot lands, its turn about x, y and z (degrees), its size" />
 					<div class="fields">
@@ -664,7 +633,7 @@ function Inspector3() {
 					</div>
 				</>
 			)}
-			{p && !sp && !preview && curState() && (
+			{p && picked && !sp && !preview && curState() && (
 				<div class="line" style="gap:6px">
 					<span class="k">not in this state</span>
 					<button class="btn small ghost" onClick={() => toggleMembership(md.curState.value, p.name)}>
@@ -699,6 +668,8 @@ function Inspector3() {
 			<div class="fields">
 				<Num label="ambient" value={md.ambient.value} min={0} max={1} step={0.05} onChange={(v) => (md.ambient.value = Math.max(0, Math.min(1, v)))} wide />
 			</div>
+			{!picked && (
+				<>
 			<Hdr title="Document" />
 			<Text label="name" value={md.doc.value.name ?? ""} onChange={setDocName} />
 			<TexturesPanel
@@ -737,6 +708,8 @@ function Inspector3() {
 					<span class="sub">{md.shared.value.map((t) => t.name).join(", ")}</span>
 				</div>
 			)}
+				</>
+			)}
 			{picking && palette()[picking.i] && (
 				<ColorPicker rgb={palette()[picking.i].rgb} x={picking.x} y={picking.y} onChange={(rgb) => setTokenColor(picking.i, rgb)} onClose={() => setPicking(null)} />
 			)}
@@ -744,64 +717,34 @@ function Inspector3() {
 	);
 }
 
-// ------------------------------------------------------------- the screen
+// ------------------------------------------------------------- the canvas
 
-export function Model() {
+export function ModelCanvasView() {
 	void md.rev.value;
-	const st = curState();
-	const clip = curClip();
-	const tool = md.tool.value;
-	const hint = clip
-		? `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`
-		: md.pending.value === "pivot"
-			? "click the canvas to place the pivot"
-			: tool === "poly"
-				? "click a profile in the view plane · click the first point or press Enter to close it into a prism · Esc drops it"
-				: tool !== "select"
-					? `${TOOLS.find((t) => t.tool === tool)?.makes ?? ""}`
-					: st
-						? `state "${st.name}" · drag a shape or a corner along the view plane · the ⌖ moves the part, the lever turns it about the view axis · drag on nothing to orbit`
-						: "";
-	const chatRight = chat.open.value && chat.dock.value === "right";
-	const chatBelow = chat.open.value && chat.dock.value === "bottom";
 	const issues = md.issues.value;
 	return (
-		<div class="app">
-			<ModelToolbar />
-			<div class={`editor ${explorer.open.value ? "" : "no-explorer"} ${chatRight ? "chat-right" : ""}`}>
-				<Explorer />
-				<div class="dock">
-					<LeftPanel />
-					<Gutter k="left" edge="right" />
-				</div>
-				<div class="canvas-col">
-					<div class="canvas-wrap">
-						<ModelCanvas />
-						<div class="hud">
-							{hint}
-							{` · view ${md.viewName.value || "free"} · zoom ${view.zoom.value.toFixed(1)}×${view.snapGrid.value ? " · grid snap" : ""}`}
+		<>
+			<ModelCanvas />
+			{issues.length > 0 && showIssues.value && (
+				<div class="issues">
+					{issues.slice(0, 8).map((i) => (
+						<div class={["unknown", "reserved", "unresolved"].includes(i.code) ? "w" : "e"}>
+							{i.code} {i.path}: {i.message}
 						</div>
-						{issues.length > 0 && (
-							<div class="issues">
-								{issues.slice(0, 8).map((i) => (
-									<div class={["unknown", "reserved", "unresolved"].includes(i.code) ? "w" : "e"}>
-										{i.code} {i.path}: {i.message}
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-					<ModelTimeline />
+					))}
 				</div>
-				<div class="dock">
-					<Inspector3 />
-					<Gutter k="right" edge="left" />
-				</div>
-				{chatRight && <ChatPanel />}
-			</div>
-			{chatBelow && <ChatPanel />}
-		</div>
+			)}
+		</>
 	);
+}
+
+/** The sidebar's Add menu for a model. */
+export function modelAdd(): MenuItem[] {
+	return [
+		{ label: "Part", run: addPartNow },
+		{ label: "State", run: () => addStateNow() },
+		{ label: "Clip", run: addClipNow },
+	];
 }
 
 /** Project…: which views, then write them beside the model. */

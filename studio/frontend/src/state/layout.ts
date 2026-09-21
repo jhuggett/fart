@@ -1,21 +1,20 @@
-// The panels' sizes: the explorer, the layers column, the inspector, the
+// The panels' sizes: the sidebar, the inspector, the
 // Ask panel in either dock. Each is a CSS variable the grids read, dragged
 // at a gutter (ui/Gutter.tsx) and remembered per device.
 
 import { signal } from "@preact/signals";
 
-export type SizeKey = "explorer" | "left" | "right" | "chat" | "chatH";
+export type SizeKey = "left" | "right" | "chat" | "chatH";
 
 const KEY = "fastart.layout";
-const DEFAULTS: Record<SizeKey, number> = { explorer: 208, left: 232, right: 240, chat: 380, chatH: 280 };
+const DEFAULTS: Record<SizeKey, number> = { left: 240, right: 248, chat: 380, chatH: 280 };
 const LIMITS: Record<SizeKey, [number, number]> = {
-	explorer: [150, 420],
 	left: [180, 480],
 	right: [200, 560],
 	chat: [280, 760],
 	chatH: [160, 640],
 };
-const VARS: Record<SizeKey, string> = { explorer: "--explorer", left: "--left", right: "--right", chat: "--chat", chatH: "--chat-h" };
+const VARS: Record<SizeKey, string> = { left: "--left", right: "--right", chat: "--chat", chatH: "--chat-h" };
 
 function saved(): Record<SizeKey, number> {
 	try {

@@ -10,6 +10,22 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Branch is the branch the project's repository has checked out, "" when
+ * the folder is not in a repository (or git is not installed). A detached
+ * HEAD reads as its short hash.
+ */
+export function Branch(dir: string): $CancellablePromise<string> {
+    return $Call.ByID(2558730392, dir);
+}
+
+/**
+ * Branches lists the repository's local branches, the current one included.
+ */
+export function Branches(dir: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3363503068, dir);
+}
+
+/**
  * Caps: what this machine can do with files (see files.go).
  */
 export function Caps(): $CancellablePromise<$models.Caps> {
@@ -92,10 +108,26 @@ export function Log(msg: string): $CancellablePromise<void> {
 }
 
 /**
+ * NewProject makes <parent>/<name> with an assets folder and a .gitignore
+ * for the checkpoints, and returns the new root. It refuses to touch a
+ * folder that already exists.
+ */
+export function NewProject(parent: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(1830481623, parent, name);
+}
+
+/**
  * PickFolder shows the platform's folder dialog. "" means cancelled.
  */
 export function PickFolder(): $CancellablePromise<string> {
     return $Call.ByID(2105207105);
+}
+
+/**
+ * PickParentFolder shows the folder dialog for a new project's home. "" means cancelled.
+ */
+export function PickParentFolder(): $CancellablePromise<string> {
+    return $Call.ByID(1601152289);
 }
 
 export function PushRecent(root: string): $CancellablePromise<string[] | null> {
@@ -159,6 +191,14 @@ export function Stat(root: string, rel: string): $CancellablePromise<$models.Tex
 }
 
 /**
+ * SwitchBranch checks a branch out. Git's own words come back when it
+ * refuses (uncommitted changes in the way, most often).
+ */
+export function SwitchBranch(dir: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2027647100, dir, name);
+}
+
+/**
  * ToolReply is the page answering a tool call the MCP server relayed to it.
  */
 export function ToolReply(id: string, result: string): $CancellablePromise<void> {
@@ -192,6 +232,21 @@ export function UpdateRelaunch(): $CancellablePromise<void> {
 
 export function Version(): $CancellablePromise<string> {
     return $Call.ByID(2791456436);
+}
+
+/**
+ * WindowLauncher shrinks the window to the launcher and centres it; the
+ * size it had is kept for WindowWork.
+ */
+export function WindowLauncher(): $CancellablePromise<void> {
+    return $Call.ByID(2755277972);
+}
+
+/**
+ * WindowWork grows the window back for a project.
+ */
+export function WindowWork(): $CancellablePromise<void> {
+    return $Call.ByID(791676705);
 }
 
 /**

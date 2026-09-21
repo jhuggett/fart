@@ -1,23 +1,21 @@
-// The scene screen: a .shart. The tree of nodes on the left, the scene
-// on the canvas (2D painted, 3D through the solids), the chosen node's
-// fields on the right, a clock for clips below.
+// The scene screen's parts of the workspace: a .shart. The tree of nodes
+// for the sidebar, the scene on the canvas (2D painted, 3D through the
+// solids) with a clock in the floating bar, the chosen node's fields in
+// the inspector. The frame is screens/Workspace.tsx.
 
 import { useEffect, useState } from "preact/hooks";
 import { VIEWS, type SceneNode } from "@fastart/core";
 import { I } from "../ui/Icons.tsx";
 import { Num, Text } from "../ui/Field.tsx";
 import { InlineName } from "../ui/Rename.tsx";
-import { Gutter } from "../ui/Gutter.tsx";
-import { Explorer, ExplorerButton } from "../ui/Explorer.tsx";
-import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import { SceneCanvas } from "../canvas/SceneCanvas.tsx";
-import { view } from "../canvas/view.ts";
-import { explorer } from "../state/explorer.ts";
-import { project, goDocs, goBrowse, paletteFiles } from "../state/project.ts";
+import { project, paletteFiles } from "../state/project.ts";
+import { Tools } from "../ui/Tools.tsx";
+import type { MenuItem } from "../state/menu.ts";
 import { openContextMenu } from "../state/menu.ts";
 import { run } from "../state/commands.ts";
 import { basename, dirname, stripExt } from "../state/paths.ts";
-import { sc, scene, is3d, nodeAt, parentPath, setNode, renameNode, addNode, deleteNode, duplicateNode, moveNode, setSceneName, addPaletteRef, removePaletteRef, placeable, refDoc, anchorsOfDoc, setView, setTurn, save } from "../state/scene.ts";
+import { sc, scene, is3d, nodeAt, parentPath, setNode, renameNode, addNode, deleteNode, duplicateNode, moveNode, setSceneName, addPaletteRef, removePaletteRef, placeable, refDoc, anchorsOfDoc, setView, setTurn } from "../state/scene.ts";
 
 const DEG = 180 / Math.PI;
 const VIEW_NAMES = ["front", "back", "left", "right", "top", "bottom"];
@@ -31,70 +29,35 @@ function Hdr(props: { title: string; hint?: string; tail?: string }) {
 	);
 }
 
-function Toolbar() {
-	const path = sc.path.value ?? "";
-	const dirty = sc.dirty.value;
-	const written = sc.written.value;
-	const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour12: false });
+export function SceneTools() {
+	void sc.rev.value;
 	const vn = sc.viewName.value;
-	const options = placeable();
+	const hint = sc.sel.value
+		? `node "${sc.sel.value}" · drag it to move it · its fields on the right${is3d() ? " · drag on nothing to orbit" : ""}`
+		: `a scene · click an instance to choose its node · + places a file of the project${is3d() ? " · drag on nothing to orbit" : ""}`;
 	return (
-		<div class="topbar">
-			<ExplorerButton />
-			<div class="group">
-				<button class="btn ghost" title="place a file of the project as a node (under the chosen node, or at the root)" disabled={!options.length} onClick={() => run("scene.addInstance")}>
-					<I.plus size={11} /> instance
-				</button>
-				<button class="btn ghost" title="a group: a frame for children, nothing drawn" onClick={() => run("scene.addGroup")}>
-					<I.plus size={11} /> group
-				</button>
-			</div>
-			<span class="sep" />
-			{is3d() && (
-				<select class="num" title="the view: a turn laid on the scene. Drag on nothing to orbit" value={vn} onChange={(e) => setView((e.target as HTMLSelectElement).value)}>
-					{vn === "" && <option value="">free</option>}
-					{VIEW_NAMES.map((v) => (
-						<option value={v}>{v}</option>
-					))}
-				</select>
-			)}
-			<button class="btn ghost" title="play the clips  (Space)" onClick={() => (sc.playing.value = !sc.playing.value)}>
+		<Tools hint={hint}>
+			<button class="tool" title="play the clips  (Space)" onClick={() => (sc.playing.value = !sc.playing.value)}>
 				{sc.playing.value ? <I.pause /> : <I.play />}
 			</button>
-			<span class="sub">{sc.time.value.toFixed(2)}s</span>
+			<span class="sub time" title="the scene's clock: every clip reads it">
+				{sc.time.value.toFixed(2)}s
+			</span>
 			<button class="btn small ghost" title="back to the start" onClick={() => (sc.time.value = 0)}>
 				0
 			</button>
-			<span class="sep" />
-			<button class={`btn ${dirty ? "" : "ghost"}`} title="Save keeps this version as the checkpoint to revert to  (⌘ S)" onClick={() => void save()}>
-				Save{dirty ? " •" : ""}
-			</button>
-			{path && (
-				<span class="sub" title="every edit lands in the file itself within a moment; this is the last write">
-					{written ? `on disk ${clock(written)}` : "on disk"}
-				</span>
+			{is3d() && (
+				<>
+					<span class="sep" />
+					<select class="num" title="the view: a turn laid on the scene. Drag on nothing to orbit" value={vn} onChange={(e) => setView((e.target as HTMLSelectElement).value)}>
+						{vn === "" && <option value="">free</option>}
+						{VIEW_NAMES.map((v) => (
+							<option value={v}>{v}</option>
+						))}
+					</select>
+				</>
 			)}
-			<div class="spacer" />
-			{sc.issues.value.length > 0 && (
-				<span class="sub" style={sc.issues.value.some((i) => !["unknown", "unresolved"].includes(i.code)) ? "color:var(--danger)" : ""} title={sc.issues.value.map((i) => `${i.code} ${i.path}: ${i.message}`).join("\n")}>
-					{sc.issues.value.length} note{sc.issues.value.length === 1 ? "" : "s"}
-				</span>
-			)}
-			<span class="sub crumb" title={path}>
-				{dirty && <span class="dot" />}
-				<button class="link" title="back to the shelf  (⌘ O)" onClick={() => void goBrowse()}>
-					{project.name.value || "shelf"}
-				</button>
-				<span class="slash">/</span>
-				{basename(path)}
-				<span class="chip" title="a scene: a Scene Hierarchy of Art">{is3d() ? "3D scene" : "scene"}</span>
-			</span>
-			<span class="sep" />
-			<button class="btn ghost" title="the guide and the format  (?)" onClick={() => goDocs("guide")}>
-				Docs
-			</button>
-			<ThemeButton />
-		</div>
+		</Tools>
 	);
 }
 
@@ -149,11 +112,11 @@ function NodeRow({ node, path, depth }: { node: SceneNode; path: string; depth: 
 	);
 }
 
-function LeftPanel() {
+export function SceneSidebar() {
 	void sc.rev.value;
 	const s = scene();
 	return (
-		<div class="panel left">
+		<>
 			<Hdr title="Nodes" hint="the scene's tree: instances of files, placed scenes, groups; children ride their parents. List order is paint order in 2D." />
 			{(s.nodes ?? []).map((n) => (
 				<NodeRow key={n.name} node={n} path={n.name} depth={0} />
@@ -164,11 +127,11 @@ function LeftPanel() {
 			<button class="add-row" onClick={() => run("scene.addGroup")}>
 				<I.plus size={11} /> group
 			</button>
-		</div>
+		</>
 	);
 }
 
-function Inspector() {
+export function SceneInspector() {
 	void sc.rev.value;
 	const path = sc.sel.value;
 	const n = nodeAt(path);
@@ -182,7 +145,7 @@ function Inspector() {
 	const at = (n?.at ?? (d3 ? [0, 0, 0] : [0, 0])) as number[];
 	const rot = d3 ? ((Array.isArray(n?.rotate) ? n!.rotate : [0, 0, 0]) as number[]) : [typeof n?.rotate === "number" ? n.rotate : 0];
 	return (
-		<div class="panel right">
+		<div class="panel right inspector">
 			{n && path && (
 				<>
 					<Hdr title="Node" hint="a placed thing, or a group" tail={n.ref ? (n.ref.endsWith(".shart") ? "scene" : "instance") : "group"} />
@@ -370,7 +333,7 @@ function relOf(sceneRel: string, file: string): string {
 	return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/");
 }
 
-export function SceneScreen() {
+export function SceneCanvasView() {
 	void sc.rev.value;
 	const playing = sc.playing.value;
 	useEffect(() => {
@@ -385,34 +348,15 @@ export function SceneScreen() {
 		raf = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(raf);
 	}, [playing]);
-	const hint = sc.sel.value
-		? `node "${sc.sel.value}" · drag it to move it · its fields on the right${is3d() ? " · drag on nothing to orbit" : ""}`
-		: `a scene · click an instance to choose its node · + instance places a file of the project${is3d() ? " · drag on nothing to orbit" : ""}`;
-	return (
-		<div class="app">
-			<Toolbar />
-			<div class={`editor ${explorer.open.value ? "" : "no-explorer"}`}>
-				<Explorer />
-				<div class="dock">
-					<LeftPanel />
-					<Gutter k="left" edge="right" />
-				</div>
-				<div class="canvas-col">
-					<div class="canvas-wrap">
-						<SceneCanvas />
-						<div class="hud">
-							{hint}
-							{` · zoom ${view.zoom.value.toFixed(1)}×`}
-						</div>
-					</div>
-				</div>
-				<div class="dock">
-					<Inspector />
-					<Gutter k="right" edge="left" />
-				</div>
-			</div>
-		</div>
-	);
+	return <SceneCanvas />;
+}
+
+/** The sidebar's Add menu for a scene. */
+export function sceneAdd(): MenuItem[] {
+	return [
+		{ label: "Instance…", run: () => run("scene.addInstance") },
+		{ label: "Group", run: () => run("scene.addGroup") },
+	];
 }
 
 /** + instance: pick a file of the project, place it under the chosen node. */

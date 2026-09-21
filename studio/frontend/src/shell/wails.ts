@@ -93,6 +93,28 @@ export class WailsShell implements Shell {
 	onTool(cb: (t: ToolCall) => void) {
 		Events.On("tool", (ev) => cb(ev.data as unknown as ToolCall));
 	}
+	newProject(parent: string, name: string) {
+		return Project.NewProject(parent, name);
+	}
+	async pickParentFolder() {
+		const p = await Project.PickParentFolder();
+		return p || null;
+	}
+	branch(dir: string) {
+		return Project.Branch(dir);
+	}
+	async branches(dir: string) {
+		return (await Project.Branches(dir)) ?? [];
+	}
+	switchBranch(dir: string, name: string) {
+		return Project.SwitchBranch(dir, name);
+	}
+	windowLauncher() {
+		return Project.WindowLauncher();
+	}
+	windowWork() {
+		return Project.WindowWork();
+	}
 	async recents() {
 		return (await Project.Recents()) ?? [];
 	}

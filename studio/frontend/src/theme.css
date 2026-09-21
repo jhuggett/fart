@@ -32,7 +32,7 @@
 	--fs-body: 13px;
 	--fs-big: 18px;
 	--tb: 48px;
-	--explorer: 208px;
+	--pb: 38px;
 	--left: 232px;
 	--right: 240px;
 	--chat: 380px;
@@ -604,52 +604,6 @@ code,
 	padding: 0 6px;
 }
 
-/* ---------------------------------------------------------- editor */
-.editor {
-	flex: 1;
-	min-height: 0;
-	display: grid;
-	grid-template-columns: auto var(--left) 1fr var(--right);
-}
-/* the explorer hidden: three columns, or every panel slides one over */
-.editor.no-explorer {
-	grid-template-columns: var(--left) 1fr var(--right);
-}
-/* Ask docked right: one more column, the rightmost */
-.editor.chat-right {
-	grid-template-columns: auto var(--left) 1fr var(--right) var(--chat);
-}
-.editor.no-explorer.chat-right {
-	grid-template-columns: var(--left) 1fr var(--right) var(--chat);
-}
-.browse-body {
-	flex: 1;
-	min-height: 0;
-	display: flex;
-}
-.explorer {
-	width: var(--explorer);
-	flex: none;
-	background: var(--panel);
-	border-right: 1px solid var(--edge);
-	overflow-y: auto;
-	overflow-x: hidden;
-	overscroll-behavior: contain;
-	padding: 0 4px 24px;
-}
-.explorer .hdr {
-	margin: 12px 6px 2px;
-	padding: 0;
-	border: none;
-}
-.explorer .hdr .hint {
-	display: flex;
-	gap: 0;
-	visibility: hidden;
-}
-.explorer:hover .hdr .hint {
-	visibility: visible;
-}
 .btn.x.plain {
 	color: var(--text-3);
 	width: 20px;
@@ -688,18 +642,6 @@ code,
 	background: var(--accent-dim);
 	color: var(--accent);
 }
-.tree-row.project {
-	color: var(--text);
-	font-weight: 600;
-	font-size: 11.5px;
-	letter-spacing: 0.04em;
-	padding-left: 8px;
-	cursor: default;
-	margin-bottom: 2px;
-}
-.tree-row.project:hover {
-	background: none;
-}
 .tree-row .name {
 	flex: 1;
 	overflow: hidden;
@@ -730,9 +672,6 @@ code,
 	overflow-x: hidden;
 	overscroll-behavior: contain;
 	padding: 0 10px 24px;
-}
-.panel.left {
-	border-right: 1px solid var(--edge);
 }
 .panel.right {
 	border-left: 1px solid var(--edge);
@@ -830,14 +769,6 @@ code,
 .canvas-wrap canvas.grab {
 	cursor: grabbing;
 }
-.hud {
-	position: absolute;
-	left: 12px;
-	bottom: 10px;
-	font-size: var(--fs-small);
-	color: var(--text-3);
-	pointer-events: none;
-}
 .issues {
 	position: absolute;
 	right: 12px;
@@ -877,16 +808,17 @@ code,
 	border-radius: 10px;
 	cursor: pointer;
 	overflow: hidden;
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) auto;
 }
 .shelf-card:hover {
 	background: var(--raised);
 	border-color: var(--accent-line);
 }
 .shelf-card canvas {
-	flex: 1;
 	width: 100%;
+	height: 100%;
+	min-height: 0;
 	display: block;
 }
 .shelf-card .label {
@@ -919,34 +851,7 @@ code,
 	border-radius: 8px;
 	margin-bottom: 8px;
 }
-.url {
-	color: var(--accent);
-	white-space: nowrap;
-	cursor: pointer;
-}
 
-/* ---------------------------------------------------------- welcome */
-.welcome {
-	flex: 1;
-	display: grid;
-	grid-template-columns: minmax(360px, 1fr) minmax(360px, 1.1fr);
-	gap: 48px;
-	padding: 64px;
-	overflow: auto;
-	align-content: start;
-}
-.welcome p {
-	color: var(--text-2);
-	margin: 6px 0;
-}
-.welcome a {
-	color: var(--accent);
-	cursor: pointer;
-}
-.welcome .recent {
-	display: flex;
-	flex-direction: column;
-}
 .recent-row {
 	height: 44px;
 	display: flex;
@@ -1542,40 +1447,6 @@ code,
 	border-color: var(--accent-line);
 }
 
-.crumb {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-}
-.crumb .link {
-	border: none;
-	background: transparent;
-	color: var(--text-2);
-	padding: 2px 4px;
-	border-radius: 4px;
-	cursor: pointer;
-}
-.crumb .link:hover {
-	color: var(--accent);
-	background: var(--btn);
-}
-.crumb .slash {
-	color: var(--text-3);
-}
-.tree-row.project.link {
-	cursor: pointer;
-	gap: 6px;
-}
-.tree-row.project.link:hover {
-	background: var(--btn);
-	color: var(--accent);
-}
-.tree-row.project .chip {
-	visibility: hidden;
-}
-.tree-row.project.link:hover .chip {
-	visibility: visible;
-}
 
 .row .chip {
 	margin-left: auto;
@@ -1915,13 +1786,6 @@ code,
 	flex: 1;
 	min-width: 0;
 }
-.explorer-dock {
-	flex: none;
-	height: 100%;
-}
-.explorer-dock > .explorer {
-	height: 100%;
-}
 .chat {
 	position: relative;
 }
@@ -1964,4 +1828,367 @@ body.resizing-y,
 body.resizing-y * {
 	cursor: row-resize !important;
 	user-select: none;
+}
+
+/* ---------------------------------------------------------- workspace */
+/* the IDE split: sidebar · centre (project bar, canvas, timeline) · inspector, and Ask when docked right */
+.workspace {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: var(--left) 1fr var(--right);
+}
+.workspace.no-side {
+	grid-template-columns: 1fr var(--right);
+}
+.workspace.no-insp {
+	grid-template-columns: var(--left) 1fr;
+}
+.workspace.no-side.no-insp {
+	grid-template-columns: 1fr;
+}
+.workspace.chat-right {
+	grid-template-columns: var(--left) 1fr var(--right) var(--chat);
+}
+.workspace.no-side.chat-right {
+	grid-template-columns: 1fr var(--right) var(--chat);
+}
+.workspace.no-insp.chat-right {
+	grid-template-columns: var(--left) 1fr var(--chat);
+}
+.workspace.no-side.no-insp.chat-right {
+	grid-template-columns: 1fr var(--chat);
+}
+.center {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	background: var(--bg);
+}
+.center > .shelf,
+.center > .palette-view {
+	flex: 1;
+	min-height: 0;
+}
+
+/* the sidebar: a header row, then the tree or the lists */
+.sidebar-dock {
+	height: 100%;
+}
+.sidebar {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--panel);
+	border-right: 1px solid var(--edge);
+}
+.side-hdr {
+	height: var(--pb);
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 6px 0 10px;
+	border-bottom: 1px solid var(--edge);
+	--wails-draggable: drag;
+}
+.side-hdr > * {
+	--wails-draggable: no-drag;
+}
+.side-hdr .t {
+	font-weight: 600;
+	font-size: 11.5px;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	padding: 0 2px;
+}
+.side-hdr .chip {
+	margin-left: 2px;
+}
+.side-hdr .btn.x.plain {
+	width: 24px;
+	height: 24px;
+}
+.side-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+	padding: 6px 4px 24px;
+}
+.side-body.panel-lists {
+	padding: 0 10px 24px;
+}
+.side-body.panel-lists .hdr:not(:first-child) {
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid var(--edge);
+}
+.side-body .empty {
+	padding: 10px 8px;
+}
+.tree-row.leaf svg {
+	color: var(--accent);
+	opacity: 0.7;
+	margin-right: 2px;
+}
+
+/* the project bar: the top of the canvas, Xcode's toolbar */
+.projectbar {
+	height: var(--pb);
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 0 6px;
+	background: var(--panel);
+	border-bottom: 1px solid var(--edge);
+	--wails-draggable: drag;
+}
+.projectbar > * {
+	--wails-draggable: no-drag;
+}
+.projectbar .btn.ghost {
+	border-color: transparent;
+}
+.btn.icon {
+	width: 28px;
+	height: 26px;
+	padding: 0;
+}
+.btn.icon.off {
+	color: var(--text-3);
+}
+.btn.small.bad {
+	color: var(--danger);
+}
+.scheme {
+	display: flex;
+	align-items: center;
+	height: 28px;
+	min-width: 0;
+	margin-left: 4px;
+	padding: 0 3px;
+	background: var(--inset);
+	border: 1px solid var(--edge);
+	border-radius: 7px;
+	overflow: hidden;
+}
+.scheme .seg {
+	height: 22px;
+	min-width: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0 7px;
+	border: none;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text);
+	font-size: 12.5px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.scheme .seg:hover {
+	background: var(--btn);
+}
+.scheme .seg > svg:first-child {
+	color: var(--text-2);
+	flex: none;
+}
+.scheme .seg .w {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 220px;
+}
+.scheme .seg.faint .w {
+	color: var(--text-3);
+}
+.scheme .seg .chip {
+	margin: 0;
+}
+.scheme .arrow {
+	color: var(--text-3);
+	padding: 0 1px;
+	flex: none;
+}
+
+/* the floating tools at the bottom of the canvas, the hint line above them, the zoom at the corner */
+.tools-wrap {
+	position: absolute;
+	left: 50%;
+	bottom: 14px;
+	transform: translateX(-50%);
+	max-width: calc(100% - 24px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 7px;
+	pointer-events: none;
+}
+.hint-line {
+	max-width: 100%;
+	font-size: var(--fs-small);
+	color: var(--text-3);
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.tools {
+	pointer-events: auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px;
+	background: var(--raised);
+	border: 1px solid var(--edge-strong);
+	border-radius: 10px;
+	box-shadow: var(--shadow);
+}
+.tools .group {
+	background: var(--inset);
+}
+.tools .tool {
+	height: 30px;
+	min-width: 34px;
+	padding: 0 7px;
+	gap: 6px;
+}
+.tools .tool .key {
+	font-size: 9.5px;
+}
+.tools .sep {
+	margin: 0 2px;
+}
+.tools .field .k {
+	color: var(--text-3);
+}
+.tools .time {
+	min-width: 46px;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+.zoom-hud {
+	position: absolute;
+	right: 12px;
+	bottom: 12px;
+	font-size: var(--fs-small);
+	color: var(--text-3);
+	pointer-events: none;
+}
+
+/* ---------------------------------------------------------- launcher */
+.launcher {
+	height: 100%;
+	display: grid;
+	grid-template-columns: minmax(300px, 340px) 1fr;
+	background: var(--bg);
+}
+.launcher-left {
+	display: flex;
+	flex-direction: column;
+	padding: 36px 26px 18px;
+	background: var(--panel);
+	border-right: 1px solid var(--edge);
+	--wails-draggable: drag;
+}
+.launcher-left > * {
+	--wails-draggable: no-drag;
+}
+.mark {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0 10px 28px;
+}
+.mark .brand {
+	font-size: 30px;
+	margin: 0;
+	line-height: 1.1;
+}
+.mark .tag {
+	color: var(--text-2);
+}
+.mark .ver {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+}
+.ways {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.way {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 10px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text);
+	text-align: left;
+	cursor: pointer;
+}
+.way:hover {
+	background: var(--btn);
+}
+.way .ico-box {
+	width: 34px;
+	height: 34px;
+	flex: none;
+	display: grid;
+	place-items: center;
+	border-radius: 8px;
+	background: var(--accent-dim);
+	color: var(--accent);
+}
+.way .w {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.way b {
+	font-weight: 500;
+}
+.way small {
+	color: var(--text-3);
+	font-size: var(--fs-small);
+}
+.launcher-foot {
+	margin-top: auto;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.launcher-foot .btn.ghost {
+	border-color: transparent;
+}
+.launcher-right {
+	padding: 26px 20px 20px;
+	overflow: auto;
+	--wails-draggable: drag;
+}
+.launcher-right > * {
+	--wails-draggable: no-drag;
+}
+.launcher-right .hdr {
+	margin: 0 10px 8px;
+}
+.launcher-right .empty {
+	padding: 0 10px;
+}
+.launcher .recent-row {
+	margin: 0 0 2px;
+}
+.recent-row .glyph {
+	display: flex;
+	color: var(--text-3);
+	margin-right: 10px;
 }

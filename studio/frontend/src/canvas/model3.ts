@@ -192,6 +192,7 @@ export function onDown(wm: Vec2, mods: Mods) {
 		md.sel.value = hit;
 		md.vert.value = null;
 		md.curPart.value = hit.part;
+		md.partPicked.value = true;
 		if (!preview) {
 			ix3.dragging = true;
 			ix3.vertex = null;
@@ -200,8 +201,10 @@ export function onDown(wm: Vec2, mods: Mods) {
 		return;
 	}
 	if (!mods.shift) {
+		// nothing under the click: the inspector shows the document
 		md.sel.value = null;
 		md.vert.value = null;
+		md.partPicked.value = false;
 	}
 	ix3.orbiting = true;
 	ix3.orbitLast = wm;
@@ -348,6 +351,7 @@ export function escape() {
 		md.tool.value = "select";
 		return;
 	}
+	if (!md.sel.value) md.partPicked.value = false;
 	md.sel.value = null;
 	md.vert.value = null;
 }

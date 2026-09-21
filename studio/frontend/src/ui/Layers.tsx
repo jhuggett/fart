@@ -59,11 +59,15 @@ function LayerRow({ i, depth }: { i: number; depth: number }) {
 			<div
 				class={`layer ${i === cur ? "active" : ""} ${off || (st && !member) ? "off" : ""}`}
 				style={{ paddingLeft: `${6 + depth * 14}px` }}
-				onClick={() => (ed.curPart.value = i)}
+				onClick={() => {
+					ed.curPart.value = i;
+					ed.partPicked.value = true;
+				}}
 				onDblClick={() => (renaming.value = { kind: "part", index: i })}
 				onContextMenu={(e) => {
 					e.preventDefault();
 					ed.curPart.value = i;
+					ed.partPicked.value = true;
 					openContextMenu(e.clientX, e.clientY, partMenu(i));
 				}}
 			>

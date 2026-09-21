@@ -1,5 +1,5 @@
 import { useEffect } from "preact/hooks";
-import { project, leaveDocs, leaveSetup } from "./state/project.ts";
+import { project, leaveDocs, leaveSetup, inWorkspace } from "./state/project.ts";
 import { curClip } from "./state/editor.ts";
 import { ix } from "./canvas/interact.ts";
 import { prompt } from "./state/prompt.ts";
@@ -8,10 +8,7 @@ import { KEYMAP, keyOf, run } from "./state/commands.ts";
 import { initCommands } from "./state/actions.ts";
 import { shell } from "./shell/shell.ts";
 import { Welcome } from "./screens/Welcome.tsx";
-import { Browse } from "./screens/Browse.tsx";
-import { Editor } from "./screens/Editor.tsx";
-import { Model } from "./screens/Model.tsx";
-import { SceneScreen } from "./screens/Scene.tsx";
+import { Workspace } from "./screens/Workspace.tsx";
 import { sc } from "./state/scene.ts";
 import { md, curClip as curClip3 } from "./state/model.ts";
 import { Docs } from "./screens/Docs.tsx";
@@ -76,10 +73,7 @@ export function App() {
 	return (
 		<>
 			{screen === "welcome" && <Welcome />}
-			{screen === "browse" && <Browse />}
-			{screen === "edit" && <Editor />}
-			{screen === "model" && <Model />}
-			{screen === "scene" && <SceneScreen />}
+			{inWorkspace(screen) && <Workspace />}
 			{screen === "docs" && <Docs />}
 			{screen === "setup" && <Setup />}
 			<Prompt />

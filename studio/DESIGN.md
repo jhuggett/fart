@@ -7,25 +7,52 @@ Aseprite and Godot (game art), and the keyboard habits they share.
 
 ## The layout
 
-Four regions, like Rive and Spine and Figma:
+The app opens on a **launcher**, a small window the way Xcode opens:
+the mark and two ways in on the left (Create New Project, which makes a
+folder with `assets/` inside; Open Existing Project), the recent
+projects on the right. A project is a folder; opening one grows the
+window into the **workspace**, an IDE split view with no top bar:
 
-    ┌──────────────────────────────────────────────────────────────┐
-    │ tools · file                                       docs ◐    │
-    ├──────────┬───────────────────────────────────┬───────────────┤
-    │ explorer │                                   │ inspector     │
-    │ layers   │            canvas                 │ (what is      │
-    │ states   │                                   │  selected)    │
-    │ clips    ├───────────────────────────────────┤               │
-    │          │ timeline (when a clip is chosen)  │               │
+    ┌──────────┬───────────────────────────────────┬───────────────┐
+    │ Assets + │ ▤ ? [project ⑂branch › asset ▾ › state ▾]  Save ◐ ▥ │
+    │  effects ├───────────────────────────────────┤ inspector     │
+    │  ships   │                                   │ (what is      │
+    │  ...     │            canvas                 │  selected, or │
+    │          │                                   │  the asset,   │
+    │ ‹ fighter│         hint line                 │  or the       │
+    │  layers  │       [ V R O L P | C # ]         │  project)     │
+    │  states  ├───────────────────────────────────┤               │
+    │  clips   │ timeline (when a clip is chosen)  │               │
     └──────────┴───────────────────────────────────┴───────────────┘
 
-- **Left is structure**: the files of the project, then the parts of the
-  open file as a tree (children under parents) with eye and lock, then
-  the states and the clips, the way Rive and Spine list animations.
+- **Left is the sidebar, a stack two deep.** At its root the project's
+  assets as a tree of folders, with an Add menu (asset, 3D asset,
+  palette, scene, 3D scene) and a refresh. Choosing an asset pushes its
+  insides: the parts as a tree (children under parents) with eye and
+  lock, then the states and the clips, the way Rive and Spine list
+  animations; a scene pushes its nodes. The Add menu there adds a layer,
+  a state, a clip. `‹` pops back to the assets; the asset stays on the
+  canvas, lit in the tree.
+- **The top of the canvas is the project bar**, Xcode's toolbar: the
+  sidebar toggle, the docs, then the scheme bar. Its segments are the
+  project (the folder's name; click for the shelf), the branch (shown
+  only in a repository; click to switch), the asset (click for a quick
+  switcher over every asset), the state (or the clip previewing; click
+  to switch). At the far end: issues, Save, Ask, the theme, a more menu
+  (serve, setup, close the project), the inspector toggle.
+- **The tools float at the bottom centre of the canvas**, with the hint
+  line above them and the zoom in the corner. Nothing else sits on the
+  canvas.
+- **With no asset open the canvas is the shelf**: every asset as a live
+  thumbnail; click one to open it.
 - **Right is properties**: the inspector shows the selection. A shape
   gets its numbers and its fill; a part gets its pivot, parent, anchors
   and IK chains; a pose gets offset, turn and size; nothing selected
-  gets the document: name, colours, shared palettes, collision.
+  gets the document: name, colours, shared palettes, collision; nothing
+  open gets the project. A part counts as selected when it was chosen
+  on purpose (a row in the sidebar, a shape hit, a grip grabbed); a
+  click on empty canvas lets go of everything and the inspector returns
+  to the document.
 - **Bottom is time**: only the timeline, and only when a clip is chosen.
 - **Ask is a drawer, not a mode.** ⌘J slides Claude in on the right; it
   works through the same commands a hand does (one undo step per change,
@@ -124,8 +151,10 @@ Figma's letters, because everyone's hands already know them.
 | `Alt` on a rect corner  | break it into a free quad                     |
 | `Cmd Z` `Cmd Shift Z`   | undo, redo                                    |
 | `Cmd S`                 | save (the checkpoint)                         |
-| `Cmd N` `Cmd O` `Cmd Shift O` | new file, the shelf, open folder        |
-| `Cmd B`                 | the explorer                                  |
+| `Cmd N` `Cmd W`         | new asset, close the asset (the shelf)        |
+| `Cmd Shift N` `Cmd Shift O` | new project, open project                 |
+| `Cmd B` `Cmd Alt 0`     | the sidebar, the inspector                    |
+| `Cmd Shift P` `Cmd Shift S` | switch asset, switch state               |
 | `Cmd K`                 | every command, by name                        |
 | `Enter` on a row        | rename inline                                 |
 | `Space` with a clip     | play / pause                                  |
@@ -151,5 +180,5 @@ Digits `1`–`5` still pick tools, for the hands that learned the classic.
   thing. The long list is `Cmd K`.
 - **Modes are visible.** A state, a clip preview, the collision lens:
   the hint line names which, the toolbar dims what does not apply.
-- **No settings screen.** Theme, explorer, snap are toggles where they
+- **No settings screen.** Theme, sidebar, inspector, snap are toggles where they
   act. If a preference needs a screen, it is probably a bad preference.

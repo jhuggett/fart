@@ -20,9 +20,19 @@ follow the spec, never the other way round.
 - Verify studio changes headlessly: build (`npx tsc && npx vite build`
   in `studio/frontend`, `go build -o bin/studio .` in `studio`), run
   `./studio/bin/studio --serve <dir>`, drive it with Playwright, read
-  `globalThis.fastart` (store, view, `frameW()`) to assert. The Chrome
-  extension is unreliable here. Regenerate bindings after changing the
-  Go service: `cd studio && wails3 generate bindings -ts -i -clean=true`.
+  `globalThis.fastart` (store, view, sidebar, `frameW()`) to assert.
+  `make check-ui` (`studio/test/workspace.mjs`) is the standing tour of
+  the workspace; run it after touching the frame. The Chrome extension
+  is unreliable here.
+- The studio's frame: the launcher (`screens/Welcome.tsx`, small window)
+  then the workspace (`screens/Workspace.tsx`): the sidebar stack
+  (`state/sidebar.ts`, `ui/Sidebar.tsx`: assets, then the open asset),
+  the project bar over the canvas (`ui/ProjectBar.tsx`: project, branch,
+  asset and state switchers), the floating tools (`ui/Tools.tsx`), the
+  inspector. Each asset screen (`Editor.tsx`, `Model.tsx`, `Scene.tsx`)
+  only exports its parts. Git and window sizing live in `workspace.go`.
+  Regenerate bindings after changing the Go service: `cd studio && wails3
+  generate bindings -ts -i -clean=true`.
 - The file on disk is the document: edits land in it at once (atomic
   write), ⌘S makes the checkpoint (`name.fart~`), nothing reverts on its
   own. `make check-save` proves it end to end in a headless browser; run

@@ -56,7 +56,7 @@ export function Prompt() {
 						e.stopPropagation();
 					}}
 				/>
-				<div class="hint">Enter confirms · Esc cancels</div>
+				<div class="hint">{prompt.hint.value || "Enter confirms · Esc cancels"}</div>
 			</div>
 		</div>
 	);

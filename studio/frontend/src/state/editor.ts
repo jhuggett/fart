@@ -74,6 +74,8 @@ export const ed = {
 	issues: signal<Issue[]>([]),
 	tool: signal<Tool>("select"),
 	curPart: signal(0),
+	/** the part was chosen on purpose (a layer row, a hit, a grip): the inspector shows it. An empty click clears it and the inspector shows the document. */
+	partPicked: signal(false),
 	curTok: signal(0),
 	/** the state on the canvas; there is always one */
 	curState: signal(0),

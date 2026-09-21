@@ -481,6 +481,7 @@ function selectDown(wm: Vec2, mods: Mods) {
 			const last = g.c.chain[g.c.chain.length - 1];
 			const k = parts().findIndex((p) => p.name === last);
 			if (k >= 0) ed.curPart.value = k;
+			ed.partPicked.value = true;
 			return;
 		}
 	}
@@ -490,12 +491,14 @@ function selectDown(wm: Vec2, mods: Mods) {
 		const lever = poseLever();
 		const o = worldPivot(part.name) ?? [0, 0];
 		if (lever && dist(lever, wm) * z() < 10) {
+			ed.partPicked.value = true;
 			ix.poseRot = true;
 			ix.poseRot0 = sp.rotate ?? 0;
 			ix.poseAng0 = Math.atan2(wm[1] - o[1], wm[0] - o[0]);
 			return;
 		}
 		if (dist(o, wm) * z() < 9) {
+			ed.partPicked.value = true;
 			ix.poseDrag = true;
 			ix.poseGrab = [wm[0] - o[0], wm[1] - o[1]];
 			return;
@@ -524,15 +527,20 @@ function selectDown(wm: Vec2, mods: Mods) {
 			if (!selHas(hit)) selOnly(hit);
 			else selMakePrimary(hit);
 			ed.curPart.value = hit.p;
+			ed.partPicked.value = true;
 			// Alt: drag away a copy, leave the original
 			if (mods.alt) dupSelInPlace();
 			ix.dragging = true;
 			ix.dragOff = wm;
 		}
 	} else {
+		// nothing under the click: the selection goes, the part focus goes, the inspector shows the document
 		ix.marquee = true;
 		ix.mqA = wm;
-		if (!mods.shift) selClear();
+		if (!mods.shift) {
+			selClear();
+			ed.partPicked.value = false;
+		}
 	}
 }
 
@@ -745,6 +753,7 @@ export function polyEnter() {
 
 /** Esc: deselect, drop the poly in progress, disarm the crosshair. */
 export function escape() {
+	if (!ed.sel.value.length) ed.partPicked.value = false; // a second Esc lets go of the part too
 	selClear();
 	ed.colSel.value = -1;
 	ed.polyPts.value = [];

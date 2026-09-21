@@ -11,7 +11,13 @@ import { openScene, leaveScene, sc } from "./scene.ts";
 import { ask, confirm } from "./prompt.ts";
 import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
 import { refreshSetup } from "./setup.ts";
+import { sidebar } from "./sidebar.ts";
 
+/**
+ * Which screen is up. "welcome" is the launcher; "browse" is a project with
+ * nothing on the canvas (the shelf shows); "edit", "model" and "scene" are a
+ * project with an asset open. Docs and setup sit over whichever was there.
+ */
 export type Screen = "welcome" | "browse" | "edit" | "model" | "scene" | "docs" | "setup";
 
 export interface Thumb {
@@ -41,7 +47,27 @@ export const project = {
 	caps: signal<Caps>({ trash: false, reveal: "" }),
 	/** served mode: the folder's absolute path on the machine, for setup only */
 	servedRoot: signal(""),
+	/** the project has an assets/ folder: new assets land there */
+	hasAssets: signal(false),
+	/** the branch the project's repository is on; "" outside a repository */
+	branch: signal(""),
+	branches: signal<string[]>([]),
 };
+
+/** In a project (an asset open or not), as opposed to the launcher, docs or setup. */
+export function inWorkspace(s: Screen = project.screen.value): boolean {
+	return s === "browse" || s === "edit" || s === "model" || s === "scene";
+}
+
+// the window is small for the launcher and big for work
+let wasLauncher: boolean | null = null;
+project.screen.subscribe((s) => {
+	if (shell.kind !== "wails") return;
+	const launcher = s === "welcome";
+	if (launcher === wasLauncher) return;
+	wasLauncher = launcher;
+	void (launcher ? shell.windowLauncher() : shell.windowWork());
+});
 
 let errorTimer: number | undefined;
 project.error.subscribe((e) => {
@@ -78,6 +104,71 @@ export async function boot() {
 	else project.screen.value = "welcome";
 }
 
+/**
+ * Create New Project: a name, a home for it, then <home>/<name> with an
+ * assets/ folder inside; it opens at once.
+ */
+export async function createProject() {
+	const name = await ask("Name the new project", "", { hint: "a folder of this name is made, with assets/ inside" });
+	if (!name) return;
+	let parent: string | null;
+	try {
+		parent = await shell.pickParentFolder();
+	} catch (e) {
+		project.error.value = `the folder dialog failed: ${String(e)}`;
+		return;
+	}
+	if (!parent) return;
+	try {
+		const root = await shell.newProject(parent, name);
+		await openProject(root);
+	} catch (e) {
+		project.error.value = String(e);
+	}
+}
+
+/** The folder a new asset lands in when none is named: assets/ when the project has one. */
+export function assetHome(): string {
+	return project.hasAssets.value ? "assets" : "";
+}
+
+/** A plain name (no slash) goes to the assets folder; a path stays a path. */
+function placed(name: string): string {
+	const home = assetHome();
+	return home && !name.includes("/") ? `${home}/${name}` : name;
+}
+
+export async function refreshBranch() {
+	const root = project.root.value;
+	if (!root || shell.kind !== "wails") {
+		project.branch.value = "";
+		project.branches.value = [];
+		return;
+	}
+	const [b, bs] = await Promise.all([shell.branch(root), shell.branches(root)]);
+	batch(() => {
+		project.branch.value = b;
+		project.branches.value = bs;
+	});
+}
+
+/** Check a branch out; git's own words show when it will not. The shelf re-reads. */
+export async function switchBranch(name: string) {
+	const root = project.root.value;
+	if (!root) return;
+	if (name === project.branch.value) return;
+	try {
+		await shell.switchBranch(root, name);
+	} catch (e) {
+		project.error.value = String(e);
+	}
+	await refreshBranch();
+	await refreshFiles();
+	const open = ed.path.value ?? md.path.value ?? sc.path.value;
+	if (open && !project.files.value.includes(open)) await goBrowse();
+	else if (open) await openDoc(open);
+}
+
 /** Anything the OS handed us: the first one opens. */
 export async function drainOpens(): Promise<boolean> {
 	const paths = await shell.drainOpenQueue();
@@ -96,8 +187,10 @@ export async function openProject(root: string) {
 		project.name.value = basename(r);
 	});
 	project.recents.value = await shell.pushRecent(r);
+	sidebar.view.value = "assets";
 	await goBrowse();
 	void refreshSetup();
+	void refreshBranch();
 }
 
 /**
@@ -144,10 +237,12 @@ export async function goWelcome() {
 	project.screen.value = "welcome";
 }
 
+/** The project with nothing open: the shelf on the canvas, the assets in the sidebar. */
 export async function goBrowse() {
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
 	if (sc.path.value) await leaveScene();
+	sidebar.view.value = "assets";
 	project.screen.value = "browse";
 	await refreshFiles();
 }
@@ -177,6 +272,7 @@ export async function refreshFiles() {
 	project.busy.value = true;
 	const files = await shell.listFiles(root);
 	project.files.value = files;
+	project.hasAssets.value = files.some((f) => f.startsWith("assets/")) || (await shell.stat(root, "assets")) !== null;
 	const thumbs = new Map<string, Thumb>();
 	await Promise.all(
 		files.map(async (rel) => {
@@ -224,6 +320,17 @@ export async function refreshFiles() {
 }
 
 export async function openDoc(rel: string): Promise<boolean> {
+	const ok = await openDocOnly(rel);
+	if (ok) {
+		// a fresh asset starts with the document in the inspector, and its insides in the sidebar
+		ed.partPicked.value = false;
+		md.partPicked.value = false;
+		sidebar.view.value = "asset";
+	}
+	return ok;
+}
+
+async function openDocOnly(rel: string): Promise<boolean> {
 	const root = project.root.value;
 	// a 3D file goes to the model screen; anything else (or nothing yet) to the editor
 	const text = root === null ? null : await shell.readFile(root, rel);
@@ -263,7 +370,7 @@ export async function openDoc(rel: string): Promise<boolean> {
 export async function newScene(name: string, space3d: boolean) {
 	const root = project.root.value;
 	if (root === null) return;
-	const rel = name.endsWith(".shart") ? name : `${name}.shart`;
+	const rel = placed(name.endsWith(".shart") ? name : `${name}.shart`);
 	if (project.files.value.includes(rel)) {
 		project.error.value = `${rel} already exists`;
 		return;
@@ -283,7 +390,7 @@ export async function newScene(name: string, space3d: boolean) {
 export async function newModel(name: string) {
 	const root = project.root.value;
 	if (root === null) return;
-	const rel = name.endsWith(".fart") ? name : `${name}.fart`;
+	const rel = placed(name.endsWith(".fart") ? name : `${name}.fart`);
 	if (project.files.value.includes(rel)) {
 		project.error.value = `${rel} already exists`;
 		return;
@@ -322,7 +429,7 @@ export async function newPalette(name: string, open = true): Promise<string | nu
 	const root = project.root.value;
 	if (root === null) return null;
 	const bare = name.endsWith(".fart") ? name.slice(0, -5) : name;
-	const rel = `${bare.includes("/") ? bare : `palettes/${bare}`}.fart`;
+	const rel = `${bare.includes("/") ? bare : placed(`palettes/${bare}`)}.fart`;
 	if (project.files.value.includes(rel)) {
 		project.error.value = `${rel} already exists`;
 		return null;
@@ -340,7 +447,7 @@ export async function newPalette(name: string, open = true): Promise<string | nu
 }
 
 export async function newFile(name: string) {
-	const rel = name.endsWith(".fart") ? name : `${name}.fart`;
+	const rel = placed(name.endsWith(".fart") ? name : `${name}.fart`);
 	if (await openDoc(rel)) {
 		await save();
 		await refreshFiles();

@@ -74,6 +74,8 @@ export const md = {
 	/** how deep a new box, prism, ball or rod is, along the view axis */
 	thick: signal(2),
 	curPart: signal(0),
+	/** the part was chosen on purpose; an empty click clears it and the inspector shows the document */
+	partPicked: signal(false),
 	curState: signal(0),
 	curClip: signal(-1),
 	curKey: signal(-1),
