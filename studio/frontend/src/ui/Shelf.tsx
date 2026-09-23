@@ -31,7 +31,9 @@ function FileCard({ rel, thumb }: { rel: string; thumb: Thumb | undefined }) {
 				openContextMenu(e.clientX, e.clientY, fileMenu(rel));
 			}}
 		>
-			<canvas ref={ref} />
+			<div class="thumb">
+				<canvas ref={ref} />
+			</div>
 			<div class="label">
 				<div class="n">{stripExt(basename(rel))}</div>
 				<div class="d">{[dir ? `${dir}/` : "", pal ? "palette" : "", thumb?.scene ? (thumb.space3d ? "3D scene" : "scene") : thumb?.space3d ? "3D" : ""].filter(Boolean).join(" · ")}</div>

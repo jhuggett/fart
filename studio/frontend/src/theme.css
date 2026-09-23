@@ -815,10 +815,16 @@ code,
 	background: var(--raised);
 	border-color: var(--accent-line);
 }
-.shelf-card canvas {
+/* the thumb box takes the row; the canvas fills it absolutely, which every engine sizes the same */
+.shelf-card .thumb {
+	position: relative;
+	min-height: 0;
+}
+.shelf-card .thumb canvas {
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
-	min-height: 0;
 	display: block;
 }
 .shelf-card .label {
@@ -1236,6 +1242,10 @@ code,
 	width: auto;
 	flex: 1;
 	text-align: left;
+}
+/* in a two-column row a text field flexes from nothing, like a number, instead of its 20-character default */
+.field .num.text {
+	width: 0;
 }
 .swatch-btn {
 	display: flex;
