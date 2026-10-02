@@ -4,11 +4,13 @@
 // shape (flat triangles, face normals, the token's colour times the shade
 // as COLOR_0), one plain material, and a linear animation per clip,
 // sampled at a frame rate with targets reached. Y-up, as glTF wants.
+// Morphs (1.6) are morph targets: one per pose that reshapes the part,
+// its weights animated so a sampled frame lands on the lerped points.
 
 import type { Doc3, Token, Vec3 } from "./types.ts";
 import { colorOf, shadeColor } from "./palette.ts";
-import { flattenPart, yUp } from "./solids.ts";
-import { pivotOf3, quatFromEuler, sampleClip3, sampleTargets3, clipDuration3, type Quat } from "./space3.ts";
+import { asMesh, flattenPart, meshTris, yUp } from "./solids.ts";
+import { clipSpan3, keyPoses3, pivotOf3, quatFromEuler, sampleClip3, sampleTargets3, shapesOf3, clipDuration3, type Quat } from "./space3.ts";
 import { solveTargets3 } from "./ik3.ts";
 
 export interface GltfOptions {
@@ -79,6 +81,22 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		materials.push({ name, pbrMetallicRoughness: { baseColorTexture: { index: textures.length - 1 }, baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 } });
 		materialOf.set(name, materials.length - 1);
 	}
+	// morphs (1.6): every pose that reshapes a part is a target of its mesh, named by its source
+	// (a state's name, or clip#key for an inline key); each sampled frame weighs the two it sits between
+	const targetsOf = new Map<string, { id: string; morph: NonNullable<Doc3["states"]>[number]["parts"][number]["morph"] }[]>();
+	const noteMorph = (id: string, poses: readonly { part: string; morph?: unknown }[]) => {
+		for (const sp of poses) {
+			const part = parts.find((p) => p.name === sp.part);
+			if (!part || part.like || !Array.isArray(sp.morph) || !sp.morph.length) continue;
+			const list = targetsOf.get(part.name) ?? [];
+			if (!list.some((t) => t.id === id)) list.push({ id, morph: sp.morph as never });
+			targetsOf.set(part.name, list);
+		}
+	};
+	for (const st of doc.states ?? []) noteMorph(st.name, st.parts);
+	for (const clip of doc.clips ?? []) clip.keys.forEach((k, i) => k.parts && noteMorph(`${clip.name}#${i}`, k.parts));
+	const targetIds = new Map<string, string[]>([...targetsOf].map(([name, ts]) => [name, ts.map((t) => t.id)]));
+
 	// meshes: one per part with geometry of its own; `like` parts share the source's
 	const meshes: Record<string, unknown>[] = [];
 	const meshOf = new Map<string, number>();
@@ -91,8 +109,10 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		const srcPart = parts.find((p) => p.name === src)!;
 		const pivot = pivotOf3(srcPart);
 		const primitives: Record<string, unknown>[] = [];
-		for (const tm of flattenPart(doc, srcPart)) {
-			if (!tm.count) continue;
+		const shapes = shapesOf3(doc, srcPart);
+		const targets = targetsOf.get(src) ?? [];
+		flattenPart(doc, srcPart).forEach((tm, si) => {
+			if (!tm.count) return;
 			const pos = new Float32Array(tm.positions.length);
 			const nor = new Float32Array(tm.normals.length);
 			for (let i = 0; i < tm.positions.length; i += 3) {
@@ -118,10 +138,34 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 				attributes.TEXCOORD_0 = pushAccessor(uv, "VEC2", ARRAY_BUFFER);
 				material = materialOf.get(tm.texture) ?? 0;
 			}
-			primitives.push({ attributes, material, mode: 4 });
-		}
+			const prim: Record<string, unknown> = { attributes, material, mode: 4 };
+			if (targets.length) {
+				// one target per reshaping pose, in the mesh's vertex layout: a delta per corner, zero where the pose leaves this shape alone
+				const sh = shapes[si];
+				const mesh = sh.kind === "mesh" ? sh : null;
+				const tris = mesh ? meshTris(asMesh(mesh)) : [];
+				prim.targets = targets.map((t) => {
+					const delta = new Float32Array(tm.positions.length);
+					const m = mesh ? t.morph?.find((x) => x.shape === si) : undefined;
+					if (mesh && m && m.points.length === mesh.points.length) {
+						for (let v = 0; v < tris.length; v++) {
+							const b = mesh.points[tris[v]];
+							const q = m.points[tris[v]];
+							delta.set(yUp([q[0] - b[0], q[1] - b[1], q[2] - b[2]]), v * 3);
+						}
+					}
+					return { POSITION: pushAccessor(delta, "VEC3", ARRAY_BUFFER, true) };
+				});
+			}
+			primitives.push(prim);
+		});
 		if (primitives.length) {
-			meshes.push({ name: src, primitives });
+			const mesh: Record<string, unknown> = { name: src, primitives };
+			if (targets.length) {
+				mesh.weights = targets.map(() => 0);
+				mesh.extras = { targetNames: targets.map((t) => t.id) };
+			}
+			meshes.push(mesh);
 			meshOf.set(src, meshes.length - 1);
 			if (part.name !== src) meshOf.set(part.name, meshes.length - 1);
 		}
@@ -157,10 +201,39 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		const tr = parts.map(() => new Float32Array(n * 3));
 		const ro = parts.map(() => new Float32Array(n * 4));
 		const sc = parts.map(() => new Float32Array(n * 3));
+		const wt = parts.map((p) => new Float32Array(n * (targetIds.get(p.name)?.length ?? 0)));
+		/** which target a key's pose stands for, per part: the state's name, or the inline key's id */
+		const sourceAt = (ki: number): ((part: string) => string | null) => {
+			const key = clip.keys[ki];
+			const poses = keyPoses3(doc, key);
+			return (part) => {
+				const sp = poses.find((x) => x.part === part);
+				if (!sp?.morph?.length) return null;
+				return key.state !== undefined ? key.state : `${clip.name}#${ki}`;
+			};
+		};
 		for (let k = 0; k < n; k++) {
 			const t = (k / (n - 1)) * dur;
 			times[k] = t;
 			const poses = sampleClip3(doc, clip, t);
+			const span = clipSpan3(clip, t);
+			if (span) {
+				const fromA = sourceAt(span.a);
+				const fromB = sourceAt(span.b);
+				parts.forEach((p, i) => {
+					const ids = targetIds.get(p.name);
+					if (!ids?.length) return;
+					const a = fromA(p.name);
+					const b = fromB(p.name);
+					const w = wt[i];
+					if (span.a === span.b) {
+						if (a) w[k * ids.length + ids.indexOf(a)] = 1;
+						return;
+					}
+					if (a) w[k * ids.length + ids.indexOf(a)] += 1 - span.u;
+					if (b) w[k * ids.length + ids.indexOf(b)] += span.u;
+				});
+			}
 			const tg = sampleTargets3(doc, clip, t);
 			if (tg.length) solveTargets3(doc, poses, tg);
 			parts.forEach((p, i) => {
@@ -177,10 +250,14 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		const timeAcc = pushAccessor(times, "SCALAR", undefined, true);
 		const samplers: Record<string, unknown>[] = [];
 		const channels: Record<string, unknown>[] = [];
-		parts.forEach((_, i) => {
+		parts.forEach((p, i) => {
 			for (const [path, data, type] of [["translation", tr[i], "VEC3"], ["rotation", ro[i], "VEC4"], ["scale", sc[i], "VEC3"]] as const) {
 				samplers.push({ input: timeAcc, output: pushAccessor(data, type), interpolation: "LINEAR" });
 				channels.push({ sampler: samplers.length - 1, target: { node: i, path } });
+			}
+			if (targetIds.get(p.name)?.length && meshOf.has(p.name)) {
+				samplers.push({ input: timeAcc, output: pushAccessor(wt[i], "SCALAR"), interpolation: "LINEAR" });
+				channels.push({ sampler: samplers.length - 1, target: { node: i, path: "weights" } });
 			}
 		});
 		animations.push({ name: clip.name, samplers, channels });

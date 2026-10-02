@@ -3,8 +3,8 @@
 // frame. Between keys, offset and scale interpolate linearly, rotation
 // the short way round, and the incoming key's ease bends the fraction.
 
-import type { Clip, ClipKey, Curve, Doc, Ease, StatePart, Target, Vec2 } from "./types.ts";
-import { partOf, pivotOf, stateOf } from "./geometry.ts";
+import type { Clip, ClipKey, Curve, Doc, Ease, Morph, StatePart, Target, Vec2 } from "./types.ts";
+import { partOf, pivotOf, stateOf, shapesOf } from "./geometry.ts";
 
 /** A CSS-style cubic bezier from (0,0) to (1,1): y at time x, by Newton on x. */
 export function bezier(curve: Curve, x: number): number {
@@ -83,6 +83,40 @@ function lerp(a: number, b: number, u: number): number {
 }
 
 /**
+ * Morphs mixed (1.6): every shape either side reshapes has its points
+ * lerped, corner by corner; a side without a morph for it lerps from or
+ * to the base. `base` gives a shape's rest points (null: no such shape,
+ * or one without points), so a morph that cannot apply is dropped.
+ */
+export function lerpMorphs<V extends number[]>(base: (shape: number) => readonly V[] | null, a: readonly Morph<V>[] | undefined, b: readonly Morph<V>[] | undefined, u: number): Morph<V>[] | undefined {
+	if (!a?.length && !b?.length) return undefined;
+	const ids = new Set<number>();
+	for (const m of a ?? []) ids.add(m.shape);
+	for (const m of b ?? []) ids.add(m.shape);
+	const out: Morph<V>[] = [];
+	for (const shape of [...ids].sort((p, q) => p - q)) {
+		const rest = base(shape);
+		if (!rest) continue;
+		const pa = a?.find((m) => m.shape === shape)?.points ?? rest;
+		const pb = b?.find((m) => m.shape === shape)?.points ?? rest;
+		if (pa.length !== rest.length || pb.length !== rest.length) continue;
+		const points = rest.map((_, i) => pa[i].map((x, k) => x + (pb[i][k] - x) * u) as V);
+		out.push({ shape, points });
+	}
+	return out.length ? out : undefined;
+}
+
+/** A 2D part's rest points by shape index: a poly's, else null. */
+export function basePoints(doc: Doc, partName: string): (shape: number) => readonly Vec2[] | null {
+	const part = partOf(doc, partName);
+	const shapes = part ? shapesOf(doc, part) : [];
+	return (i) => {
+		const sh = shapes[i];
+		return sh && sh.kind === "poly" ? sh.points : null;
+	};
+}
+
+/**
  * The frame at time t (seconds). Membership and paint order come from the
  * outgoing key; parts the incoming key also has tween toward it, the rest
  * hold. Loops wrap at the last key.
@@ -106,26 +140,15 @@ export function sampleClip(doc: Doc, clip: Clip, t: number): StatePart[] {
 	const to = new Map(keyPoses(doc, B).map((sp) => [sp.part, sp]));
 	return from.map((a) => {
 		const b = to.get(a.part);
-		if (!b) return copy(a);
-		const part = partOf(doc, a.part);
-		const pv: Vec2 = part ? pivotOf(part) : [0, 0];
-		const oa = a.offset ?? pv;
-		const ob = b.offset ?? pv;
-		const sa = a.scale === undefined || a.scale === 0 ? 1 : a.scale;
-		const sb = b.scale === undefined || b.scale === 0 ? 1 : b.scale;
-		const out: StatePart = {
-			part: a.part,
-			offset: [lerp(oa[0], ob[0], u), lerp(oa[1], ob[1], u)],
-			rotate: lerpAngle(a.rotate ?? 0, b.rotate ?? 0, u),
-			scale: lerp(sa, sb, u),
-		};
-		if (a.mirror) out.mirror = true; // a flip does not tween: the outgoing key's
-		return out;
+		// a flip does not tween: the outgoing key's
+		return b ? mix(doc, a, b, u, a.mirror) : copy(a);
 	});
 }
 
 function copy(sp: StatePart): StatePart {
-	return { ...sp, offset: sp.offset ? [sp.offset[0], sp.offset[1]] : undefined };
+	const out: StatePart = { ...sp, offset: sp.offset ? [sp.offset[0], sp.offset[1]] : undefined };
+	if (sp.morph) out.morph = sp.morph.map((m) => ({ ...m, points: m.points.map((p) => [p[0], p[1]] as Vec2) }));
+	return out;
 }
 
 // ------------------------------------------------------------- 1.2
@@ -254,5 +277,7 @@ function mix(doc: Doc, a: StatePart, b: StatePart, u: number, mirror: boolean | 
 		scale: lerp(sa, sb, u),
 	};
 	if (mirror) out.mirror = true;
+	const morph = lerpMorphs(basePoints(doc, a.part), a.morph, b.morph, u);
+	if (morph) out.morph = morph;
 	return out;
 }

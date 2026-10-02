@@ -29,7 +29,8 @@ const check = (name, ok, extra = "") => {
 /** Serve a copy of an example folder, hand a page on it to `tour`, tear down. */
 async function served(example, tour) {
 	const P = fs.mkdtempSync(path.join(os.tmpdir(), "uranus-ui-"));
-	fs.cpSync(path.join(repo, "examples", example), P, { recursive: true });
+	if (typeof example === "function") example(P);
+	else fs.cpSync(path.join(repo, "examples", example), P, { recursive: true });
 	const server = spawn(bin, ["--serve", P], { stdio: "ignore" });
 	for (let i = 0; i < 80; i++) {
 		try {
@@ -150,6 +151,48 @@ await served("models", async (page, shot, hdrs) => {
 	await shot("8-model");
 
 });
+
+// morphs (1.6): the corpus pair, the model screen's deform mode, the 2D painter drawing a squash
+await served(
+	(P) => {
+		fs.mkdirSync(path.join(P, "assets"));
+		fs.copyFileSync(path.join(repo, "spec/examples/valid/morph3d.fart"), path.join(P, "assets/morph3d.fart"));
+		fs.copyFileSync(path.join(repo, "spec/examples/valid/morph.fart"), path.join(P, "assets/morph.fart"));
+	},
+	async (page, shot) => {
+	check("two assets on the shelf", (await page.locator(".shelf-card").count()) === 2);
+	await page.locator(".tree-row.folder").first().click(); await page.waitForTimeout(150);
+	await page.locator(".tree-row.leaf", { hasText: "morph3d" }).click(); await page.waitForTimeout(1000);
+	check("model screen", await page.evaluate(() => fastart.project.screen.value === "model"));
+	check("no issues", await page.evaluate(() => fastart.md.issues.value.length === 0), await page.evaluate(() => JSON.stringify(fastart.md.issues.value)));
+	// the full state: the chest row says morph
+	await page.locator(".side-body .row", { hasText: "full" }).click(); await page.waitForTimeout(300);
+	check("row chip morph", (await page.locator(".side-body .layer", { hasText: "chest" }).locator(".chip", { hasText: "morph" }).count()) === 1);
+	await page.locator(".side-body .layer", { hasText: "chest" }).first().click(); await page.waitForTimeout(200);
+	check("inspector says reshaped", (await page.locator(".inspector").textContent()).includes("1 mesh reshaped"));
+	// D toggles deform
+	await page.keyboard.press("d"); await page.waitForTimeout(100);
+	check("D toggles deform", await page.evaluate(() => fastart.md.deform.value === true));
+	check("deform tool lit", (await page.locator(".tools .tool.active").count()) >= 2);
+	// reset the morph through the inspector, undo brings it back
+	await page.locator(".inspector .btn[title^=\"draw the base mesh\"]").click(); await page.waitForTimeout(200);
+	check("reset drops the morph", await page.evaluate(() => !fastart.md.doc.value.states[1].parts[0].morph));
+	await page.keyboard.press("Meta+z"); await page.waitForTimeout(200);
+	check("undo restores it", await page.evaluate(() => fastart.md.doc.value.states[1].parts[0].morph?.length === 1));
+	// a clip previews the swell midway: the frame carries a lerped morph
+	await page.locator(".side-body .row", { hasText: "breathe" }).click(); await page.waitForTimeout(200);
+	await page.evaluate(() => (fastart.md.clipTime.value = 0.4)); await page.waitForTimeout(200);
+	const mid = await page.evaluate(() => { const s = fastart.md.doc.value; return s && window.fastart.md.clipTime.value; });
+	check("clip time set", mid === 0.4);
+	await shot("13-morph-mid");
+	// the 2D file draws its squash without complaint
+	await page.locator(".scheme .seg.asset").click(); await page.waitForTimeout(120);
+	await page.locator(".ctx .row", { hasText: "assets/morph" }).first().click(); await page.waitForTimeout(900);
+	check("2D morph file opens clean", await page.evaluate(() => fastart.project.screen.value === "edit" && fastart.ed.issues.value.length === 0));
+	await page.locator(".side-body .row", { hasText: "squash" }).click(); await page.waitForTimeout(200);
+	await shot("14-morph-2d");
+	},
+);
 
 console.log(fails ? `${fails} FAILED` : "all passed");
 process.exit(fails ? 1 : 0);

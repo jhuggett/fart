@@ -193,8 +193,20 @@ third coordinate. Model props once, then project them to the 2D views a
   most props need no hand-written collision. The model screen's
   Collision button shows the solids posed, and a part's **hull** button
   does the same as the CLI.
+- **Morphs (1.6)**: a state can reshape a mesh as well as place it. A
+  state entry's `morph` lists `{"shape": i, "points": [...]}` per mesh
+  of the part: the same number of points as the base, in the same
+  order; faces and `tris` stay. Clips lerp the corners between keys
+  (eased), so a breathing chest, a blinking eye or a bending tentacle
+  segment is two states and a clip. A part drawn `like` another cannot
+  morph (error `morph`), nor can balls, rods or collision. In 2D the
+  same field reshapes a `poly`. Projection bakes a morphed entry into a
+  variant part; glTF export writes morph targets with animated weights.
+  Build one by script (`points` is `mesh.points.map(...)`), or in Uranus
+  with the model screen's **Deform** toggle (D): corner drags then land
+  in the current state's morph instead of the base mesh.
 - **Look at it**: open the folder in Uranus; a 3D file opens the model
-  screen (orbit, the four tools make box/ball/rod/prism, Project…).
+  screen (orbit, the four tools make box/ball/rod/prism, Deform, Project…).
 
 ### Loading in a 3D game (Odin, raylib)
 
@@ -225,6 +237,13 @@ way the example does. `blend_poses_3d`, `layer_poses_3d`,
 
 **TypeScript**: `as3d`, `worldTransforms3`, `sampleClip3`, `sampleTargets3`,
 `solveTargets3`, `flattenPart`/`triMesh`, `Y_UP`, `projectDoc`, `toGlb`.
+
+A frame's entries may morph (1.6): `morphs_3d(&doc, &sp)` says so, and
+`flatten_part_posed(&doc, part, &sp, &tms)` flattens the part with the
+frame's points; re-upload those meshes (raylib: `UpdateMeshBuffer` for
+vertices and normals) and draw as before. Sample frames with the temp
+allocator as `context.allocator`, since mixed morphs allocate their
+points there, and `free_all` it each frame.
 
 ## Textures
 
@@ -413,3 +432,7 @@ and the note.
 - A sampled target only exists once the playhead reaches the key that
   names it; give the outgoing key a target too if the hand must track
   from the start.
+- A morph replaces a shape's points whole: write every corner, in the
+  base's order, and never add or drop one (the validator refuses the
+  count, `morph`). To stretch a mesh in a state, morph it; to move the
+  part, pose it; the two compose (morph first, then the pose).

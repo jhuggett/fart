@@ -424,3 +424,44 @@ scenes :: proc(t: ^testing.T) {
 	for tk in placed2[0].tokens do if tk.name == want do has = true
 	testing.expect(t, has, "the scene's palette lays over the instance's tokens")
 }
+
+@(test)
+morphs_lerp :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	data, err := os.read_entire_file(EXAMPLES + "valid/morph3d.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	doc, ok := fart.load_bytes_3d(data)
+	if !testing.expect(t, ok) do return
+	full := fart.state_of_3d(&doc, "full")
+	chest := fart.part_of_3d(&doc, "chest")
+	if !testing.expect(t, full != nil && chest != nil) do return
+	// the state's morph is parsed, and shape_points_3d hands it out for the entry
+	testing.expect_value(t, len(full.parts[0].morph), 1)
+	testing.expect_value(t, fart.shape_points_3d(&doc, chest, &full.parts[0], 0)[0], fart.V3{-5, -4, 3})
+	testing.expect_value(t, fart.shape_points_3d(&doc, chest, nil, 0)[0], fart.V3{-4, -3, 2})
+	testing.expect(t, fart.morphs_3d(&doc, &full.parts[0]), "the full state reshapes the chest")
+	// halfway through the swell (in-out ease: the eased half is a half)
+	frame := make([dynamic]fart.State_Part3)
+	fart.sample_clip_3d(&doc, &doc.clips[0], 0.4, &frame)
+	for &sp in frame do if sp.part == "chest" {
+		testing.expect_value(t, len(sp.morph), 1)
+		p := sp.morph[0].points[0]
+		testing.expect(t, abs(p.x + 4.5) < 1e-4 && abs(p.y + 3.5) < 1e-4 && abs(p.z - 2.5) < 1e-4, "the corner is halfway out")
+		// flattened under the pose: every corner at |x| 4.5
+		tms := make([dynamic]fart.Tri_Mesh)
+		fart.flatten_part_posed(&doc, chest, &sp, &tms)
+		for q in tms[0].positions do testing.expect(t, abs(abs(q.x) - 4.5) < 1e-4, "the mesh flattens with the morph")
+	}
+	// 2D too: the blob squashes
+	data2, err2 := os.read_entire_file(EXAMPLES + "valid/morph.fart", context.temp_allocator)
+	if !testing.expect(t, err2 == nil) do return
+	d2, ok2 := fart.load_bytes(data2)
+	if !testing.expect(t, ok2) do return
+	f2 := make([dynamic]fart.State_Part)
+	fart.sample_clip(&d2, &d2.clips[0], 0.25, &f2)
+	blob := fart.part_of(&d2, "blob")
+	for &sp in f2 do if sp.part == "blob" {
+		p := fart.shape_points(&d2, blob, &sp, 0)[0]
+		testing.expect(t, abs(p.x + 7) < 1e-4 && abs(p.y + 3) < 1e-4, "the poly is halfway squashed")
+	}
+}

@@ -20,7 +20,7 @@ import {
 	frame,
 	frameParts,
 	framePartOf,
-	selShape,
+	selShapePosed,
 	poseOfCur,
 	addShape,
 	extrudeView,
@@ -70,7 +70,7 @@ export function viewPoint(fp: FramePart, p: Vec3): Vec2 {
 /** The corners of the selected mesh, projected. */
 export function vertexHandles(): { i: number; at: Vec2 }[] {
 	const s = md.sel.value;
-	const sh = selShape();
+	const sh = selShapePosed();
 	if (!s || !sh || sh.kind !== "mesh") return [];
 	const fp = framePartOf(s.part);
 	if (!fp) return [];

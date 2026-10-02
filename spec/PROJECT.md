@@ -135,3 +135,11 @@ to know which is which: the test is per part, per pose.
 
 Nothing new. The output is a 1.3 2D document that uses `shade`; a 1.2
 reader draws it flat and otherwise right.
+
+## Morphs (1.6)
+
+A pose entry with a `morph` changes the part's points, so no 2D pose of
+the rest part can stand for it: the entry **bakes** a variant part
+(`name@n`), the way an out-of-plane turn does, and a clip span with a
+morphed part subdivides at the sampling rate. Two entries with the same
+map and the same morph share a variant.

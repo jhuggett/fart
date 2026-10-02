@@ -14,6 +14,8 @@ import {
 	sampleClip3,
 	projectDoc,
 	projectFrame,
+	pivotOf3,
+	shapesOf3Posed,
 	setHull,
 	quatAxis,
 	quatFromEuler,
@@ -88,6 +90,8 @@ export const md = {
 	/** a polygon being drawn, in view space */
 	polyPts: signal<Vec2[]>([]),
 	pending: signal<"none" | "pivot">("none"),
+	/** 1.6: corner drags reshape the part in the current state (a morph) instead of the base mesh */
+	deform: signal(false),
 	tokens: signal<Token[]>([]),
 	/** 1.5: the file's textures, resolved and rendered, by name */
 	patterns: signal<Map<string, TexturePattern>>(new Map()),
@@ -145,6 +149,53 @@ export function selShape(): Shape3 | undefined {
 	const s = md.sel.value;
 	if (!s) return undefined;
 	return parts()[s.part]?.shapes?.[s.shape];
+}
+/** The selected shape as the current state has it: its morph applied (1.6). */
+export function selShapePosed(): Shape3 | undefined {
+	const s = md.sel.value;
+	const part = s ? parts()[s.part] : undefined;
+	if (!s || !part) return undefined;
+	return shapesOf3Posed(doc(), part, curState()?.parts.find((sp) => sp.part === part.name))[s.shape];
+}
+/** Can corner drags land in a morph: deform on, a state (not a clip) on the canvas, a mesh of a part with points of its own. */
+export function deforming(): boolean {
+	const s = md.sel.value;
+	const part = s ? parts()[s.part] : undefined;
+	const sh = part?.shapes?.[s!.shape];
+	return md.deform.value && md.curClip.value < 0 && !!part && !part.like && sh?.kind === "mesh";
+}
+/** The current state's morph entry for a shape of a part, made from the base when there is none. */
+function morphEntry(d: Doc3, partIndex: number, shape: number): Vec3[] | null {
+	const part = d.parts?.[partIndex];
+	const st = d.states?.[md.curState.value];
+	const sh = part?.shapes?.[shape];
+	if (!part || !st || !sh || sh.kind !== "mesh" || part.like) return null;
+	let sp = st.parts.find((e) => e.part === part.name);
+	if (!sp) {
+		sp = { part: part.name, offset: [...pivotOf3(part)] as Vec3 };
+		st.parts.push(sp);
+	}
+	sp.morph ??= [];
+	let m = sp.morph.find((x) => x.shape === shape);
+	if (!m || m.points.length !== sh.points.length) {
+		m = { shape, points: sh.points.map((p) => [...p] as Vec3) };
+		sp.morph = [...sp.morph.filter((x) => x.shape !== shape), m];
+	}
+	return m.points;
+}
+/** Forget the current state's morphs on a part: it draws the base mesh again. */
+export function resetMorph(partIndex: number) {
+	mutate((d) => {
+		const part = d.parts?.[partIndex];
+		const sp = part && d.states?.[md.curState.value]?.parts.find((e) => e.part === part.name);
+		if (sp) delete sp.morph;
+	});
+}
+/** How many shapes the current state reshapes on a part. */
+export function morphCount(partIndex: number): number {
+	const part = parts()[partIndex];
+	const sp = part && curState()?.parts.find((e) => e.part === part.name);
+	return sp?.morph?.length ?? 0;
 }
 export function freshName(base: string, taken: Iterable<string>): string {
 	const set = new Set(taken);
@@ -800,14 +851,17 @@ export function setShapeCoord(s: Sel3, key: "at" | "a" | "b", axis: 0 | 1 | 2, v
 	}, `shape-${key}-${axis}`);
 }
 export function setVertexAxis(s: Sel3, vi: number, axis: 0 | 1 | 2, v: number) {
+	const morph = deforming();
 	mutate((d) => {
 		const sh = d.parts![s.part].shapes![s.shape];
 		if (sh.kind !== "mesh") return;
-		const p = [...sh.points[vi]] as Vec3;
+		const pts = morph ? morphEntry(d, s.part, s.shape) : sh.points;
+		if (!pts) return;
+		const p = [...pts[vi]] as Vec3;
 		p[axis] = v;
-		sh.points[vi] = p;
-		delete sh.tris;
-	}, `vert-${vi}-${axis}`);
+		pts[vi] = p;
+		if (!morph) delete sh.tris;
+	}, `vert-${vi}-${axis}${morph ? "-morph" : ""}`);
 }
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000 + 0;
@@ -835,13 +889,16 @@ export function moveVertexView(s: Sel3, vi: number, dView: Vec3, merge = "vertex
 	const fp = framePartOf(s.part);
 	if (!fp) return;
 	const d = xf3ApplyDir(xf3Invert(fp.F), dView);
+	const morph = deforming();
 	mutate((doc) => {
 		const sh = doc.parts![s.part].shapes![s.shape];
 		if (sh.kind !== "mesh") return;
-		const p = sh.points[vi];
-		sh.points[vi] = round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
-		delete sh.tris;
-	}, merge);
+		const pts = morph ? morphEntry(doc, s.part, s.shape) : sh.points;
+		if (!pts) return;
+		const p = pts[vi];
+		pts[vi] = round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
+		if (!morph) delete sh.tris;
+	}, morph ? `${merge}-morph` : merge);
 }
 
 /** The depth (view z) new shapes go at: the selection's centre, else the current part's pivot. */

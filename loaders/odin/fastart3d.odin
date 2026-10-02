@@ -75,6 +75,58 @@ State_Part3 :: struct {
 	rotate: V3, // radians about x, then y, then z
 	scale:  f32, // 0 = 1
 	mirror: bool,
+	morph:  [dynamic]Morph3, // 1.6: meshes of the part reshaped in this pose
+}
+
+// 1.6: a mesh's points as they are in one pose; the count matches the base.
+Morph3 :: struct {
+	shape:  int,
+	points: [dynamic]V3,
+}
+
+// The points a mesh has under a pose entry: its morph's, else the base's.
+shape_points_3d :: proc(doc: ^Doc3, part: ^Part3, sp: ^State_Part3, shape: int) -> []V3 {
+	shapes := shapes_of_3d(doc, part)
+	if shape < 0 || shape >= len(shapes) do return nil
+	base := shapes[shape].points[:]
+	if sp == nil || part.like != "" do return base
+	for &m in sp.morph do if m.shape == shape && len(m.points) == len(base) do return m.points[:]
+	return base
+}
+
+// Does this entry reshape the part? (A morph on a `like` part does nothing.)
+morphs_3d :: proc(doc: ^Doc3, sp: ^State_Part3) -> bool {
+	if sp == nil || len(sp.morph) == 0 do return false
+	part := part_of_3d(doc, sp.part)
+	return part != nil && part.like == ""
+}
+
+@(private)
+mix_morphs_3d :: proc(doc: ^Doc3, part_name: string, a, b: []Morph3, u: f32) -> [dynamic]Morph3 {
+	if len(a) == 0 && len(b) == 0 do return nil
+	part := part_of_3d(doc, part_name)
+	if part == nil || part.like != "" do return nil
+	shapes := shapes_of_3d(doc, part)
+	out: [dynamic]Morph3
+	for si in 0 ..< len(shapes) {
+		if shapes[si].kind != "mesh" do continue
+		base := shapes[si].points[:]
+		pa, pb := base, base
+		got := false
+		for &m in a do if m.shape == si && len(m.points) == len(base) {
+			pa = m.points[:]
+			got = true
+		}
+		for &m in b do if m.shape == si && len(m.points) == len(base) {
+			pb = m.points[:]
+			got = true
+		}
+		if !got do continue
+		pts := make([dynamic]V3, len(base))
+		for i in 0 ..< len(base) do pts[i] = pa[i] + (pb[i] - pa[i]) * u
+		append(&out, Morph3{shape = si, points = pts})
+	}
+	return out
 }
 
 // Where a chain should reach in a pose, document space.
@@ -460,7 +512,8 @@ ease_key_3d :: proc(u: f32, k: ^Clip_Key3) -> f32 {
 }
 
 @(private)
-mix_pose_3d :: proc(a, b: ^State_Part3, u: f32, mirror: bool) -> State_Part3 {
+// Morphs (1.6) mix too; their points are allocated with the context allocator (a game's frame arena).
+mix_pose_3d :: proc(doc: ^Doc3, a, b: ^State_Part3, u: f32, mirror: bool) -> State_Part3 {
 	sa := a.scale == 0 ? f32(1) : a.scale
 	sb := b.scale == 0 ? f32(1) : b.scale
 	return {
@@ -469,6 +522,7 @@ mix_pose_3d :: proc(a, b: ^State_Part3, u: f32, mirror: bool) -> State_Part3 {
 		rotate = lerp_euler(a.rotate, b.rotate, u),
 		scale  = sa + (sb - sa) * u,
 		mirror = mirror,
+		morph  = mix_morphs_3d(doc, a.part, a.morph[:], b.morph[:], u),
 	}
 }
 
@@ -505,7 +559,7 @@ sample_clip_3d :: proc(doc: ^Doc3, c: ^Clip3, t: f32, out: ^[dynamic]State_Part3
 			append(out, a)
 			continue
 		}
-		append(out, mix_pose_3d(&a, b, u, a.mirror))
+		append(out, mix_pose_3d(doc, &a, b, u, a.mirror))
 	}
 }
 
@@ -525,8 +579,8 @@ blend_poses_3d :: proc(doc: ^Doc3, a, b: []State_Part3, w: f32, out: ^[dynamic]S
 			append(out, sp)
 			continue
 		}
-		if u < 0.5 do append(out, mix_pose_3d(&sp, o, u, sp.mirror))
-		else do append(out, mix_pose_3d(o, &sp, u, sp.mirror))
+		if u < 0.5 do append(out, mix_pose_3d(doc, &sp, o, u, sp.mirror))
+		else do append(out, mix_pose_3d(doc, o, &sp, u, sp.mirror))
 	}
 }
 
@@ -541,7 +595,7 @@ layer_poses_3d :: proc(doc: ^Doc3, base, over: []State_Part3, w: f32, out: ^[dyn
 			break
 		}
 		if o == nil do append(out, sp)
-		else do append(out, mix_pose_3d(&sp, o, u, u < 0.5 ? sp.mirror : o.mirror))
+		else do append(out, mix_pose_3d(doc, &sp, o, u, u < 0.5 ? sp.mirror : o.mirror))
 	}
 	if u >= 0.5 {
 		for &q in over {
@@ -762,6 +816,25 @@ flatten_part :: proc(doc: ^Doc3, part: ^Part3, out: ^[dynamic]Tri_Mesh) {
 	for &sh in shapes_of_3d(doc, part) {
 		m: Tri_Mesh
 		flatten_shape(&sh, &m)
+		append(out, m)
+	}
+}
+
+// The same under a pose entry (1.6): a mesh the entry morphs is flattened
+// with the morph's points (faces, tris and mapping are the base's). Call
+// it each frame for the parts morphs_3d says yes to, and re-upload.
+flatten_part_posed :: proc(doc: ^Doc3, part: ^Part3, sp: ^State_Part3, out: ^[dynamic]Tri_Mesh) {
+	for &sh, si in shapes_of_3d(doc, part) {
+		m: Tri_Mesh
+		pts := shape_points_3d(doc, part, sp, si)
+		if sh.kind == "mesh" && raw_data(pts) != raw_data(sh.points[:]) {
+			posed := sh
+			posed.points = make([dynamic]V3, len(pts), context.temp_allocator)
+			copy(posed.points[:], pts)
+			flatten_shape(&posed, &m)
+		} else {
+			flatten_shape(&sh, &m)
+		}
 		append(out, m)
 	}
 }

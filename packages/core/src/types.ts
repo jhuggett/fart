@@ -127,6 +127,13 @@ export interface Part {
 	[extra: string]: unknown;
 }
 
+/** Since 1.6: a shape's points as they are in one pose. `shape` indexes the part's own shapes; the count matches the base. */
+export interface Morph<V = Vec2> {
+	shape: number;
+	points: V[];
+	[extra: string]: unknown;
+}
+
 export interface StatePart {
 	part: string;
 	/** Where the pivot lands. Absent means the pivot itself (rest). */
@@ -137,6 +144,8 @@ export interface StatePart {
 	scale?: number;
 	/** Since 1.2: flipped left-to-right about the pivot, before the turn. */
 	mirror?: boolean;
+	/** Since 1.6: polys of the part reshaped in this pose; lerped between keys. */
+	morph?: Morph<Vec2>[];
 	[extra: string]: unknown;
 }
 
@@ -223,7 +232,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 5;
+export const FORMAT_MINOR = 6;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -302,6 +311,8 @@ export interface StatePart3 {
 	rotate?: Vec3;
 	scale?: number;
 	mirror?: boolean;
+	/** Since 1.6: meshes of the part reshaped in this pose; lerped between keys. */
+	morph?: Morph<Vec3>[];
 	[extra: string]: unknown;
 }
 

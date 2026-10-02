@@ -64,7 +64,9 @@ follow the spec, never the other way round.
   (1.4: posed by `part`, `box`, `layer`, convexity, hulls) in
   `collision.ts` (`fart hull`), textures (1.5: maps that are drawings,
   box mapping, a software rasteriser, `fart bake --textures`) in
-  `textures.ts` + `png.ts`; the studio renders maps in
+  `textures.ts` + `png.ts`, morphs (1.6: `morph` on state entries,
+  lerped in `clips.ts`/`space3.ts`, `shapesOfPosed`/`shapesOf3Posed`,
+  glTF targets; the model screen's Deform toggle); the studio renders maps in
   `state/textures.ts` for the 2D painter's patterns and WebGL; the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.

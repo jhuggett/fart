@@ -33,7 +33,8 @@ export type ErrorCode =
 	| "face"
 	| "convex"
 	| "ref.texture"
-	| "dup.texture";
+	| "dup.texture"
+	| "morph";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -95,7 +96,8 @@ const KNOWN_TOKEN = ["name", "rgb", "emissive"];
 const KNOWN_ANCHOR = ["name", "at", "angle"];
 const KNOWN_ANCHOR3 = ["name", "at", "dir"];
 const KNOWN_STATE = ["name", "parts", "targets"];
-const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale", "mirror"];
+const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale", "mirror", "morph"];
+const KNOWN_MORPH = ["shape", "points"];
 
 type Obj = Record<string, unknown>;
 
@@ -446,13 +448,50 @@ function checkPart(ctx: Ctx, p: unknown, path: string): string | null {
 	return named ? (p.name as string) : null;
 }
 
-function checkStateParts(ctx: Ctx, parts: unknown[], path: string, partNames: Set<string>) {
+/**
+ * 1.6: a morph names one of the part's own shapes, one with points, and
+ * carries as many points as the base; a part drawn like another has none.
+ */
+function checkMorph(ctx: Ctx, morph: unknown, path: string, part: Obj | undefined) {
+	if (!ctx.array(morph, path)) return;
+	const shapes = part && Array.isArray(part.shapes) ? (part.shapes as unknown[]) : [];
+	morph.forEach((m, i) => {
+		const mp = `${path}/${i}`;
+		if (!ctx.object(m, mp)) return;
+		const idx = m.shape;
+		if (typeof idx !== "number" || !Number.isInteger(idx) || idx < 0) ctx.err("schema", `${mp}/shape`, "shape is an index into the part's shapes");
+		let n = -1;
+		if (ctx.array(m.points, `${mp}/points`)) {
+			m.points.forEach((p, j) => ctx.point(p, `${mp}/points/${j}`));
+			n = m.points.length;
+		}
+		ctx.unknown(m, KNOWN_MORPH, [], mp);
+		if (!part || typeof idx !== "number" || n < 0) return;
+		if (isName(part.like)) {
+			ctx.err("morph", mp, "a part drawn like another has no points of its own to morph");
+			return;
+		}
+		const sh = shapes[idx];
+		if (!isObj(sh)) {
+			ctx.err("morph", `${mp}/shape`, `the part has no shape ${idx}`);
+			return;
+		}
+		if (!Array.isArray(sh.points)) {
+			ctx.err("morph", `${mp}/shape`, `shape ${idx} is a ${String(sh.kind)}: only a ${ctx.dim === 3 ? "mesh" : "poly"} has points to morph`);
+			return;
+		}
+		if (sh.points.length !== n) ctx.err("morph", `${mp}/points`, `${n} points for a shape with ${sh.points.length}: a morph moves every corner, so the counts match`);
+	});
+}
+
+function checkStateParts(ctx: Ctx, parts: unknown[], path: string, partNames: Set<string>, partObjs?: Map<string, Obj>) {
 	parts.forEach((sp, i) => {
 		const spp = `${path}/${i}`;
 		if (!ctx.object(sp, spp)) return;
 		if (ctx.name(sp.part, `${spp}/part`) && !partNames.has(sp.part)) {
 			ctx.err("ref.part", `${spp}/part`, `no part named "${sp.part}"`);
 		}
+		if ("morph" in sp) checkMorph(ctx, sp.morph, `${spp}/morph`, isName(sp.part) ? partObjs?.get(sp.part) : undefined);
 		if ("offset" in sp) ctx.point(sp.offset, `${spp}/offset`);
 		if ("rotate" in sp) {
 			if (ctx.dim === 3) {
@@ -477,17 +516,17 @@ function checkTargets(ctx: Ctx, targets: unknown, path: string, chainNames: Set<
 	});
 }
 
-function checkState(ctx: Ctx, s: unknown, path: string, partNames: Set<string>, chainNames: Set<string>): string | null {
+function checkState(ctx: Ctx, s: unknown, path: string, partNames: Set<string>, chainNames: Set<string>, partObjs?: Map<string, Obj>): string | null {
 	if (!ctx.object(s, path)) return null;
 	const named = ctx.name(s.name, `${path}/name`);
 	if (!("parts" in s)) ctx.err("schema", `${path}/parts`, "a state lists its parts (an empty list is fine)");
-	else if (ctx.array(s.parts, `${path}/parts`)) checkStateParts(ctx, s.parts, `${path}/parts`, partNames);
+	else if (ctx.array(s.parts, `${path}/parts`)) checkStateParts(ctx, s.parts, `${path}/parts`, partNames, partObjs);
 	if ("targets" in s) checkTargets(ctx, s.targets, `${path}/targets`, chainNames);
 	ctx.unknown(s, KNOWN_STATE, [], path);
 	return named ? (s.name as string) : null;
 }
 
-function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, stateNames: Set<string>, chainNames: Set<string>): string | null {
+function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, stateNames: Set<string>, chainNames: Set<string>, partObjs?: Map<string, Obj>): string | null {
 	if (!ctx.object(c, path)) return null;
 	const named = ctx.name(c.name, `${path}/name`);
 	if ("loop" in c && typeof c.loop !== "boolean") ctx.err("schema", `${path}/loop`, "expected true or false");
@@ -508,7 +547,7 @@ function checkClip(ctx: Ctx, c: unknown, path: string, partNames: Set<string>, s
 			if (hasState && ctx.name(k.state, `${kp}/state`) && !stateNames.has(k.state)) {
 				ctx.err("ref.state", `${kp}/state`, `no state named "${k.state}"`);
 			}
-			if (hasParts && ctx.array(k.parts, `${kp}/parts`)) checkStateParts(ctx, k.parts, `${kp}/parts`, partNames);
+			if (hasParts && ctx.array(k.parts, `${kp}/parts`)) checkStateParts(ctx, k.parts, `${kp}/parts`, partNames, partObjs);
 			if ("ease" in k && !EASES.includes(k.ease as string)) ctx.err("schema", `${kp}/ease`, `ease must be one of ${EASES.join(", ")}`);
 			if ("curve" in k) {
 				const cv = k.curve;
@@ -692,13 +731,13 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 
 	const stateNames: (string | null)[] = [];
 	if ("states" in doc && ctx.array(doc.states, "/states")) {
-		doc.states.forEach((s, i) => stateNames.push(checkState(ctx, s, `/states/${i}`, partSet, chainSet)));
+		doc.states.forEach((s, i) => stateNames.push(checkState(ctx, s, `/states/${i}`, partSet, chainSet, partObjs)));
 		checkDuplicates(ctx, stateNames, "dup.state", "/states", "states");
 	}
 	const stateSet = new Set(stateNames.filter((n): n is string => n !== null));
 
 	if ("clips" in doc && ctx.array(doc.clips, "/clips")) {
-		const names = doc.clips.map((c, i) => checkClip(ctx, c, `/clips/${i}`, partSet, stateSet, chainSet));
+		const names = doc.clips.map((c, i) => checkClip(ctx, c, `/clips/${i}`, partSet, stateSet, chainSet, partObjs));
 		checkDuplicates(ctx, names, "dup.clip", "/clips", "clips");
 	}
 

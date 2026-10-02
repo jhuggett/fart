@@ -373,6 +373,11 @@ the same four regions with the model turned under a **view**.
   `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with
   its animations for any other engine. Chains work in 3D with a `pole`
   in place of `bend`; the model screen does not show them yet.
+- **Deform** (D) in the floating tools makes corner drags reshape the
+  part *in the current state only*: a morph (format 1.6) the clips lerp
+  between keys. The part's row says **morph**, the inspector counts the
+  reshaped meshes and has **reset**. Off, corner drags edit the base
+  mesh every state shares. A part drawn like another cannot morph.
 
 ## Scenes
 

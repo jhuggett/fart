@@ -5,7 +5,7 @@
 // positions through each part's map, one colour per triangle from the
 // same light the projector uses; the shader only places and paints.
 
-import { colorOf, shadeColor, shapesOf3, triangulateFace, meshUVs, v3cross, v3dot, v3norm, v3sub, xf3Apply, xf3Det, xf3Scale, type Doc3, type FramePart, type Token, type Vec2, type Vec3 } from "@fastart/core";
+import { colorOf, shadeColor, triangulateFace, meshUVs, v3cross, v3dot, v3norm, v3sub, xf3Apply, xf3Det, xf3Scale, type Doc3, type FramePart, type Token, type Vec2, type Vec3 } from "@fastart/core";
 import type { TexturePattern } from "../state/textures.ts";
 
 const VS = `attribute vec3 p; attribute vec4 c; attribute vec2 t; attribute float l; uniform vec3 u; uniform vec2 h; varying vec4 vc; varying vec2 vt; varying float vl;
@@ -189,11 +189,11 @@ export function drawLayers(canvas: HTMLCanvasElement, layers: SolidLayer[], ligh
 	};
 	const patternOf = new Map<string, TexturePattern>();
 	for (const layer of layers) for (const fp of layer.fps) {
-		const { doc, tokens, patterns } = layer;
+		const { tokens, patterns } = layer;
 		const F = fp.F;
 		const flip = xf3Det(F) < 0;
 		const s = xf3Scale(F);
-		for (const sh of shapesOf3(doc, fp.part)) {
+		for (const sh of fp.solids) {
 			const rgb = colorOf(tokens, sh.color ?? "");
 			const pattern = sh.texture ? patterns?.get(sh.texture) : undefined;
 			const cell = pattern?.texture.cell ?? [1, 1];

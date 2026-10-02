@@ -3,7 +3,7 @@
 // node outlined, a drag moving a node along the canvas (or the view
 // plane), a drag on nothing orbiting a 3D scene.
 
-import { docBounds, drawList, projectFrame, shapeDistance, shapesOf, viewXf3, xfApply, xfInvert, xfScale, xf3Apply, xf3ApplyDir, xf3Invert, dist, type Doc, type Doc3, type Placed, type StatePart, type StatePart3, type Vec2, type Vec3, type Xf, type Xf3, type FramePart } from "@fastart/core";
+import { docBounds, drawList, projectFrame, shapeDistance, shapesOfPosed, viewXf3, xfApply, xfInvert, xfScale, xf3Apply, xf3ApplyDir, xf3Invert, dist, type Doc, type Doc3, type Placed, type StatePart, type StatePart3, type Vec2, type Vec3, type Xf, type Xf3, type FramePart } from "@fastart/core";
 import { view } from "./view.ts";
 import { drawDoc, fillShape, tracePoly } from "./draw.ts";
 import { drawGrid, patternsOf } from "./render.ts";
@@ -86,7 +86,7 @@ export function pick(wm: Vec2): string | null {
 		const s = xfScale(X) || 1;
 		for (const e of drawList(p.doc as Doc, p.poses as StatePart[] | undefined).reverse()) {
 			const q = xfApply(xfInvert(e.xf), local);
-			for (const sh of shapesOf(p.doc as Doc, e.part)) if (shapeDistance(sh, q) <= tol / s / (e.scale || 1)) return p.path;
+			for (const sh of shapesOfPosed(p.doc as Doc, e.part, e.sp)) if (shapeDistance(sh, q) <= tol / s / (e.scale || 1)) return p.path;
 		}
 	}
 	return null;

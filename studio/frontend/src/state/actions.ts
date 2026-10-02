@@ -131,6 +131,7 @@ export function initCommands() {
 		{ id: "view.top", title: "View: top", group: "View", when: () => inModel() || (inScene() && S.is3d()), run: either(() => {}, () => M.setView("top"), () => S.setView("top")) },
 		{ id: "view.bottom", title: "View: bottom", group: "View", when: () => inModel() || (inScene() && S.is3d()), run: either(() => {}, () => M.setView("bottom"), () => S.setView("bottom")) },
 		{ id: "model.outline", title: "Silhouettes", group: "View", when: inModel, run: () => (M.md.outline.value = !M.md.outline.value) },
+		{ id: "model.deform", title: "Deform: reshape the part in this state", group: "Tools", when: () => inModel() && M.md.curClip.value < 0, run: () => (M.md.deform.value = !M.md.deform.value) },
 		{
 			id: "view.fit",
 			title: "Zoom to fit",

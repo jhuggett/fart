@@ -121,6 +121,56 @@ State_Part :: struct {
 	rotate: f32,
 	scale:  f32, // 0 = 1
 	mirror: bool, // 1.2: flipped left-to-right about the pivot, before the turn
+	morph:  [dynamic]Morph, // 1.6: polys of the part reshaped in this pose
+}
+
+// 1.6: a shape's points as they are in one pose. `shape` indexes the
+// part's own shapes; the count matches the base (the validator checks).
+Morph :: struct {
+	shape:  int,
+	points: [dynamic]V2,
+}
+
+// The points a shape has under a pose entry: its morph's, else the base's.
+// A part drawn like another has no points of its own, so its morphs are ignored.
+shape_points :: proc(doc: ^Doc, part: ^Part, sp: ^State_Part, shape: int) -> []V2 {
+	shapes := shapes_of(doc, part)
+	if shape < 0 || shape >= len(shapes) do return nil
+	base := shapes[shape].points[:]
+	if sp == nil || part.like != "" do return base
+	for &m in sp.morph do if m.shape == shape && len(m.points) == len(base) do return m.points[:]
+	return base
+}
+
+// Morphs mixed: every shape either side reshapes, its points lerped
+// corner by corner (the base stands in for a missing side). The points
+// are allocated with the context allocator: a game's frame arena.
+@(private)
+mix_morphs :: proc(doc: ^Doc, part_name: string, a, b: []Morph, u: f32) -> [dynamic]Morph {
+	if len(a) == 0 && len(b) == 0 do return nil
+	part := part_of(doc, part_name)
+	if part == nil || part.like != "" do return nil
+	shapes := shapes_of(doc, part)
+	out: [dynamic]Morph
+	for si in 0 ..< len(shapes) {
+		if shapes[si].kind != "poly" do continue
+		base := shapes[si].points[:]
+		pa, pb := base, base
+		got := false
+		for &m in a do if m.shape == si && len(m.points) == len(base) {
+			pa = m.points[:]
+			got = true
+		}
+		for &m in b do if m.shape == si && len(m.points) == len(base) {
+			pb = m.points[:]
+			got = true
+		}
+		if !got do continue
+		pts := make([dynamic]V2, len(base))
+		for i in 0 ..< len(base) do pts[i] = pa[i] + (pb[i] - pa[i]) * u
+		append(&out, Morph{shape = si, points = pts})
+	}
+	return out
 }
 
 // 1.2: where a chain should reach in a pose, document space.
@@ -537,7 +587,7 @@ sample_clip :: proc(doc: ^Doc, c: ^Clip, t: f32, out: ^[dynamic]State_Part) {
 	span := B.t - A.t
 	u := ease_key(span > 0 ? (time - A.t) / span : 1, B)
 	to := key_poses(doc, B)
-	for a in key_poses(doc, A) {
+	for &a in key_poses(doc, A) {
 		b: ^State_Part
 		for &q in to do if q.part == a.part {
 			b = &q
@@ -547,15 +597,8 @@ sample_clip :: proc(doc: ^Doc, c: ^Clip, t: f32, out: ^[dynamic]State_Part) {
 			append(out, a)
 			continue
 		}
-		sa := a.scale == 0 ? f32(1) : a.scale
-		sb := b.scale == 0 ? f32(1) : b.scale
-		append(out, State_Part{
-			part   = a.part,
-			offset = a.offset + (b.offset - a.offset) * u,
-			rotate = lerp_angle(a.rotate, b.rotate, u),
-			scale  = sa + (sb - sa) * u,
-			mirror = a.mirror, // a flip does not tween: the outgoing key's
-		})
+		// a flip does not tween: the outgoing key's
+		append(out, mix_pose(doc, &a, b, u, a.mirror))
 	}
 }
 
@@ -645,6 +688,7 @@ mix_pose :: proc(doc: ^Doc, a, b: ^State_Part, u: f32, mirror: bool) -> State_Pa
 		rotate = lerp_angle(a.rotate, b.rotate, u),
 		scale  = sa + (sb - sa) * u,
 		mirror = mirror,
+		morph  = mix_morphs(doc, a.part, a.morph[:], b.morph[:], u),
 	}
 }
 

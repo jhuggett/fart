@@ -321,6 +321,13 @@
         "mirror": {
           "type": "boolean",
           "description": "Since 1.2: flipped left-to-right about the pivot, before the turn."
+        },
+        "morph": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/morph"
+          },
+          "description": "Since 1.6: the part's shapes reshaped in this pose; lerped between clip keys."
         }
       }
     },
@@ -751,6 +758,13 @@
         },
         "mirror": {
           "type": "boolean"
+        },
+        "morph": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/morph3"
+          },
+          "description": "Since 1.6: the part's meshes reshaped in this pose; lerped between clip keys."
         }
       }
     },
@@ -1205,6 +1219,50 @@
           }
         }
       }
+    },
+    "morph": {
+      "type": "object",
+      "required": [
+        "shape",
+        "points"
+      ],
+      "properties": {
+        "shape": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the part's own shapes; only a poly (2D) or a mesh (3D) morphs."
+        },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/vec2"
+          },
+          "description": "The shape's points in this pose, replacing the base's whole: the same count, the same order."
+        }
+      },
+      "description": "Since 1.6: a shape's points as they are in this pose. The validator checks the part is not like another, the shape exists and has points, and the count matches (error morph)."
+    },
+    "morph3": {
+      "type": "object",
+      "required": [
+        "shape",
+        "points"
+      ],
+      "properties": {
+        "shape": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/vec3"
+          }
+        }
+      },
+      "description": "Since 1.6: a mesh's points in this pose (see morph)."
     }
   },
   "if": {

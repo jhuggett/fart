@@ -149,6 +149,19 @@ export function shapesOf(doc: Doc, part: Part): Shape[] {
 }
 
 /** A part's anchors, through `like`. */
+/**
+ * 1.6: the part's shapes as a pose entry has them: a morph swaps a poly's
+ * points (the count must match; a morph that cannot apply is ignored, as
+ * is any morph on a part drawn like another). Draw these under the entry's map.
+ */
+export function shapesOfPosed(doc: Doc, part: Part, sp?: StatePart): Shape[] {
+	const base = shapesOf(doc, part);
+	if (!sp?.morph?.length || part.like) return base;
+	return base.map((sh, i) => {
+		const m = sp.morph!.find((x) => x.shape === i);
+		return m && sh.kind === "poly" && m.points.length === sh.points.length ? { ...sh, points: m.points } : sh;
+	});
+}
 export function anchorsOf(doc: Doc, part: Part): Anchor[] {
 	return sourceOf(doc, part).anchors ?? [];
 }

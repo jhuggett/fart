@@ -17,6 +17,7 @@ import {
 	sampleClip3,
 	sampleTargets3,
 	shapesOf3,
+	shapesOf3Posed,
 	turnXf3,
 	v3dot,
 	v3norm,
@@ -119,6 +120,8 @@ export interface FramePart {
 	pivot: Vec2;
 	depth: number | null;
 	shapes: FrameShape[];
+	/** 1.6: the part's shapes as this frame has them (a morph applied), document space, through `like` */
+	solids: Shape3[];
 }
 
 /** The view turn as a map (no translation). */
@@ -145,14 +148,14 @@ export function projectFrame(src: Doc3, poses: readonly StatePart3[] | undefined
 	const W = worldTransforms3(src, poses ?? []);
 	const out: FramePart[] = [];
 	for (const sp of list) {
-		const rp = rest.get(sp.part);
+		const rp = restFor(src, V, rest, sp);
 		const index = parts.findIndex((p) => p.name === sp.part);
 		if (!rp || index < 0) continue;
 		const w = opts.instance ? xf3Mul(opts.instance, W.get(sp.part) ?? IDENT3) : (W.get(sp.part) ?? IDENT3);
 		const M = xf3Mul(V, xf3Mul(w, Vinv));
 		const F = xf3Mul(V, w);
 		const { shapes, depth } = projectShapes(rp, M, light, ambient, opts.outline);
-		out.push({ part: rp.part, index, F, M, inPlane: inPlane(M), pivot: flat(xf3Apply(M, rp.pivot)), depth, shapes });
+		out.push({ part: rp.part, index, F, M, inPlane: inPlane(M), pivot: flat(xf3Apply(M, rp.pivot)), depth, shapes, solids: rp.raw });
 	}
 	const drawn = out.filter((e) => e.depth !== null).sort((p, q) => q.depth! - p.depth!);
 	return [...drawn, ...out.filter((e) => e.depth === null)];
@@ -164,20 +167,35 @@ function transpose3(V: Xf3): Xf3 {
 	return T;
 }
 
-/** Every part's geometry in view space (the view turn applied), through `like`. */
+/** One part's geometry in view space (the view turn applied), through `like`; with a pose entry, as its morph has it (1.6). */
+function restPart(src: Doc3, V: Xf3, part: Part3, sp?: StatePart3): RestPart {
+	const move = (p: Vec3) => xf3Apply(V, p);
+	const raw = shapesOf3Posed(src, part, sp);
+	const shapes: Shape3[] = raw.map((sh) => {
+		if (sh.kind === "mesh") return { ...sh, points: sh.points.map(move) };
+		if (sh.kind === "ball") return { ...sh, at: move(sh.at) };
+		return { ...sh, a: move(sh.a), b: move(sh.b) };
+	});
+	const anchors: Anchor3[] = anchorsOf3(src, part).map((a) => ({ ...a, at: move(a.at), ...(a.dir ? { dir: xf3ApplyDir(V, a.dir) } : {}) }));
+	return { part, shapes, raw, anchors, pivot: move(pivotOf3(part)) };
+}
+
+/** Every part's rest geometry in view space. */
 function restParts(src: Doc3, V: Xf3): Map<string, RestPart> {
 	const rest = new Map<string, RestPart>();
-	for (const part of src.parts ?? []) {
-		const move = (p: Vec3) => xf3Apply(V, p);
-		const shapes: Shape3[] = shapesOf3(src, part).map((sh) => {
-			if (sh.kind === "mesh") return { ...sh, points: sh.points.map(move) };
-			if (sh.kind === "ball") return { ...sh, at: move(sh.at) };
-			return { ...sh, a: move(sh.a), b: move(sh.b) };
-		});
-		const anchors: Anchor3[] = anchorsOf3(src, part).map((a) => ({ ...a, at: move(a.at), ...(a.dir ? { dir: xf3ApplyDir(V, a.dir) } : {}) }));
-		rest.set(part.name, { part, shapes, raw: shapesOf3(src, part), anchors, pivot: move(pivotOf3(part)) });
-	}
+	for (const part of src.parts ?? []) rest.set(part.name, restPart(src, V, part));
 	return rest;
+}
+
+/** Does this entry reshape the part? (A morph on a `like` part does nothing.) */
+function morphs(rp: RestPart | undefined, sp: StatePart3): boolean {
+	return !!rp && !rp.part.like && !!sp.morph?.length;
+}
+
+/** The rest part an entry draws: the shared one, or a morphed one of its own. */
+function restFor(src: Doc3, V: Xf3, rest: Map<string, RestPart>, sp: StatePart3): RestPart | undefined {
+	const rp = rest.get(sp.part);
+	return morphs(rp, sp) ? restPart(src, V, rp!.part, sp) : rp;
 }
 
 /**
@@ -377,8 +395,8 @@ export function projectDoc(src: Doc3, opts: ProjectOptions = {}): Doc {
 	const variants = new Map<string, string>();
 	const variantParts: Part[] = [];
 	const counts = new Map<string, number>();
-	const variantFor = (rp: RestPart, M: Xf3): string => {
-		const key = `${rp.part.name}|${M.map((x) => Math.round(x * 1000)).join(",")}`;
+	const variantFor = (rp: RestPart, M: Xf3, morph?: unknown): string => {
+		const key = `${rp.part.name}|${M.map((x) => Math.round(x * 1000)).join(",")}|${morph ? JSON.stringify(morph) : ""}`;
 		const have = variants.get(key);
 		if (have) return have;
 		const n = (counts.get(rp.part.name) ?? 0) + 1;
@@ -403,16 +421,17 @@ export function projectDoc(src: Doc3, opts: ProjectOptions = {}): Doc {
 		const maps = viewMaps(poses);
 		const entries: { depth: number | null; sp: StatePart; baked: boolean }[] = [];
 		for (const sp of poses) {
-			const rp = rest.get(sp.part);
+			const rp = restFor(src, V, rest, sp);
 			if (!rp) continue;
 			const M = maps.get(sp.part)!;
 			const { depth } = projectShapes(rp, M, light, ambient, undefined);
-			if (inPlane(M)) {
+			const morphed = morphs(rest.get(sp.part), sp);
+			if (inPlane(M) && !morphed) {
 				let L = plane2d(M);
 				if (keepParent(rp.part)) L = xfMul(xfInvert(plane2d(maps.get(rp.part.parent!)!)), L);
 				entries.push({ depth, sp: poseEntry(sp.part, L, flat(rp.pivot)), baked: false });
 			} else {
-				entries.push({ depth, sp: { part: variantFor(rp, M) }, baked: true });
+				entries.push({ depth, sp: { part: variantFor(rp, M, morphed ? sp.morph : undefined) }, baked: true });
 			}
 		}
 		// far first; parts drawing nothing keep their place at the end

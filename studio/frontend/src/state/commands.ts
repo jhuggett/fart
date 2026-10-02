@@ -72,6 +72,7 @@ export const KEYMAP: Record<string, string> = {
 	"4": "tool.poly",
 	"5": "tool.rect",
 	c: "view.collision",
+	d: "model.deform",
 	"cmd+j": "chat.toggle",
 	"cmd+s": "file.save",
 	"cmd+n": "file.new",

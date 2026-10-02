@@ -499,6 +499,38 @@ coordinates to its own space:
   pixels for a build). Readers that predate 1.5 draw the shape's token
   flat and keep the fields.
 
+## Morphs (1.6)
+
+A state may change a part's shape as well as its place. A state entry's
+`morph` lists, per shape of the part, the points that shape has in this
+state:
+
+```json
+{"part": "chest", "offset": [0, 0, 0], "morph": [
+  {"shape": 0, "points": [[-4, -3, 2], [4, -3, 2], [4, 3, 2], [-4, 3, 2], [-4, -3, -2], [4, -3, -2], [4, 3, -2], [-4, 3, -2]]}
+]}
+```
+
+- `shape` is an index into the part's own `shapes`; `points` replaces
+  that shape's `points` whole, so it has exactly as many entries as the
+  base, in the same order. Only shapes that have points morph: `poly` in
+  2D, `mesh` in 3D. Faces, `tris`, colour, `shade`, texture and mapping
+  stay the base's: a morph moves corners, never a mesh's topology.
+- A part drawn `like` another has no points of its own and may not
+  morph. That, an index past the last shape, a shape of another kind, or
+  a point count that differs from the base is error `morph`.
+- The pose applies to the morphed points as it would to the base: morph
+  first, then `mirror`, `scale`, the turn, `offset`.
+- Between keys, a clip lerps the points: each corner moves straight
+  toward its place in the incoming key, by the eased fraction. A shape
+  only one key morphs lerps from or to the base. Blending and layering
+  mix morphs the same way. A `step` ease holds the outgoing morph.
+- Collision shapes never morph, and anchors do not move with a morph.
+- Projection (`PROJECT.md`): a morphed entry bakes a variant part, the
+  way a turn out of the view plane does.
+- A 1.5 reader draws the base shape in every state and is otherwise
+  right.
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -596,6 +628,7 @@ the same from any tool:
 | `ref.texture` | a shape names a texture the document does not have (1.5)       |
 | `dup.texture` | two textures share a name (1.5)                                |
 | `face`      | a mesh face with fewer than three indices, or an index past the last point (1.3) |
+| `morph`     | a morph on a `like` part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -637,6 +670,10 @@ the corpus only requires it to load every valid file and refuse those two.
 - 1.5 added `textures` (maps that are drawings, tiled over a cell) and
   `texture` + `mapping` on shapes. A file without them is a 1.4 file; a
   1.4 reader draws textured shapes flat.
+- 1.6 added `morph` on state entries and clip keys: a shape's points as
+  they are in that pose, lerped between keys (error `morph`). A file
+  without it is a 1.5 file; a 1.5 reader draws the base shape in every
+  state.
 
 ## Reserved for later
 

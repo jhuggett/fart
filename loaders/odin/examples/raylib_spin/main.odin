@@ -12,6 +12,7 @@ package raylib_spin
 //
 // Space plays the next clip; drag turns the camera.
 
+import "base:runtime"
 import "core:fmt"
 import "core:math/linalg"
 import "core:os"
@@ -199,7 +200,10 @@ main :: proc() {
 			c := &doc.clips[clip_i]
 			t += dt
 			if !c.loop && t > fart.clip_duration_3d(c) + 0.5 do t = 0
+			// a frame's mixed morphs are allocated with the context allocator: the temp arena, freed below
+			context.allocator = context.temp_allocator
 			fart.sample_clip_3d(&doc, c, t, &frame)
+			context.allocator = runtime.default_allocator()
 		} else if len(doc.states) > 0 {
 			clear(&frame)
 			append(&frame, ..doc.states[0].parts[:])
@@ -208,13 +212,34 @@ main :: proc() {
 		rl.ClearBackground({30, 30, 34, 255})
 		rl.BeginMode3D(camera)
 		rl.DrawGrid(20, 2)
-		for sp in frame {
+		for &sp in frame {
 			for &pd in draws {
 				if pd.part.name != sp.part do continue
+				// a morph (1.6): the part's meshes re-flattened under this frame's points, the buffers refreshed in place
+				if fart.morphs_3d(&doc, &sp) {
+					tms := make([dynamic]fart.Tri_Mesh, context.temp_allocator)
+					fart.flatten_part_posed(&doc, pd.part, &sp, &tms)
+					for &tm, mi in tms {
+						if mi >= len(pd.meshes) do break
+						n := len(tm.positions)
+						if n != int(pd.meshes[mi].vertexCount) do continue
+						verts := make([]f32, n * 3, context.temp_allocator)
+						norms := make([]f32, n * 3, context.temp_allocator)
+						for i in 0 ..< n {
+							q := fart.to_y_up(tm.positions[i])
+							nn := fart.to_y_up(tm.normals[i])
+							verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2] = q.x, q.y, q.z
+							norms[i * 3], norms[i * 3 + 1], norms[i * 3 + 2] = nn.x, nn.y, nn.z
+						}
+						rl.UpdateMeshBuffer(pd.meshes[mi], 0, raw_data(verts), i32(n * 3 * size_of(f32)), 0)
+						rl.UpdateMeshBuffer(pd.meshes[mi], 2, raw_data(norms), i32(n * 3 * size_of(f32)), 0)
+					}
+				}
 				W := fart.Y_UP * fart.world_xf_3d(&doc, frame[:], pd.part.name) // the pose, in engine space
 				for m, mi in pd.meshes do rl.DrawMesh(m, pd.materials[mi], rl.Matrix(W))
 			}
 		}
+		free_all(context.temp_allocator)
 		rl.EndMode3D()
 		name := len(doc.clips) > 0 ? doc.clips[clip_i].name : "rest"
 		rl.DrawText(rl.TextFormat("%s  ·  space: next clip  ·  drag: orbit", name), 12, 12, 18, rl.LIGHTGRAY)

@@ -6,8 +6,8 @@
 // shape into the triangle list a renderer uploads; Y_UP takes the
 // format's y-down frame to the y-up one most engines use.
 
-import type { BallShape, Doc3, MeshShape, Part3, RodShape, Shape3, Vec2, Vec3 } from "./types.ts";
-import { faceNormal, shapesOf3, triangulateFace, v3cross, v3dot, v3norm, v3sub, type Xf3 } from "./space3.ts";
+import type { BallShape, Doc3, MeshShape, Part3, RodShape, Shape3, StatePart3, Vec2, Vec3 } from "./types.ts";
+import { faceNormal, shapesOf3Posed, triangulateFace, v3cross, v3dot, v3norm, v3sub, type Xf3 } from "./space3.ts";
 
 export type Axis = "x" | "y" | "z";
 
@@ -227,11 +227,7 @@ export interface TriMesh {
 /** Flatten one shape. Meshes use their baked tris when they have them. */
 export function triMesh(sh: Shape3): TriMesh {
 	const m = asMesh(sh);
-	let tris = m.tris;
-	if (!tris || tris.length % 3 !== 0 || tris.some((i) => i >= m.points.length)) {
-		tris = [];
-		for (const f of m.faces) tris.push(...triangulateFace(m.points, f));
-	}
+	const tris = meshTris(m);
 	const count = tris.length / 3;
 	const positions = new Float32Array(count * 9);
 	const normals = new Float32Array(count * 9);
@@ -276,9 +272,18 @@ export function triMesh(sh: Shape3): TriMesh {
 	return out;
 }
 
-/** Every shape of a part (through `like`), flattened. */
-export function flattenPart(doc: Doc3, part: Part3): TriMesh[] {
-	return shapesOf3(doc, part).map(triMesh);
+/** The triangles a mesh draws: its baked tris when sound, else each face triangulated. */
+export function meshTris(m: MeshShape): number[] {
+	const tris = m.tris;
+	if (tris && tris.length % 3 === 0 && tris.every((i) => i < m.points.length)) return tris;
+	const out: number[] = [];
+	for (const f of m.faces) out.push(...triangulateFace(m.points, f));
+	return out;
+}
+
+/** Every shape of a part (through `like`), flattened; with a pose entry (1.6), as its morph has them. */
+export function flattenPart(doc: Doc3, part: Part3, sp?: StatePart3): TriMesh[] {
+	return shapesOf3Posed(doc, part, sp).map(triMesh);
 }
 
 /** The outward normal of a mesh face, unit length. */

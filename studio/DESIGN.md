@@ -107,6 +107,7 @@ words gain a coordinate, not a vocabulary:
 | view       | (not saved)     | a turn laid on the model: front, back, left, right, top, bottom, or free after an orbit |
 | orbit      |                 | drag on nothing, or Alt-drag anywhere                        |
 | turn       | `rotate` `[x,y,z]` | a pose's turn about x, then y, then z; the lever turns about the view axis |
+| morph      | `morph` on a state entry | a mesh's corners as this state has them (1.6); **Deform** (D) sends corner drags there instead of the base |
 | Project…   |                 | write the 2D views (`name-left.fart`, …) beside the model    |
 
 Everything else is the editor's: states, clips, the pivot and lever,

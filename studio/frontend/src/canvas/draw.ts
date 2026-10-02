@@ -3,7 +3,7 @@
 // a `map` so the same code draws rest space and a posed state.
 
 import { canvasColors } from "../state/theme.ts";
-import { colorOf, cssColor, docBounds, drawList, mappingXf, shadeColor, xfApply, xfMul, type Doc, type Shape, type StatePart, type Token, type Vec2, type Xf, shapesOf } from "@fastart/core";
+import { colorOf, cssColor, docBounds, drawList, mappingXf, shadeColor, xfApply, xfMul, type Doc, type Shape, type StatePart, type Token, type Vec2, type Xf, shapesOfPosed } from "@fastart/core";
 
 /** A texture's colour map, rendered: what the painter tiles (see state/textures.ts). */
 export interface PatternSource {
@@ -117,9 +117,9 @@ export interface DrawOptions {
  */
 export function drawDoc(ctx: CanvasRenderingContext2D, doc: Doc, tokens: readonly Token[], opts: DrawOptions = {}) {
 	ctx.globalAlpha = opts.alpha ?? 1;
-	for (const { part, xf, scale } of drawList(doc, opts.pose)) {
+	for (const { part, sp, xf, scale } of drawList(doc, opts.pose)) {
 		const map: Map2 = (p) => xfApply(xf, p);
-		for (const sh of shapesOf(doc, part)) {
+		for (const sh of shapesOfPosed(doc, part, sp)) {
 			const base = shadeColor(colorOf(tokens, sh.color ?? ""), sh.shade);
 			fillShape(ctx, sh, cssColor(base), map, scale);
 			const src = sh.texture ? opts.patterns?.get(sh.texture) : undefined;
@@ -151,8 +151,8 @@ export function renderPNG(doc: Doc, tokens: readonly Token[], pose: string | rea
 		lo = [Math.min(lo[0], p[0]), Math.min(lo[1], p[1])];
 		hi = [Math.max(hi[0], p[0]), Math.max(hi[1], p[1])];
 	};
-	for (const { part, xf, scale } of drawList(doc, pose)) {
-		for (const sh of shapesOf(doc, part)) {
+	for (const { part, sp, xf, scale } of drawList(doc, pose)) {
+		for (const sh of shapesOfPosed(doc, part, sp)) {
 			if (sh.kind === "circle") {
 				const c = xfApply(xf, sh.at);
 				take([c[0] - sh.r * scale, c[1] - sh.r * scale]);

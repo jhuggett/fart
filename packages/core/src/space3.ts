@@ -5,7 +5,7 @@
 // loader (fastart3d.odin) does the same sums, so every reader agrees.
 
 import type { Anchor3, Clip3, ClipKey3, Doc3, Part3, Shape3, State3, StatePart3, Target3, Vec3 } from "./types.ts";
-import { ease } from "./clips.ts";
+import { lerpMorphs, ease } from "./clips.ts";
 import { triangulate } from "./geometry.ts";
 import type { Vec2 } from "./types.ts";
 
@@ -293,6 +293,24 @@ export function sourceOf3(doc: Doc3, part: Part3): Part3 {
 export function shapesOf3(doc: Doc3, part: Part3): Shape3[] {
 	return sourceOf3(doc, part).shapes ?? [];
 }
+/** 1.6: the part's shapes as a pose entry has them: a morph swaps a mesh's points (count matching; never on a `like` part). */
+export function shapesOf3Posed(doc: Doc3, part: Part3, sp?: StatePart3): Shape3[] {
+	const base = shapesOf3(doc, part);
+	if (!sp?.morph?.length || part.like) return base;
+	return base.map((sh, i) => {
+		const m = sp.morph!.find((x) => x.shape === i);
+		return m && sh.kind === "mesh" && m.points.length === sh.points.length ? { ...sh, points: m.points } : sh;
+	});
+}
+/** A 3D part's rest points by shape index: a mesh's, else null. */
+export function basePoints3(doc: Doc3, partName: string): (shape: number) => readonly Vec3[] | null {
+	const part = partOf3(doc, partName);
+	const shapes = part ? shapesOf3(doc, part) : [];
+	return (i) => {
+		const sh = shapes[i];
+		return sh && sh.kind === "mesh" ? sh.points : null;
+	};
+}
 export function anchorsOf3(doc: Doc3, part: Part3): Anchor3[] {
 	return sourceOf3(doc, part).anchors ?? [];
 }
@@ -313,6 +331,7 @@ function copy3(sp: StatePart3): StatePart3 {
 	const out: StatePart3 = { ...sp };
 	if (sp.offset) out.offset = [...sp.offset] as Vec3;
 	if (sp.rotate) out.rotate = [...sp.rotate] as Vec3;
+	if (sp.morph) out.morph = sp.morph.map((m) => ({ ...m, points: m.points.map((p) => [...p] as Vec3) }));
 	return out;
 }
 
@@ -328,7 +347,26 @@ function mix3(doc: Doc3, a: StatePart3, b: StatePart3, u: number, mirror: boolea
 		scale: sa + (sb - sa) * u,
 	};
 	if (mirror) out.mirror = true;
+	const morph = lerpMorphs(basePoints3(doc, a.part), a.morph, b.morph, u);
+	if (morph) out.morph = morph;
 	return out;
+}
+
+/** Which keys bracket time t and how far along (eased): the held key alone at or past the ends. */
+export function clipSpan3(clip: Clip3, t: number): { a: number; b: number; u: number } | null {
+	const keys = clip.keys;
+	if (!keys.length) return null;
+	const dur = clipDuration3(clip);
+	let time = t;
+	if (clip.loop && dur > 0) time = ((t % dur) + dur) % dur;
+	if (time <= keys[0].t) return { a: 0, b: 0, u: 0 };
+	if (time >= keys[keys.length - 1].t) return { a: keys.length - 1, b: keys.length - 1, u: 0 };
+	let i = 0;
+	while (i + 1 < keys.length && keys[i + 1].t <= time) i++;
+	const A = keys[i];
+	const B = keys[i + 1];
+	const span = B.t - A.t;
+	return { a: i, b: i + 1, u: ease(span > 0 ? (time - A.t) / span : 1, B.ease, B.curve) };
 }
 
 /** The frame at time t: membership and order from the outgoing key, poses tweened toward the incoming one. */

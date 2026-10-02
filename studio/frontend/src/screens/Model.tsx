@@ -62,6 +62,9 @@ import {
 	setShapeNumber,
 	setShapeCoord,
 	setVertexAxis,
+	morphCount,
+	resetMorph,
+	selShapePosed,
 	deleteSel,
 	addToken,
 	deleteToken,
@@ -149,6 +152,10 @@ export function ModelTools() {
 			<button class={`tool ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
 				<I.grid />
 			</button>
+			<button class={`tool ${md.deform.value ? "active" : ""}`} disabled={!!clip} title={clip ? "a clip is a preview; pick a state to deform" : "deform: corner drags reshape the part in this state only, a morph the clips lerp  (D)"} onClick={() => run("model.deform")}>
+				<I.state />
+				<span class="key">D</span>
+			</button>
 			<span class="sep" />
 			<button class="btn small ghost" title="write the 2D views a game draws, beside this file" onClick={() => run("model.project")}>
 				Project…
@@ -230,6 +237,7 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 					<span class="name">{p.name}</span>
 				)}
 				{p.like && <span class="chip">like {p.like}</span>}
+				{morphCount(i) > 0 && <span class="chip" title="reshaped in this state (a morph)">morph</span>}
 				<span class="tail">
 					<span class="chip" title="shapes">{p.like ? "" : (p.shapes ?? []).length}</span>
 				</span>
@@ -457,6 +465,8 @@ export function Inspector3() {
 	const sp = poseOfCur();
 	const sel = md.sel.value;
 	const sh = selShape();
+	// the corners as this state has them: a morph shows and edits its own points
+	const shp = selShapePosed() ?? sh;
 	const vert = md.vert.value;
 	const preview = !!curClip();
 	const [picking, setPicking] = useState<{ i: number; x: number; y: number } | null>(null);
@@ -521,9 +531,9 @@ export function Inspector3() {
 					)}
 					{sh.kind === "mesh" && vert !== null && sh.points[vert] && (
 						<div class="fields">
-							<Num label="x" value={sh.points[vert][0]} onChange={(v) => setVertexAxis(sel, vert, 0, v)} />
-							<Num label="y" value={sh.points[vert][1]} onChange={(v) => setVertexAxis(sel, vert, 1, v)} />
-							<Num label="z" value={sh.points[vert][2]} onChange={(v) => setVertexAxis(sel, vert, 2, v)} />
+							<Num label="x" value={(shp && shp.kind === "mesh" ? shp.points[vert] : sh.points[vert])[0]} onChange={(v) => setVertexAxis(sel, vert, 0, v)} />
+							<Num label="y" value={(shp && shp.kind === "mesh" ? shp.points[vert] : sh.points[vert])[1]} onChange={(v) => setVertexAxis(sel, vert, 1, v)} />
+							<Num label="z" value={(shp && shp.kind === "mesh" ? shp.points[vert] : sh.points[vert])[2]} onChange={(v) => setVertexAxis(sel, vert, 2, v)} />
 						</div>
 					)}
 					<div class="line" style="margin-top:8px;gap:6px">
@@ -597,6 +607,22 @@ export function Inspector3() {
 			{p && picked && sp && !preview && (
 				<>
 					<Hdr title={`In ${curState()?.name ?? "state"}`} hint="where the part's pivot lands, its turn about x, y and z (degrees), its size" />
+					{morphCount(i) > 0 && (
+						<div class="line" title="a morph: this state reshapes the part's meshes; clips lerp the corners between states">
+							<span class="k">morph</span>
+							<span class="chip" style="margin:0">
+								{morphCount(i)} mesh{morphCount(i) === 1 ? "" : "es"} reshaped
+							</span>
+							<button class="btn small ghost" style="margin-left:auto" title="draw the base mesh in this state again" onClick={() => resetMorph(i)}>
+								reset
+							</button>
+						</div>
+					)}
+					{md.deform.value && morphCount(i) === 0 && (
+						<div class="line">
+							<span class="sub">deform is on: drag a corner to reshape the part in this state</span>
+						</div>
+					)}
 					<div class="fields">
 						<Num label="x" value={(sp.offset ?? p.pivot ?? [0, 0, 0])[0]} onChange={(v) => setPose(sp, { offset: [v, (sp.offset ?? p.pivot ?? [0, 0, 0])[1], (sp.offset ?? p.pivot ?? [0, 0, 0])[2]] }, "pose-x")} />
 						<Num label="y" value={(sp.offset ?? p.pivot ?? [0, 0, 0])[1]} onChange={(v) => setPose(sp, { offset: [(sp.offset ?? p.pivot ?? [0, 0, 0])[0], v, (sp.offset ?? p.pivot ?? [0, 0, 0])[2]] }, "pose-y")} />
