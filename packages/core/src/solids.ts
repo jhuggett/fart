@@ -6,7 +6,9 @@
 // shape into the triangle list a renderer uploads; Y_UP takes the
 // format's y-down frame to the y-up one most engines use.
 
-import type { BallShape, Doc3, MeshShape, Part3, RodShape, Shape3, StatePart3, Vec2, Vec3 } from "./types.ts";
+import type { BallShape, Doc3, MeshShape, Part3, RodShape, Shape3, StatePart3, SweepShape, Vec2, Vec3 } from "./types.ts";
+import { pathPoints } from "./curves.ts";
+import { cornerNormals, smoothNormals, surfaceOf } from "./subdiv.ts";
 import { faceNormal, shapesOf3Posed, triangulateFace, v3cross, v3dot, v3norm, v3sub, type Xf3 } from "./space3.ts";
 
 export type Axis = "x" | "y" | "z";
@@ -203,10 +205,44 @@ export function meshUVs(sh: Shape3): Vec2[][] {
 	});
 }
 
-/** A shape as a mesh: itself, or its ball or rod tessellated. */
-export function asMesh(sh: Shape3): MeshShape {
+const sweeps = new WeakMap<object, { key: string; mesh: MeshShape }>();
+
+/** The mesh a sweep (1.7) generates: its profile flattened, then lathed or extruded. The cage, before any smoothing. */
+export function sweepMesh(sh: SweepShape): MeshShape {
+	const key = JSON.stringify([sh.op, sh.axis, sh.profile, sh.segments, sh.from, sh.to]);
+	const hit = sweeps.get(sh);
+	if (hit && hit.key === key) return withLook(hit.mesh, sh);
+	const profile = pathPoints({ ...sh.profile, closed: sh.op === "extrude" ? true : !!sh.profile.closed });
+	let mesh: MeshShape;
+	if (sh.op === "lathe") mesh = lathe(sh.color ?? "", profile, sh.axis, Math.max(3, Math.round(sh.segments ?? 12)));
+	else mesh = profile.length >= 3 ? extrude(sh.color ?? "", profile, sh.axis, sh.from ?? 0, sh.to ?? 1) : { kind: "mesh", color: sh.color, points: [], faces: [] };
+	sweeps.set(sh, { key, mesh });
+	return withLook(mesh, sh);
+}
+
+/** The generated mesh wearing the sweep's own fields (colour, shade, texture, smoothing). */
+function withLook(mesh: MeshShape, sh: SweepShape): MeshShape {
+	const out: MeshShape = { ...mesh, color: sh.color, shade: sh.shade };
+	if (sh.texture) out.texture = sh.texture;
+	if (sh.mapping) out.mapping = sh.mapping;
+	if (sh.normals) out.normals = sh.normals;
+	if (sh.angle !== undefined) out.angle = sh.angle;
+	if (sh.smooth) out.smooth = sh.smooth;
+	if (sh.bake) out.bake = sh.bake;
+	return out;
+}
+
+/** A shape's cage as a mesh: itself, a sweep generated, a ball or rod tessellated. Before smoothing. */
+export function cageOf(sh: Shape3): MeshShape {
 	if (sh.kind === "mesh") return sh;
+	if (sh.kind === "sweep") return sweepMesh(sh);
 	return sh.kind === "ball" ? ballMesh(sh) : rodMesh(sh);
+}
+
+/** A shape as the mesh a renderer draws: its cage, subdivided when it is smooth (1.7). */
+export function asMesh(sh: Shape3): MeshShape {
+	const cage = cageOf(sh);
+	return surfaceOf(cage);
 }
 
 /** What a renderer uploads: flat triangles with one normal per face, and the token and shade to paint them. */
@@ -231,6 +267,12 @@ export function triMesh(sh: Shape3): TriMesh {
 	const count = tris.length / 3;
 	const positions = new Float32Array(count * 9);
 	const normals = new Float32Array(count * 9);
+	// smooth shading (1.7): a normal per face corner, averaged around the vertex up to sharp edges
+	const cage = cageOf(sh);
+	const smooth = smoothNormals(cage);
+	const cn = smooth ? cornerNormals(m.points, m.faces, { angle: cage.angle, creases: (cage.smooth ?? 0) > 0 ? undefined : cage.creases }) : null;
+	const cornerOf = new Map<number, Vec3>();
+	if (cn) m.faces.forEach((f, fi) => f.forEach((idx, ci) => cornerOf.set(fi * 1e6 + idx, cn[fi][ci])));
 	// a textured shape: pattern coordinates per corner, by face, so a triangle's corners look them up
 	let uvs: Float32Array | undefined;
 	let cornerUV: Map<number, Vec2> | undefined;
@@ -254,11 +296,12 @@ export function triMesh(sh: Shape3): TriMesh {
 		const b = m.points[tris[t * 3 + 1]];
 		const c = m.points[tris[t * 3 + 2]];
 		const n = v3norm(v3cross(v3sub(b, a), v3sub(c, a)));
+		const fiOf = cn || (uvs && cornerUV) ? faceOfTri(t) : -1;
 		[a, b, c].forEach((p, k) => {
 			positions.set(p, t * 9 + k * 3);
-			normals.set(n, t * 9 + k * 3);
+			normals.set(cn ? (cornerOf.get(fiOf * 1e6 + tris[t * 3 + k]) ?? n) : n, t * 9 + k * 3);
 			if (uvs && cornerUV) {
-				const fi = faceOfTri(t);
+				const fi = fiOf;
 				const uv = cornerUV.get(fi * 1e6 + tris[t * 3 + k]) ?? boxUV(p, n, sh.mapping?.scale ?? 1);
 				uvs.set(uv, t * 6 + k * 2);
 			}

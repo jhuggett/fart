@@ -102,7 +102,35 @@ export interface PolyShape extends CollisionFields, TextureFields2 {
 	[extra: string]: unknown;
 }
 
-export type Shape = CircleShape | LineShape | PolyShape;
+/** Since 1.7: a path's flattened polygon, baked on save so a reader that does not flatten draws it as a poly. */
+export interface PathBake {
+	points: Vec2[];
+	/** index triples into bake.points; a closed path only */
+	tris?: number[];
+	[extra: string]: unknown;
+}
+
+/**
+ * Since 1.7: a cubic polybézier. `in[i]` and `out[i]` are the tangent
+ * handles relative to `points[i]` (absent or [0,0]: a corner); the segment
+ * from i to i+1 runs through points[i]+out[i] and points[i+1]+in[i+1].
+ * Closed, it fills; open, it strokes with `w`.
+ */
+export interface PathShape extends CollisionFields, TextureFields2 {
+	kind: "path";
+	color?: string;
+	shade?: number;
+	closed?: boolean;
+	points: Vec2[];
+	in?: Vec2[];
+	out?: Vec2[];
+	/** Stroke width for an open path, round joins and caps. */
+	w?: number;
+	bake?: PathBake;
+	[extra: string]: unknown;
+}
+
+export type Shape = CircleShape | LineShape | PolyShape | PathShape;
 export type ShapeKind = Shape["kind"];
 
 export interface Anchor {
@@ -131,6 +159,9 @@ export interface Part {
 export interface Morph<V = Vec2> {
 	shape: number;
 	points: V[];
+	/** 1.7: a path's handles in this pose; absent, the base handles ride along */
+	in?: V[];
+	out?: V[];
 	[extra: string]: unknown;
 }
 
@@ -232,7 +263,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 6;
+export const FORMAT_MINOR = 7;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -241,7 +272,29 @@ export const FORMAT_MINOR = 6;
 /** [x, y, z]. */
 export type Vec3 = [number, number, number];
 
-export interface MeshShape extends CollisionFields, TextureFields3 {
+/** Since 1.7: how a mesh is lit and smoothed; the cage in `points`/`faces` is always the file. */
+export interface SmoothFields {
+	/** "flat" (the default): one normal per face. "smooth": vertex normals averaged, except across sharp edges. Default "smooth" once `smooth` > 0. */
+	normals?: "flat" | "smooth";
+	/** Degrees: faces meeting at more than this keep their own normals (Blender's auto-smooth). Absent: every edge that is not creased is smooth. */
+	angle?: number;
+	/** Catmull-Clark levels, 0 (the default) for none. The cage stays the file; readers subdivide, or read `bake`, or draw the cage. */
+	smooth?: number;
+	/** [a, b, c]: the edge a–b with crease c in 0–1 (1 is infinitely sharp; c maps to OpenSubdiv sharpness c×10); [a, c]: a corner. */
+	creases?: number[][];
+	/** The subdivided surface, written by `fart bake --smooth` for readers that do not subdivide; `of` hashes the cage it came from. */
+	bake?: MeshBake;
+}
+
+export interface MeshBake {
+	points: Vec3[];
+	faces: number[][];
+	tris?: number[];
+	of?: string;
+	[extra: string]: unknown;
+}
+
+export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields {
 	kind: "mesh";
 	color?: string;
 	shade?: number;
@@ -250,6 +303,25 @@ export interface MeshShape extends CollisionFields, TextureFields3 {
 	faces: number[][];
 	/** Index triples into points, baked on save. */
 	tris?: number[];
+	[extra: string]: unknown;
+}
+
+/**
+ * Since 1.7: a solid generated from a 2D profile (a path in the plane
+ * across `axis`): `lathe` revolves [radius, along] pairs in `segments`
+ * steps; `extrude` runs the closed profile from `from` to `to`. The bake
+ * is the mesh it makes; readers that know the kind make it themselves.
+ */
+export interface SweepShape extends CollisionFields, TextureFields3, SmoothFields {
+	kind: "sweep";
+	color?: string;
+	shade?: number;
+	op: "lathe" | "extrude";
+	axis: "x" | "y" | "z";
+	profile: { points: Vec2[]; in?: Vec2[]; out?: Vec2[]; closed?: boolean; [extra: string]: unknown };
+	segments?: number;
+	from?: number;
+	to?: number;
 	[extra: string]: unknown;
 }
 
@@ -281,9 +353,10 @@ export interface BoxShape extends CollisionFields {
 	[extra: string]: unknown;
 }
 
-export type Shape3 = MeshShape | BallShape | RodShape;
+export type Shape3 = MeshShape | BallShape | RodShape | SweepShape;
 /** What a 3D collision list holds: the 3D kinds and boxes. */
-export type CollisionShape3 = Shape3 | BoxShape;
+/** A collision solid: never a sweep (give the collision its mesh). */
+export type CollisionShape3 = MeshShape | BallShape | RodShape | BoxShape;
 
 export interface Anchor3 {
 	name: string;

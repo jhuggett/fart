@@ -1,10 +1,13 @@
 # Curves and smooth surfaces: a proposal for 1.7 and 1.8
 
-How fastart should describe smooth things while staying fast art: a
-file that is always a low-poly drawing or model, carrying the smooth
-source beside it, with every interpretation a reader may make spelled
-out. Research notes first, then the design, then what is deliberately
-left out. Nothing here is in the format yet.
+How fastart describes smooth things while staying fast art: a file that
+is always a low-poly drawing or model, carrying the smooth source beside
+it, with every interpretation a reader may make spelled out. Research
+notes first, then the design, then what is deliberately left out.
+**Built as format 1.7** (paths, normals, smooth and creases, sweeps,
+all at once; see FORMAT.md for the contract, this file for the why).
+The error code for a malformed path is `curve`, since `path` already
+named an absolute palette ref.
 
 ## What the field does
 

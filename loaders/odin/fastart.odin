@@ -20,6 +20,10 @@ Shape :: struct {
 	w:      f32,
 	points: [dynamic]V2,
 	tris:   [dynamic]u16, // baked triangulation (index triples)
+	closed: bool, // 1.7, path: fills; open strokes with w
+	in_:    [dynamic]V2 `json:"in"`, // 1.7, path: tangent handles relative to each point
+	out:    [dynamic]V2, // 1.7, path
+	bake:   Path_Bake, // 1.7, path: the flattened polygon an editor wrote
 	part:   string, // 1.4, collision: the part it rides ("" = document space, at rest)
 	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
 	texture: string, // 1.5: a texture of the document, tiled over the shape; "" for none
@@ -129,6 +133,14 @@ State_Part :: struct {
 Morph :: struct {
 	shape:  int,
 	points: [dynamic]V2,
+	in_:    [dynamic]V2 `json:"in"`, // 1.7: a path's handles in this pose
+	out:    [dynamic]V2,
+}
+
+// 1.7: a path's flattened polygon, baked on save.
+Path_Bake :: struct {
+	points: [dynamic]V2,
+	tris:   [dynamic]u16,
 }
 
 // The points a shape has under a pose entry: its morph's, else the base's.
@@ -140,6 +152,25 @@ shape_points :: proc(doc: ^Doc, part: ^Part, sp: ^State_Part, shape: int) -> []V
 	if sp == nil || part.like != "" do return base
 	for &m in sp.morph do if m.shape == shape && len(m.points) == len(base) do return m.points[:]
 	return base
+}
+
+// The polygon a shape draws (1.7): a poly's points; a path's bake, or the
+// path flattened now (allocated with the context allocator) when it has
+// none or a morph moved its vertices. Circles and lines have none.
+shape_polygon :: proc(doc: ^Doc, part: ^Part, sp: ^State_Part, shape: int) -> []V2 {
+	shapes := shapes_of(doc, part)
+	if shape < 0 || shape >= len(shapes) do return nil
+	sh := &shapes[shape]
+	pts := shape_points(doc, part, sp, shape)
+	if sh.kind != "path" do return pts
+	morphed := raw_data(pts) != raw_data(sh.points[:])
+	if !morphed && len(sh.bake.points) > 0 do return sh.bake.points[:]
+	in_, out := sh.in_[:], sh.out[:]
+	if morphed && sp != nil do for &m in sp.morph do if m.shape == shape {
+		if len(m.in_) == len(pts) do in_ = m.in_[:]
+		if len(m.out) == len(pts) do out = m.out[:]
+	}
+	return path_polygon(pts, in_, out, sh.closed)
 }
 
 // Morphs mixed: every shape either side reshapes, its points lerped

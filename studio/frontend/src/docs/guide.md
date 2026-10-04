@@ -34,6 +34,16 @@ asset back.
 
 ## The editor
 
+The **pen** (P) draws paths: click for a corner, drag to pull a pair of
+mirrored handles for a curve, click the first point or press Enter to
+close. A selected path shows its vertices and, as rings, its tangent
+handles; drag a handle to bend the curve (Alt breaks the pair), drag a
+vertex to move it with its handles. The inspector's **closed** box turns
+a fill into a stroke with a **width**. Save writes the flattened polygon
+into the file beside the curve, so older tools draw the shape. **Deform**
+(D) in 2D works as in the model screen: drags land in the current
+state's morph, and clips lerp the corners.
+
 Four regions, the way Rive, Spine and Figma lay it out: **structure on
 the left** (the project's files, then the open file's parts as a tree),
 **the canvas in the middle**, **the inspector on the right** (whatever is
@@ -378,6 +388,18 @@ the same four regions with the model turned under a **view**.
   between keys. The part's row says **morph**, the inspector counts the
   reshaped meshes and has **reset**. Off, corner drags edit the base
   mesh every state shares. A part drawn like another cannot morph.
+- **Smooth surfaces (1.7).** A mesh's inspector has **normals** (flat, or
+  smooth for averaged vertex normals, with an **angle** past which edges
+  stay sharp) and **smooth**, the number of subdivision levels drawn
+  over the cage. The cage stays the file and keeps its corner handles;
+  with smooth on, a dashed wire shows it over the surface. Shift-click a
+  second corner to choose an edge, then set its **crease** (0 smooth, 1
+  sharp, a fraction a fillet). Deform moves cage corners and the surface
+  follows, so a breathing or squashing smooth thing is still two states
+  and a clip.
+- **Sweeps.** A `sweep` shape (a lathe or an extrude of a profile, from
+  a generator or the file) shows its op, axis, segments or depth in the
+  inspector and is drawn as the mesh it makes.
 
 ## Scenes
 

@@ -3,7 +3,7 @@
 // a `map` so the same code draws rest space and a posed state.
 
 import { canvasColors } from "../state/theme.ts";
-import { colorOf, cssColor, docBounds, drawList, mappingXf, shadeColor, xfApply, xfMul, type Doc, type Shape, type StatePart, type Token, type Vec2, type Xf, shapesOfPosed } from "@fastart/core";
+import { colorOf, cssColor, docBounds, drawList, mappingXf, shadeColor, xfApply, xfMul, type Doc, type Shape, type StatePart, type Token, type Vec2, type Xf, shapesOfPosed, pathBake } from "@fastart/core";
 
 /** A texture's colour map, rendered: what the painter tiles (see state/textures.ts). */
 export interface PatternSource {
@@ -57,6 +57,28 @@ export function fillShape(ctx: CanvasRenderingContext2D, sh: Shape, css: string 
 			ctx.fill();
 			break;
 		}
+		case "path": {
+			// 1.7: the flattened polygon; an open path is a stroke with round joins
+			const pts = pathBake(sh).points;
+			if (sh.closed) {
+				if (pts.length < 3) return;
+				tracePoly(ctx, pts, map);
+				ctx.fill();
+			} else {
+				if (pts.length < 2 || !(sh.w && sh.w > 0)) return;
+				ctx.lineWidth = sh.w * scale;
+				ctx.lineCap = "round";
+				ctx.lineJoin = "round";
+				ctx.beginPath();
+				pts.forEach((q, i) => {
+					const m = map(q);
+					if (i === 0) ctx.moveTo(m[0], m[1]);
+					else ctx.lineTo(m[0], m[1]);
+				});
+				ctx.stroke();
+			}
+			break;
+		}
 	}
 }
 
@@ -95,6 +117,21 @@ export function outlineShape(
 		case "poly": {
 			if (sh.points.length < 2) return;
 			tracePoly(ctx, sh.points, map);
+			ctx.stroke();
+			break;
+		}
+		case "path": {
+			const pts = pathBake(sh).points;
+			if (pts.length < 2) return;
+			if (sh.closed) tracePoly(ctx, pts, map);
+			else {
+				ctx.beginPath();
+				pts.forEach((q, i) => {
+					const m = map(q);
+					if (i === 0) ctx.moveTo(m[0], m[1]);
+					else ctx.lineTo(m[0], m[1]);
+				});
+			}
 			ctx.stroke();
 			break;
 		}

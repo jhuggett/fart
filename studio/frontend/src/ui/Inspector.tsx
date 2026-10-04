@@ -70,6 +70,9 @@ import {
 	deleteMap,
 	setSelTexture,
 	setSelMapping,
+	morphCount,
+	resetMorph,
+	setPathField,
 } from "../state/editor.ts";
 import { TexturesPanel } from "./Textures.tsx";
 import { renaming, openContextMenu, type MenuItem } from "../state/menu.ts";
@@ -169,6 +172,23 @@ function ShapeSection({ sh, collision }: { sh: Shape; collision: boolean }) {
 					<span class="k">points</span>
 					<span>{sh.points.length}</span>
 				</div>
+			)}
+			{n === 1 && sh.kind === "path" && !collision && (
+				<>
+					<div class="line" title="a path (1.7): drag a vertex to move it with its handles, a handle ring to bend the curve (Alt breaks the pair)">
+						<span class="k">points</span>
+						<span>{sh.points.length}</span>
+						<label class="field" style="margin-left:auto" title="closed fills; open strokes with a width">
+							<span class="k">closed</span>
+							<input type="checkbox" checked={!!sh.closed} onChange={(e) => setPathField(ed.sel.value[0], "closed", (e.target as HTMLInputElement).checked)} />
+						</label>
+					</div>
+					{!sh.closed && (
+						<div class="fields">
+							<Num label="width" value={sh.w ?? 1} min={0} step={0.1} onChange={(v) => setPathField(ed.sel.value[0], "w", v)} wide />
+						</div>
+					)}
+				</>
 			)}
 			{n === 1 && !collision && (
 				<div class="fields">
@@ -351,6 +371,17 @@ function PartSection() {
 	const preview = !!curClip();
 	return (
 		<Section title="Part" hint="a layer with a pivot: the unit that poses" tail={part.name}>
+			{morphCount(k) > 0 && (
+				<div class="line" title="a morph (1.6): this state reshapes the part's polys or paths; clips lerp the corners between states">
+					<span class="k">morph</span>
+					<span class="chip" style="margin:0">
+						{morphCount(k)} shape{morphCount(k) === 1 ? "" : "s"} reshaped
+					</span>
+					<button class="btn small ghost" style="margin-left:auto" title="draw the base shapes in this state again" onClick={() => resetMorph(k)}>
+						reset
+					</button>
+				</div>
+			)}
 			<div class="line">
 				<span class="k">name</span>
 				<InlineName key={part.name} value={part.name} focus={false} class="field-name" onCommit={(n) => renamePart(k, n)} onCancel={() => {}} />

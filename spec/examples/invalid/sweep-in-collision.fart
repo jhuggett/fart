@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "palette": [
+    {
+      "name": "c",
+      "rgb": [
+        1,
+        2,
+        3,
+        255
+      ]
+    }
+  ],
+  "space": "3d",
+  "parts": [
+    {
+      "name": "a",
+      "shapes": []
+    }
+  ],
+  "collision": [
+    {
+      "kind": "sweep",
+      "op": "lathe",
+      "axis": "y",
+      "profile": {
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            0,
+            2
+          ]
+        ]
+      }
+    }
+  ]
+}

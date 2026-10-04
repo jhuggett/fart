@@ -4,7 +4,7 @@
 // triangulation editors bake into a mesh's tris. The reference Odin
 // loader (fastart3d.odin) does the same sums, so every reader agrees.
 
-import type { Anchor3, Clip3, ClipKey3, Doc3, Part3, Shape3, State3, StatePart3, Target3, Vec3 } from "./types.ts";
+import type { MeshShape, Anchor3, Clip3, ClipKey3, Doc3, Part3, Shape3, State3, StatePart3, Target3, Vec3 } from "./types.ts";
 import { lerpMorphs, ease } from "./clips.ts";
 import { triangulate } from "./geometry.ts";
 import type { Vec2 } from "./types.ts";
@@ -493,14 +493,15 @@ export function triangulateFace(points: readonly Vec3[], face: readonly number[]
 
 /** Bake tris into every mesh (parts and collision), the way an editor does on save. */
 export function bakeTris3(doc: Doc3): void {
-	const bake = (shapes?: Shape3[]) => {
+	const bake = (shapes?: readonly { kind: string }[]) => {
 		for (const sh of shapes ?? []) {
 			if (sh.kind !== "mesh") continue;
+			const m = sh as MeshShape;
 			const tris: number[] = [];
-			for (const f of sh.faces) tris.push(...triangulateFace(sh.points, f));
-			sh.tris = tris;
+			for (const f of m.faces) tris.push(...triangulateFace(m.points, f));
+			m.tris = tris;
 		}
 	};
 	for (const part of doc.parts ?? []) bake(part.shapes);
-	bake(doc.collision?.filter((sh): sh is Shape3 => sh.kind !== "box"));
+	bake(doc.collision);
 }

@@ -19,3 +19,5 @@ export * from "./collision.ts";
 export * from "./textures.ts";
 export * from "./png.ts";
 export * from "./scene.ts";
+export * from "./curves.ts";
+export * from "./subdiv.ts";

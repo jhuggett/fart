@@ -6,7 +6,8 @@
 import type { BoxShape, CollisionShape3, Doc, Doc3, MeshShape, Shape, Vec2, Vec3 } from "./types.ts";
 import { worldTransforms, xfApply, xfScale, type Xf } from "./geometry.ts";
 import { localXf3, quatFromEuler, quatToMat, shapesOf3, worldTransforms3, xf3Apply, xf3Scale, v3cross, v3dot, v3norm, v3sub, v3len, type Xf3 } from "./space3.ts";
-import { ballMesh, rodMesh, windOutward } from "./solids.ts";
+import { cageOf, ballMesh, rodMesh, windOutward } from "./solids.ts";
+import { pathBake } from "./curves.ts";
 import type { StatePart, StatePart3 } from "./types.ts";
 
 /** A 3D solid in document space, ready for a plane or distance test. */
@@ -118,7 +119,11 @@ export function collisionWorld(doc: Doc, poses?: readonly StatePart[]): Collider
 		const s = T ? xfScale(T) : 1;
 		if (sh.kind === "circle") out.push({ ...base, kind: "circle", at: mv(sh.at), r: sh.r * s });
 		else if (sh.kind === "line") out.push({ ...base, kind: "line", a: mv(sh.a), b: mv(sh.b), w: sh.w * s });
-		else out.push({ ...base, kind: "poly", points: sh.points.map(mv), ...(sh.tris ? { tris: [...sh.tris] } : {}) });
+		else if (sh.kind === "path") {
+			// 1.7: a path collides as its flattened polygon
+			const b = pathBake(sh);
+			out.push({ ...base, kind: "poly", points: b.points.map(mv), ...(b.tris ? { tris: [...b.tris] } : {}) });
+		} else out.push({ ...base, kind: "poly", points: sh.points.map(mv), ...(sh.tris ? { tris: [...sh.tris] } : {}) });
 	};
 	for (const sh of doc.collision ?? []) {
 		if (!sh.part) {
@@ -289,7 +294,8 @@ export function hullPart(doc: Doc3, partName: string): MeshShape | null {
 	if (!part) return null;
 	const cloud: Vec3[] = [];
 	for (const sh of shapesOf3(doc, part)) {
-		if (sh.kind === "mesh") cloud.push(...sh.points);
+		if (sh.kind === "mesh") cloud.push(...sh.points); // the cage, never the smooth surface
+		else if (sh.kind === "sweep") cloud.push(...cageOf(sh).points);
 		else if (sh.kind === "ball") cloud.push(...ballMesh(sh, 4, 8).points);
 		else {
 			const m = rodMesh(sh, 8);

@@ -9,6 +9,8 @@
 
 import { signal, batch } from "@preact/signals";
 import {
+	shapesOfPosed,
+	pivotOf,
 	parseDoc,
 	is3d,
 	validate,
@@ -90,6 +92,10 @@ export const ed = {
 	colSel: signal(-1),
 	pending: signal<Pending>("none"),
 	polyPts: signal<Vec2[]>([]),
+	/** 1.7: the pen's out-handle per point in progress (mirrored in); zero for a corner */
+	polyOut: signal<Vec2[]>([]),
+	/** 1.6/1.7: corner and handle drags reshape the part in the current state (a morph) instead of the base shape */
+	deform: signal(false),
 	/** the document differs from its checkpoint */
 	dirty: signal(false),
 	/** when the file itself was last written this session (ms), 0 for not yet */
@@ -831,6 +837,80 @@ export function selMakePrimary(r: Ref) {
 /** Live shapes for the selection (stale refs dropped). */
 export function selShapes(): Shape[] {
 	return ed.sel.value.map(shapeAt).filter((s): s is Shape => !!s);
+}
+
+/** Can a drag land in a morph: deform on, a state on the canvas, a poly or path of a part with points of its own. */
+export function deforming(r: Ref | null = primary()): boolean {
+	const p = r ? parts()[r.p] : undefined;
+	const sh = r ? shapeAt(r) : undefined;
+	return ed.deform.value && ed.curClip.value < 0 && !ed.collide.value && !!p && !p.like && !!sh && (sh.kind === "poly" || sh.kind === "path");
+}
+
+/**
+ * The current state's morph entry for a shape, as a shape-like view whose
+ * `points` (and a path's `in`/`out`) are the morph's own arrays, made from
+ * the base when there is none. Handle drags on this view edit the morph.
+ */
+export function morphView(d: Doc, r: Ref): Shape | null {
+	const part = d.parts?.[r.p];
+	const st = d.states?.[ed.curState.value];
+	const sh = part?.shapes?.[r.s];
+	if (!part || !st || !sh || part.like || (sh.kind !== "poly" && sh.kind !== "path")) return null;
+	let sp = st.parts.find((e) => e.part === part.name);
+	if (!sp) {
+		sp = { part: part.name, offset: [...pivotOf(part)] as Vec2 };
+		st.parts.push(sp);
+	}
+	sp.morph ??= [];
+	let m = sp.morph.find((x) => x.shape === r.s);
+	if (!m || m.points.length !== sh.points.length) {
+		m = { shape: r.s, points: sh.points.map((p) => [p[0], p[1]] as Vec2) };
+		sp.morph = [...sp.morph.filter((x) => x.shape !== r.s), m];
+	}
+	if (sh.kind === "path") {
+		if (!m.in || m.in.length !== sh.points.length) m.in = (sh.in ?? sh.points.map(() => [0, 0] as Vec2)).map((v) => [v[0], v[1]] as Vec2);
+		if (!m.out || m.out.length !== sh.points.length) m.out = (sh.out ?? sh.points.map(() => [0, 0] as Vec2)).map((v) => [v[0], v[1]] as Vec2);
+		return { kind: "path", closed: sh.closed, points: m.points, in: m.in, out: m.out, w: sh.w };
+	}
+	return { kind: "poly", points: m.points };
+}
+
+/** The selected shape as the current state has it (its morph applied), for handles and picking. */
+export function selShapePosed(): Shape | undefined {
+	const r = primary();
+	const p = r ? parts()[r.p] : undefined;
+	if (!r || !p) return undefined;
+	return shapesOfPosed(doc(), p, curState()?.parts.find((sp) => sp.part === p.name))[r.s];
+}
+
+/** How many shapes the current state reshapes on a part. */
+export function morphCount(partIndex: number): number {
+	const part = parts()[partIndex];
+	const sp = part && curState()?.parts.find((e) => e.part === part.name);
+	return sp?.morph?.length ?? 0;
+}
+/** Forget the current state's morphs on a part. */
+export function resetMorph(partIndex: number) {
+	mutate((d) => {
+		const part = d.parts?.[partIndex];
+		const sp = part && d.states?.[ed.curState.value]?.parts.find((e) => e.part === part.name);
+		if (sp) delete sp.morph;
+	});
+}
+/** 1.7: a path's own fields. */
+export function setPathField(r: Ref, key: "closed" | "w", v: boolean | number) {
+	mutate((d) => {
+		const sh = d.parts?.[r.p]?.shapes?.[r.s];
+		if (!sh || sh.kind !== "path") return;
+		if (key === "closed") {
+			if (v) sh.closed = true;
+			else {
+				delete sh.closed;
+				sh.w ??= 1;
+			}
+		} else sh.w = v as number;
+		delete sh.bake;
+	}, `path-${key}`);
 }
 
 // ------------------------------------------------------------- shape ops

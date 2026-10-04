@@ -66,7 +66,12 @@ follow the spec, never the other way round.
   box mapping, a software rasteriser, `fart bake --textures`) in
   `textures.ts` + `png.ts`, morphs (1.6: `morph` on state entries,
   lerped in `clips.ts`/`space3.ts`, `shapesOfPosed`/`shapesOf3Posed`,
-  glTF targets; the model screen's Deform toggle); the studio renders maps in
+  glTF targets; the model screen's Deform toggle), curves and smooth
+  surfaces (1.7: `path` with relative handles + `bake` in `curves.ts`,
+  `normals`/`smooth`/`creases` + Catmull-Clark in `subdiv.ts`, `sweep`
+  in `solids.ts`; `asMesh` is the surface a renderer draws, `cageOf`
+  the file's cage; the pen tool and 2D Deform in the editor; the Odin
+  loader's `curves.odin` subdivides and flattens itself); the studio renders maps in
   `state/textures.ts` for the 2D painter's patterns and WebGL; the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.

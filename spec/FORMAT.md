@@ -531,6 +531,112 @@ state:
 - A 1.5 reader draws the base shape in every state and is otherwise
   right.
 
+## Paths (1.7)
+
+A `path` is a cubic polybézier, one token, the curve kind every vector
+tool keeps (Lottie, Rive and Figma store exactly this):
+
+```json
+{"kind": "path", "color": "skin", "closed": true,
+ "points": [[-6,-4], [6,-4], [8,0], [6,4], [-6,4], [-8,0]],
+ "in":     [[-2,0],  [-2,0], [0,-2], [2,0],  [2,0],  [0,2]],
+ "out":    [[2,0],   [2,0],  [0,2],  [-2,0], [-2,0], [0,-2]],
+ "bake": {"points": [[-6,-4], [-5.1,-4.2], ...], "tris": [0,1,2, ...]}}
+```
+
+- `points` are the vertices. `in[i]` and `out[i]` are the tangent
+  handles **relative to `points[i]`**; absent, or `[0, 0]`, the vertex
+  is a corner. The segment from vertex i to i+1 is the cubic through
+  `points[i] + out[i]` and `points[i+1] + in[i+1]`. A path with no
+  handles is a polygon, which is what `poly` still is.
+- `closed` adds the last-to-first segment and fills. An open path
+  strokes with `w`, round joins and caps, like `line`.
+- **Flattening.** A reader draws the path as a polyline whose every
+  point lies within **0.05 document units** of the curve (half a pixel
+  at ten pixels per unit). Any algorithm inside that bound conforms;
+  recursive subdivision against the chord distance is the reference.
+- **The bake.** Editors write `bake` on save: the flattened polygon,
+  with `tris` when closed, so a reader that does not flatten draws
+  `bake.points` as a `poly`. A hand-written file may leave it out. A
+  reader that flattens for itself ignores it.
+- **Morphs** (1.6) replace `points`; the handles ride along since they
+  are relative. A morph may carry `in` and `out` too, one per point.
+  The bake is the base's, so a reader drawing bakes draws the base
+  shape in every state, the documented 1.6 fallback.
+- Collision, `fart hull`, textures and `shade` treat a path as the
+  polygon it flattens to.
+- Error `curve`: `in` or `out` with a count that differs from `points`,
+  an open path without `w`, a closed path with fewer than three points.
+
+## Smooth surfaces (1.7)
+
+A mesh stays the low-poly cage it was; three optional fields refine it.
+A reader that knows none of them draws the cage, which is a correct
+low-poly rendering of the same thing.
+
+```json
+{"kind": "mesh", "color": "clay", "points": [...], "faces": [...],
+ "normals": "smooth", "smooth": 2,
+ "creases": [[0, 1, 1], [1, 2, 0.6], [4, 1]]}
+```
+
+- `normals`: `"flat"` (the default) lights each face by its own
+  normal; `"smooth"` lights each vertex by the average of its faces'
+  normals, except across a sharp edge (a crease of 1, a boundary) or
+  across edges whose faces meet at more than `angle` degrees (absent:
+  no limit). Smooth normals cost no geometry and are what most rounded
+  low-poly props want. Once `smooth` is above 0 the default is
+  `"smooth"`.
+- `smooth`: the number of Catmull-Clark subdivision levels, 0 by
+  default. `creases` lists `[a, b, c]` for the edge from point a to
+  point b with crease `c` in 0–1, and `[a, c]` for a corner. The rules
+  are OpenSubdiv's, so any renderer with them conforms: `c` is
+  sharpness `c × 10`, infinitely sharp at 1; a semi-sharp crease loses
+  one unit of sharpness per level and then rounds off (a fillet); a
+  boundary is sharp and its corners are pinned (`EDGE_AND_CORNER`).
+  The limit surface is the target: a reader that subdivides `smooth`
+  levels with these rules conforms, and so does one that evaluates it
+  another way. Explicit `uvs` interpolate linearly within their face.
+- **The cage is the file.** Morphs move cage points; the surface
+  follows (subdivision is linear in the cage, so a lerp of cages is a
+  lerp of surfaces). Collision and `fart hull` use the cage. Vertex
+  handles in an editor are cage points.
+- **The bake.** `bake` is the subdivided surface `{points, faces,
+  tris, of}` with `of` a hash of the cage it came from; a reader
+  that does not subdivide draws it, and drops it when `of` no longer
+  matches. Editors do **not** write it on save (two levels on a
+  200-face cage is 3,200 faces of JSON); `fart bake --smooth` does,
+  for a game that will not subdivide. A bake never morphs.
+- Error `crease`: a value outside 0–1, a point the mesh lacks, or an
+  edge pair that is not an edge of a face. `smooth` must be a whole
+  number (`schema`).
+
+## Sweeps (1.7)
+
+A `sweep` is a solid generated from a 2D profile, kept as the profile
+so an editor can change it after the fact:
+
+```json
+{"kind": "sweep", "color": "brass", "op": "lathe", "axis": "y", "segments": 12,
+ "profile": {"points": [[0,-6], [3,-5], [3.4,0], [2,4], [0,4]], "out": [[0,0],[0.4,-0.6],[0,2],[0,0],[0,0]], "in": [[0,0],[-0.4,0.6],[0,-2],[0,0],[0,0]]}}
+{"kind": "sweep", "color": "wood", "op": "extrude", "axis": "z", "from": -1, "to": 1,
+ "profile": {"points": [[-4,-3], [4,-3], [4,3], [-4,3]]}}
+```
+
+- `profile` is a `path` body without a kind: `points`, optional `in`
+  and `out`, flattened at the path tolerance. For `lathe` the points
+  are `[radius, along]` revolved about `axis` in `segments` steps (3 or
+  more, 12 by default), a zero radius an apex, an open end capped. For
+  `extrude` the profile is closed and runs along `axis` from `from` to
+  `to`, in the plane's other two axes in a fixed order (`[z, y]` for x,
+  `[x, z]` for y, `[x, y]` for z).
+- The sweep's mesh is wound outward and drawn as a `mesh`; `normals`,
+  `angle`, `smooth`, `creases` (over the generated points), `texture`
+  and `mapping` apply to it as to a mesh, and `bake` may hold the
+  generated (and subdivided) mesh for readers that do not generate.
+- A sweep has no `points` of its own, so it does not morph; it never
+  occurs in `collision` (give the collision its mesh).
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -629,6 +735,8 @@ the same from any tool:
 | `dup.texture` | two textures share a name (1.5)                                |
 | `face`      | a mesh face with fewer than three indices, or an index past the last point (1.3) |
 | `morph`     | a morph on a `like` part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6) |
+| `curve`     | a path's `in`/`out` with a count that differs from its points, an open path without `w`, a closed one with fewer than three points (1.7) |
+| `crease`    | a crease outside 0–1, on a point the mesh lacks, or on a pair that is not an edge (1.7) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -674,6 +782,11 @@ the corpus only requires it to load every valid file and refuse those two.
   they are in that pose, lerped between keys (error `morph`). A file
   without it is a 1.5 file; a 1.5 reader draws the base shape in every
   state.
+- 1.7 added the `path` kind with its `bake`, `in`/`out` on morphs,
+  `normals`, `angle`, `smooth`, `creases` and `bake` on meshes, and the
+  `sweep` kind (errors `curve`, `crease`). A file without them is a 1.6
+  file; a 1.6 reader skips paths and sweeps (unknown kinds) and draws a
+  smooth mesh's cage flat.
 
 ## Reserved for later
 
@@ -683,4 +796,4 @@ anything else; validators warn when they appear.
 - `children` on a part: nesting, should `parent` ever prove the wrong way
   round.
 - (`space` stopped being reserved in 1.3.)
-- Shape kinds `ring` and `path`.
+- Shape kind `ring`. (`path` stopped being reserved in 1.7.)

@@ -8,6 +8,7 @@
 import type { Anchor, Anchor3, Clip, Clip3, ClipKey, ClipKey3, Doc, Doc3, Part, Part3, Shape, Shape3, State, StatePart, StatePart3, Vec2, Vec3 } from "./types.ts";
 import { triangulate, xfApply, xfFlipped, xfInvert, xfMul, type Xf } from "./geometry.ts";
 import { affineFrom, meshUVs } from "./textures.ts";
+import { asMesh } from "./solids.ts";
 import { solveTargets3 } from "./ik3.ts";
 import {
 	anchorsOf3,
@@ -172,7 +173,11 @@ function restPart(src: Doc3, V: Xf3, part: Part3, sp?: StatePart3): RestPart {
 	const move = (p: Vec3) => xf3Apply(V, p);
 	const raw = shapesOf3Posed(src, part, sp);
 	const shapes: Shape3[] = raw.map((sh) => {
-		if (sh.kind === "mesh") return { ...sh, points: sh.points.map(move) };
+		// a smooth mesh or a sweep projects its surface (1.7): subdivide the cage, then turn it
+		if (sh.kind === "mesh" || sh.kind === "sweep") {
+			const m = asMesh(sh);
+			return { ...m, points: m.points.map(move) };
+		}
 		if (sh.kind === "ball") return { ...sh, at: move(sh.at) };
 		return { ...sh, a: move(sh.a), b: move(sh.b) };
 	});

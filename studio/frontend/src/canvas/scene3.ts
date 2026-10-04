@@ -49,7 +49,7 @@ function outlineOf(p: Placed): Vec2[] | null {
 		let hi: Vec2 = [-Infinity, -Infinity];
 		for (const fp of fps) for (const f of fp.shapes) {
 			const sh = f.shape;
-			const pts: Vec2[] = sh.kind === "poly" ? sh.points : sh.kind === "circle" ? [[sh.at[0] - sh.r, sh.at[1] - sh.r], [sh.at[0] + sh.r, sh.at[1] + sh.r]] : [sh.a, sh.b];
+			const pts: Vec2[] = sh.kind === "poly" ? sh.points : sh.kind === "circle" ? [[sh.at[0] - sh.r, sh.at[1] - sh.r], [sh.at[0] + sh.r, sh.at[1] + sh.r]] : sh.kind === "line" ? [sh.a, sh.b] : [];
 			for (const q of pts) {
 				lo = [Math.min(lo[0], q[0]), Math.min(lo[1], q[1])];
 				hi = [Math.max(hi[0], q[0]), Math.max(hi[1], q[1])];
@@ -306,7 +306,7 @@ export function drawSceneThumb(canvas: HTMLCanvasElement, layers: { placed: Plac
 				const sh = f.shape;
 				if (sh.kind === "poly") pts.push(...sh.points);
 				else if (sh.kind === "circle") pts.push([sh.at[0] - sh.r, sh.at[1] - sh.r], [sh.at[0] + sh.r, sh.at[1] + sh.r]);
-				else pts.push(sh.a, sh.b);
+				else if (sh.kind === "line") pts.push(sh.a, sh.b);
 			}
 			items.push({
 				pts,

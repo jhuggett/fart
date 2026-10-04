@@ -465,3 +465,49 @@ morphs_lerp :: proc(t: ^testing.T) {
 		testing.expect(t, abs(p.x + 7) < 1e-4 && abs(p.y + 3) < 1e-4, "the poly is halfway squashed")
 	}
 }
+
+@(test)
+curves_and_surfaces :: proc(t: ^testing.T) {
+	context.allocator = context.temp_allocator
+	// 2D: a path's polygon bends; a morph re-flattens with the handles riding along
+	data, err := os.read_entire_file(EXAMPLES + "valid/curve.fart", context.temp_allocator)
+	if !testing.expect(t, err == nil) do return
+	d2, ok := fart.load_bytes(data)
+	if !testing.expect(t, ok) do return
+	blob := fart.part_of(&d2, "blob")
+	poly := fart.shape_polygon(&d2, blob, nil, 0)
+	testing.expect(t, len(poly) > 6, "the closed path flattens into more than its six vertices")
+	squash := fart.state_of(&d2, "squash")
+	posed := fart.shape_polygon(&d2, blob, &squash.parts[0], 0)
+	testing.expect(t, len(posed) > 6 && posed[0].x == -8, "the morphed path re-flattens from the moved vertices")
+	// 3D: the smooth cage flattens to many more triangles; the morphed cage follows; the sweep generates
+	data3, err3 := os.read_entire_file(EXAMPLES + "valid/smooth.fart", context.temp_allocator)
+	if !testing.expect(t, err3 == nil) do return
+	d3, ok3 := fart.load_bytes_3d(data3)
+	if !testing.expect(t, ok3) do return
+	body := fart.part_of_3d(&d3, "body")
+	tms := make([dynamic]fart.Tri_Mesh)
+	fart.flatten_part(&d3, body, &tms)
+	testing.expect(t, len(tms[0].positions) >= 96 * 2 * 3, "two levels of subdivision: 96 faces of the cube")
+	xmax: f32 = 0
+	for p in tms[0].positions do xmax = max(xmax, p.x)
+	full := fart.state_of_3d(&d3, "full")
+	tms2 := make([dynamic]fart.Tri_Mesh)
+	fart.flatten_part_posed(&d3, body, &full.parts[0], &tms2)
+	xmax2: f32 = 0
+	for p in tms2[0].positions do xmax2 = max(xmax2, p.x)
+	testing.expect(t, xmax2 > xmax + 0.5, "the surface follows the morphed cage")
+	// the pyramid is smooth-shaded: its apex corners share a normal straight down the axis
+	for i in 0 ..< len(tms[1].positions) do if tms[1].positions[i].y < -6.9 {
+		nn := tms[1].normals[i]
+		testing.expect(t, abs(nn.x) < 1e-4 && abs(nn.z) < 1e-4 && nn.y < 0, "the apex normal averages the sides")
+	}
+	datas, errs := os.read_entire_file(EXAMPLES + "valid/sweep.fart", context.temp_allocator)
+	if !testing.expect(t, errs == nil) do return
+	ds, oks := fart.load_bytes_3d(datas)
+	if !testing.expect(t, oks) do return
+	jar := fart.part_of_3d(&ds, "jar")
+	tms3 := make([dynamic]fart.Tri_Mesh)
+	fart.flatten_part(&ds, jar, &tms3)
+	testing.expect(t, len(tms3) == 2 && len(tms3[0].positions) > 300 && len(tms3[1].positions) == 36, "the lathe and the extrude generate")
+}

@@ -62,6 +62,10 @@ import {
 	setShapeNumber,
 	setShapeCoord,
 	setVertexAxis,
+	setSmoothField,
+	setSweepField,
+	setCrease,
+	creaseOf,
 	morphCount,
 	resetMorph,
 	selShapePosed,
@@ -152,7 +156,7 @@ export function ModelTools() {
 			<button class={`tool ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
 				<I.grid />
 			</button>
-			<button class={`tool ${md.deform.value ? "active" : ""}`} disabled={!!clip} title={clip ? "a clip is a preview; pick a state to deform" : "deform: corner drags reshape the part in this state only, a morph the clips lerp  (D)"} onClick={() => run("model.deform")}>
+			<button class={`tool ${md.deform.value ? "active" : ""}`} disabled={!!clip} title={clip ? "a clip is a preview; pick a state to deform" : "deform: corner drags reshape the part in this state only, a morph the clips lerp  (D)"} onClick={() => run("edit.deform")}>
 				<I.state />
 				<span class="key">D</span>
 			</button>
@@ -527,6 +531,58 @@ export function Inspector3() {
 							<span>
 								{sh.points.length} · {sh.faces.length} faces
 							</span>
+						</div>
+					)}
+					{(sh.kind === "mesh" || sh.kind === "sweep") && (
+						<>
+							<div class="line" title="how the surface is lit (1.7): flat keeps one normal per face; smooth averages them up to sharp edges, and is the default once subdivided">
+								<span class="k">normals</span>
+								<select class="num" value={sh.normals ?? ""} onChange={(e) => setSmoothField(sel, "normals", (e.target as HTMLSelectElement).value)}>
+									<option value="">{(sh.smooth ?? 0) > 0 ? "smooth (default)" : "flat (default)"}</option>
+									<option value="flat">flat</option>
+									<option value="smooth">smooth</option>
+								</select>
+							</div>
+							<div class="fields">
+								<Num label="angle°" value={sh.angle ?? 0} min={0} max={180} step={5} onChange={(v) => setSmoothField(sel, "angle", v)} title="faces meeting at more than this keep their own normals; 0 for no limit" />
+								<Num label="smooth" value={sh.smooth ?? 0} min={0} max={4} step={1} onChange={(v) => setSmoothField(sel, "smooth", Math.max(0, Math.round(v)))} title="Catmull-Clark levels (1.7): the cage stays the file, the surface is drawn; keep it at 1 or 2" />
+							</div>
+						</>
+					)}
+					{sh.kind === "sweep" && (
+						<>
+							<div class="line" title="a solid generated from a profile (1.7): a lathe revolves [radius, along] pairs about the axis, an extrude runs the closed outline along it">
+								<span class="k">sweep</span>
+								<select class="num" value={sh.op} onChange={(e) => setSweepField(sel, "op", (e.target as HTMLSelectElement).value)}>
+									<option value="lathe">lathe</option>
+									<option value="extrude">extrude</option>
+								</select>
+								<select class="num" value={sh.axis} onChange={(e) => setSweepField(sel, "axis", (e.target as HTMLSelectElement).value)}>
+									<option value="x">x</option>
+									<option value="y">y</option>
+									<option value="z">z</option>
+								</select>
+							</div>
+							<div class="fields">
+								{sh.op === "lathe" ? (
+									<Num label="segments" value={sh.segments ?? 12} min={3} step={1} onChange={(v) => setSweepField(sel, "segments", Math.max(3, Math.round(v)))} />
+								) : (
+									<>
+										<Num label="from" value={sh.from ?? 0} onChange={(v) => setSweepField(sel, "from", v)} />
+										<Num label="to" value={sh.to ?? 1} onChange={(v) => setSweepField(sel, "to", v)} />
+									</>
+								)}
+							</div>
+							<div class="line">
+								<span class="k">profile</span>
+								<span class="sub">{sh.profile.points.length} points{sh.profile.in || sh.profile.out ? " · curved" : ""} · edit it in the file or a generator</span>
+							</div>
+						</>
+					)}
+					{sh.kind === "mesh" && md.edge.value && (
+						<div class="line" title="the edge chosen with Shift-click on a second corner: its crease (1.7), 0 smooth to 1 sharp; a fraction is a fillet that rounds off after a few levels">
+							<span class="k">edge {md.edge.value[0]}–{md.edge.value[1]}</span>
+							<Num label="crease" value={creaseOf(sh, md.edge.value[0], md.edge.value[1])} min={0} max={1} step={0.1} onChange={(v) => setCrease(sel, md.edge.value![0], md.edge.value![1], Math.max(0, Math.min(1, v)))} />
 						</div>
 					)}
 					{sh.kind === "mesh" && vert !== null && sh.points[vert] && (

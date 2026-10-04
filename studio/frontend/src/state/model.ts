@@ -92,6 +92,8 @@ export const md = {
 	pending: signal<"none" | "pivot">("none"),
 	/** 1.6: corner drags reshape the part in the current state (a morph) instead of the base mesh */
 	deform: signal(false),
+	/** 1.7: a chosen edge of the selected mesh (two corner indices), for its crease */
+	edge: signal<[number, number] | null>(null),
 	tokens: signal<Token[]>([]),
 	/** 1.5: the file's textures, resolved and rendered, by name */
 	patterns: signal<Map<string, TexturePattern>>(new Map()),
@@ -183,6 +185,53 @@ function morphEntry(d: Doc3, partIndex: number, shape: number): Vec3[] | null {
 	}
 	return m.points;
 }
+/** 1.7: a mesh's (or sweep's) smoothing and lighting fields. */
+export function setSmoothField(s: Sel3, key: "normals" | "angle" | "smooth", v: string | number | undefined) {
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape] as Record<string, unknown>;
+		if (sh.kind !== "mesh" && sh.kind !== "sweep") return;
+		if (v === undefined || v === "" || (key === "smooth" && v === 0) || (key === "angle" && v === 0)) delete sh[key];
+		else sh[key] = v;
+		if (key === "smooth" && sh.bake) delete sh.bake; // a bake is of one cage at one level
+	}, `smooth-${key}`);
+}
+/** 1.7: a sweep's generator fields. */
+export function setSweepField(s: Sel3, key: "op" | "axis" | "segments" | "from" | "to", v: string | number) {
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape] as Record<string, unknown>;
+		if (sh.kind !== "sweep") return;
+		sh[key] = v;
+		delete sh.bake;
+	}, `sweep-${key}`);
+}
+/** 1.7: the crease of an edge (a, b) of the selected mesh, 0 removing it. */
+export function setCrease(s: Sel3, a: number, b: number, c: number) {
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape];
+		if (sh.kind !== "mesh") return;
+		const lo = Math.min(a, b);
+		const hi = Math.max(a, b);
+		const rest = (sh.creases ?? []).filter((e) => !(e.length === 3 && Math.min(e[0], e[1]) === lo && Math.max(e[0], e[1]) === hi));
+		if (c > 0) rest.push([lo, hi, Math.min(1, c)]);
+		if (rest.length) sh.creases = rest;
+		else delete sh.creases;
+		delete sh.bake;
+	}, `crease-${a}-${b}`);
+}
+/** The crease an edge of the selected mesh has, 0 for none. */
+export function creaseOf(sh: Shape3, a: number, b: number): number {
+	if (sh.kind !== "mesh") return 0;
+	const lo = Math.min(a, b);
+	const hi = Math.max(a, b);
+	const e = (sh.creases ?? []).find((x) => x.length === 3 && Math.min(x[0], x[1]) === lo && Math.max(x[0], x[1]) === hi);
+	return e ? e[2] : 0;
+}
+/** Is (a, b) an edge of the mesh's faces? */
+export function isEdge(sh: Shape3, a: number, b: number): boolean {
+	if (sh.kind !== "mesh") return false;
+	return sh.faces.some((f) => f.some((v, i) => (v === a && f[(i + 1) % f.length] === b) || (v === b && f[(i + 1) % f.length] === a)));
+}
+
 /** Forget the current state's morphs on a part: it draws the base mesh again. */
 export function resetMorph(partIndex: number) {
 	mutate((d) => {
@@ -829,7 +878,8 @@ export function mirrorSel() {
 	let copy: Shape3;
 	if (sh.kind === "mesh") copy = { ...sh, points: sh.points.map(mx), faces: sh.faces.map((f) => [...f].reverse()), tris: undefined };
 	else if (sh.kind === "ball") copy = { ...sh, at: mx(sh.at) };
-	else copy = { ...sh, a: mx(sh.a), b: mx(sh.b) };
+	else if (sh.kind === "rod") copy = { ...sh, a: mx(sh.a), b: mx(sh.b) };
+	else copy = { ...sh }; // a sweep: its profile is its own; mirror the part instead
 	if (copy.kind === "mesh") delete copy.tris;
 	mutate((d) => d.parts![s.part].shapes!.splice(s.shape + 1, 0, copy));
 	md.sel.value = { part: s.part, shape: s.shape + 1 };
@@ -878,7 +928,7 @@ export function moveSelView(s: Sel3, dView: Vec3, merge = "move") {
 		const add = (p: Vec3): Vec3 => round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
 		if (sh.kind === "mesh") sh.points = sh.points.map(add);
 		else if (sh.kind === "ball") sh.at = add(sh.at);
-		else {
+		else if (sh.kind === "rod") {
 			sh.a = add(sh.a);
 			sh.b = add(sh.b);
 		}
@@ -908,7 +958,7 @@ export function workDepth(): number {
 	if (!fp) return 0;
 	const sh = s ? parts()[s.part]?.shapes?.[s.shape] : undefined;
 	if (sh) {
-		const pts = sh.kind === "mesh" ? sh.points : sh.kind === "ball" ? [sh.at] : [sh.a, sh.b];
+		const pts = sh.kind === "mesh" ? sh.points : sh.kind === "ball" ? [sh.at] : sh.kind === "rod" ? [sh.a, sh.b] : [];
 		if (pts.length) return pts.reduce((acc, p) => acc + xf3Apply(fp.F, p)[2], 0) / pts.length;
 	}
 	return xf3Apply(fp.F, fp.part.pivot ?? [0, 0, 0])[2];

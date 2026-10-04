@@ -84,6 +84,7 @@ definition each, and the tooltips repeat them.
 | event      | `events` on a key | a name a game hears crossing the key (1.2)                  |
 | curve      | `curve` on a key | a bezier toward the key, over the named ease (1.2)          |
 | glow       | `emissive`      | light a slot gives off, for games that have light (1.2)      |
+| path       | `path`          | a curve: vertices with tangent handles (1.7); the pen draws one, a poly is a path with none |
 | part       | `parts[]`       | a layer with a pivot; the unit that poses; may ride a parent |
 | pivot      | `pivot`         | the point a part turns about and is placed by               |
 | anchor     | `anchors[]`     | a named point on a part a game or a chain reaches for       |
@@ -108,6 +109,8 @@ words gain a coordinate, not a vocabulary:
 | orbit      |                 | drag on nothing, or Alt-drag anywhere                        |
 | turn       | `rotate` `[x,y,z]` | a pose's turn about x, then y, then z; the lever turns about the view axis |
 | morph      | `morph` on a state entry | a mesh's corners as this state has them (1.6); **Deform** (D) sends corner drags there instead of the base |
+| smooth     | `smooth`, `normals`, `creases` | the cage drawn subdivided (1.7), lit by averaged normals; an edge's crease keeps it sharp |
+| sweep      | `sweep`         | a solid from a profile (lathe, extrude), kept as the profile (1.7) |
 | Project…   |                 | write the 2D views (`name-left.fart`, …) beside the model    |
 
 Everything else is the editor's: states, clips, the pivot and lever,
@@ -135,7 +138,8 @@ Figma's letters, because everyone's hands already know them.
 | key                     | does                                          |
 |-------------------------|-----------------------------------------------|
 | `V`                     | select                                        |
-| `R` `O` `L` `P`         | rect, circle (O for ellipse), line, poly       |
+| `R` `O` `L` `P`         | rect, circle (O for ellipse), line, pen (click: corner, drag: curve) |
+| `D`                     | deform: drags reshape the part in this state   |
 | `C`                     | the collision lens                            |
 | `Space` drag, `H`       | pan (hand)                                    |
 | wheel, `Cmd` wheel      | pan, zoom about the cursor                    |

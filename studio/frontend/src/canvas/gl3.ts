@@ -5,7 +5,7 @@
 // positions through each part's map, one colour per triangle from the
 // same light the projector uses; the shader only places and paints.
 
-import { colorOf, shadeColor, triangulateFace, meshUVs, v3cross, v3dot, v3norm, v3sub, xf3Apply, xf3Det, xf3Scale, type Doc3, type FramePart, type Token, type Vec2, type Vec3 } from "@fastart/core";
+import { asMesh, cageOf, cornerNormals, smoothNormals, colorOf, shadeColor, triangulateFace, meshUVs, v3cross, v3dot, v3norm, v3sub, xf3Apply, xf3Det, xf3Scale, type Doc3, type FramePart, type Token, type Vec2, type Vec3 } from "@fastart/core";
 import type { TexturePattern } from "../state/textures.ts";
 
 const VS = `attribute vec3 p; attribute vec4 c; attribute vec2 t; attribute float l; uniform vec3 u; uniform vec2 h; varying vec4 vc; varying vec2 vt; varying float vl;
@@ -168,7 +168,7 @@ export function drawLayers(canvas: HTMLCanvasElement, layers: SolidLayer[], ligh
 	 * from `out` (its centre, or the nearest point of its axis) and drawn
 	 * whichever way it faces: the depth buffer sorts it out.
 	 */
-	const tri = (a: Vec3, b: Vec3, c: Vec3, rgb: [number, number, number, number], shade: number | undefined, flip: boolean, out?: Vec3) => {
+	const tri = (a: Vec3, b: Vec3, c: Vec3, rgb: [number, number, number, number], shade: number | undefined, flip: boolean, out?: Vec3, vn?: [Vec3, Vec3, Vec3]) => {
 		let n = v3cross(v3sub(b, a), v3sub(c, a));
 		if (out) {
 			const mid: Vec3 = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
@@ -183,7 +183,13 @@ export function drawLayers(canvas: HTMLCanvasElement, layers: SolidLayer[], ligh
 		pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
 		const cc = [r / 255, gg / 255, bb / 255, al / 255];
 		col.push(...cc, ...cc, ...cc);
-		cur.lit.push(light, light, light);
+		if (vn) {
+			// smooth shading (1.7): each corner lit by its own averaged normal
+			for (const nn of vn) {
+				const m: Vec3 = flip ? [-nn[0], -nn[1], -nn[2]] : nn;
+				cur.lit.push((ambient + (1 - ambient) * Math.max(0, v3dot(m, l))) * (shade ?? 1));
+			}
+		} else cur.lit.push(light, light, light);
 		if (curUV) cur.uv.push(...curUV[0], ...curUV[1], ...curUV[2]);
 		else cur.uv.push(0, 0, 0, 0, 0, 0);
 	};
@@ -202,30 +208,40 @@ export function drawLayers(canvas: HTMLCanvasElement, layers: SolidLayer[], ligh
 			if (key && !patternOf.has(key)) patternOf.set(key, pattern!);
 			cur = batchOf(key);
 			curUV = null;
-			if (sh.kind === "mesh") {
-				const pts = sh.points.map((p) => xf3Apply(F, p));
-				if (pattern?.canvas) {
-					// per face, so a corner's pattern coordinates are known (box mapped or explicit)
-					const uvs = meshUVs(sh);
-					sh.faces.forEach((f, fi) => {
-						const ft = triangulateFace(sh.points, f);
+			if (sh.kind === "mesh" || sh.kind === "sweep") {
+				// the surface a mesh or a sweep draws (1.7): subdivided when smooth, generated for a sweep
+				const m = asMesh(sh);
+				const cage = cageOf(sh);
+				const pts = m.points.map((p) => xf3Apply(F, p));
+				// smooth normals, turned with the frame (F's linear part; a uniform scale keeps directions)
+				const cn = smoothNormals(cage) ? cornerNormals(m.points, m.faces, { angle: cage.angle, creases: (cage.smooth ?? 0) > 0 ? undefined : cage.creases }) : null;
+				const turn = (nn: Vec3): Vec3 => v3norm([F[0] * nn[0] + F[1] * nn[1] + F[2] * nn[2], F[3] * nn[0] + F[4] * nn[1] + F[5] * nn[2], F[6] * nn[0] + F[7] * nn[1] + F[8] * nn[2]] as Vec3);
+				const cornerN = cn ? new Map<number, Vec3>() : null;
+				if (cn && cornerN) m.faces.forEach((f, fi) => f.forEach((idx, ci) => cornerN.set(fi * 1e6 + idx, turn(cn[fi][ci]))));
+				const vnOf = (fi: number, i0: number, i1: number, i2: number): [Vec3, Vec3, Vec3] | undefined =>
+					cornerN ? [cornerN.get(fi * 1e6 + i0)!, cornerN.get(fi * 1e6 + i1)!, cornerN.get(fi * 1e6 + i2)!] : undefined;
+				if (pattern?.canvas || cornerN) {
+					// per face, so a corner's pattern coordinates and normal are known
+					const uvs = pattern?.canvas ? meshUVs(sh) : null;
+					m.faces.forEach((f, fi) => {
+						const ft = triangulateFace(m.points, f);
 						const uvOf = (idx: number): Vec2 => {
 							const ci = f.indexOf(idx);
-							const uv = uvs[fi][ci] ?? [0, 0];
+							const uv = uvs?.[fi]?.[ci] ?? [0, 0];
 							return [uv[0] / cell[0], uv[1] / cell[1]];
 						};
 						for (let i = 0; i + 2 < ft.length; i += 3) {
-							curUV = [uvOf(ft[i]), uvOf(ft[i + 1]), uvOf(ft[i + 2])];
-							tri(pts[ft[i]], pts[ft[i + 1]], pts[ft[i + 2]], rgb, sh.shade, flip);
+							curUV = uvs ? [uvOf(ft[i]), uvOf(ft[i + 1]), uvOf(ft[i + 2])] : null;
+							tri(pts[ft[i]], pts[ft[i + 1]], pts[ft[i + 2]], rgb, sh.shade, flip, undefined, vnOf(fi, ft[i], ft[i + 1], ft[i + 2]));
 						}
 					});
 					curUV = null;
 					continue;
 				}
-				let tris = sh.tris;
+				let tris = m.tris;
 				if (!tris || tris.length % 3 !== 0 || tris.some((i) => i >= pts.length)) {
 					tris = [];
-					for (const f of sh.faces) tris.push(...triangulateFace(sh.points, f));
+					for (const f of m.faces) tris.push(...triangulateFace(m.points, f));
 				}
 				for (let i = 0; i + 2 < tris.length; i += 3) tri(pts[tris[i]], pts[tris[i + 1]], pts[tris[i + 2]], rgb, sh.shade, flip);
 			} else if (sh.kind === "ball") {

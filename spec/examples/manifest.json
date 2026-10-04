@@ -26,7 +26,9 @@
     "convex": "a collision mesh is not convex: a point lies in front of the named face (1.4)",
     "ref.texture": "a shape names a texture the document does not have (1.5)",
     "dup.texture": "two textures share a name (1.5)",
-    "morph": "a morph on a like part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6)"
+    "morph": "a morph on a like part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6)",
+    "crease": "a crease outside 0\u20131, on a point the mesh lacks, or on a pair that is not an edge (1.7)",
+    "curve": "a path's in/out with a count that differs from its points, an open path without w, a closed one with fewer than three points (1.7)"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
@@ -573,6 +575,57 @@
       "file": "invalid/morph-key.fart",
       "valid": false,
       "code": "morph"
+    },
+    {
+      "file": "valid/curve.fart",
+      "valid": true,
+      "note": "1.7: a closed path with handles and an open stroked one; a morph moves the vertices, the handles ride along"
+    },
+    {
+      "file": "valid/smooth.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.7: a cage subdivided twice with sharp creases round the base and a semi-sharp corner; a smooth-shaded pyramid with an angle; the cage morphs in a clip"
+    },
+    {
+      "file": "valid/sweep.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.7: a lathed jar with a curved profile, smoothed once, and a flat extruded lid"
+    },
+    {
+      "file": "invalid/path-handles.fart",
+      "valid": false,
+      "code": "curve"
+    },
+    {
+      "file": "invalid/path-open-no-width.fart",
+      "valid": false,
+      "code": "curve"
+    },
+    {
+      "file": "invalid/path-in-3d.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "schema"
+    },
+    {
+      "file": "invalid/crease-range.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "crease"
+    },
+    {
+      "file": "invalid/crease-not-edge.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "crease"
+    },
+    {
+      "file": "invalid/sweep-in-collision.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "schema"
     }
   ],
   "shart_codes": {

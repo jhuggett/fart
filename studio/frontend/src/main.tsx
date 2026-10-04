@@ -18,5 +18,5 @@ import { sc } from "./state/scene.ts";
 import { sidebar } from "./state/sidebar.ts";
 import { update } from "./state/update.ts";
 import { view, toScreen, toWorld } from "./canvas/view.ts";
-import { frameW, partXf, worldPivot, poseLever, chainGrabs } from "./canvas/interact.ts";
-(globalThis as { fastart?: unknown }).fastart = { ed, md, sc, sidebar, update, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, applyExternalDoc, revertToCheckpoint, flushNow };
+import { frameW, partXf, worldPivot, poseLever, chainGrabs, worldHandles } from "./canvas/interact.ts";
+(globalThis as { fastart?: unknown }).fastart = { ed, md, sc, sidebar, update, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, worldHandles, applyExternalDoc, revertToCheckpoint, flushNow };

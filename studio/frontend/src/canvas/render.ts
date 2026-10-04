@@ -6,8 +6,9 @@
 import { cssColor, colorOf, xfApply, xfScale, pivotOf, type Shape, type Vec2 } from "@fastart/core";
 import { view } from "./view.ts";
 import { drawDoc, fillShape, outlineShape, tracePoly, ident } from "./draw.ts";
-import { ix, handlesOf, worldHandles, scaleGrips, poseLever, frameW, partXf, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
-import { ed, curPart, curClip, curTokName, selShape, shapeAt, colShape, poseOfCur, frame, parts, shapesIn, anchorsIn } from "../state/editor.ts";
+import { ix, handlesOf, worldHandles, tangentHandles, scaleGrips, poseLever, frameW, partXf, worldPivot, chainGrabs, drawCursor } from "./interact.ts";
+import { ed, curPart, curClip, curTokName, selShape, selShapePosed, shapeAt, colShape, poseOfCur, frame, parts, shapesIn, anchorsIn } from "../state/editor.ts";
+import { pathPoints } from "@fastart/core";
 import { canvasColors } from "../state/theme.ts";
 import type { TexturePattern } from "../state/textures.ts";
 import type { PatternSource } from "./draw.ts";
@@ -92,7 +93,33 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 				const xf = partXf(r.p, W);
 				outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom, (q) => xfApply(xf, q), xfScale(xf));
 			}
-			if (selShape()) drawHandles(ctx, worldHandles().map(toS), screen, world, C.handleFill, ACCENT, LW);
+			if (selShape()) {
+				const hs = worldHandles();
+				const posed = selShapePosed() ?? selShape();
+				// a path's tangents (1.7): a line from the vertex to each handle, the handle a small ring
+				const tangents = posed ? tangentHandles(posed) : [];
+				if (tangents.length) {
+					screen();
+					ctx.strokeStyle = C.accentSoft;
+					ctx.lineWidth = LW;
+					for (const t of tangents) {
+						const a = toS(hs[t.v]);
+						const b = toS(hs[t.h]);
+						if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 1) continue;
+						ctx.beginPath();
+						ctx.moveTo(a[0], a[1]);
+						ctx.lineTo(b[0], b[1]);
+						ctx.stroke();
+						ctx.beginPath();
+						ctx.arc(b[0], b[1], 3.5, 0, Math.PI * 2);
+						ctx.fillStyle = C.handleFill;
+						ctx.fill();
+						ctx.stroke();
+					}
+					world();
+					drawHandles(ctx, hs.slice(0, posed!.kind === "path" ? posed!.points.length : hs.length).map(toS), screen, world, C.handleFill, ACCENT, LW);
+				} else drawHandles(ctx, hs.map(toS), screen, world, C.handleFill, ACCENT, LW);
+			}
 			const grips = scaleGrips();
 			if (grips.length && ed.sel.value.length) {
 				screen();
@@ -239,12 +266,32 @@ export function render(ctx: CanvasRenderingContext2D, W: number, H: number, dpr:
 	if (pts.length) {
 		const css = collide ? TEAL : cssColor(colorOf(tokens, curTokName()));
 		const curSnapped = collide ? cur : cur ? snapForPreview() : null;
+		const outs = ed.polyOut.value;
+		const curved = outs.some((o) => o && (Math.abs(o[0]) > 1e-9 || Math.abs(o[1]) > 1e-9));
 		if (pts.length >= 3) {
 			ctx.globalAlpha = 0.35;
-			tracePoly(ctx, pts, ident);
+			// the pen's curve so far (1.7), or the polygon
+			tracePoly(ctx, curved ? pathPoints({ points: pts, out: pts.map((_, i) => outs[i] ?? [0, 0]), in: pts.map((_, i) => (outs[i] ? [-outs[i][0], -outs[i][1]] : [0, 0])), closed: true }) : pts, ident);
 			ctx.fillStyle = css;
 			ctx.fill();
 			ctx.globalAlpha = 1;
+		}
+		if (curved) {
+			// the handles pulled so far
+			screen();
+			ctx.strokeStyle = C.accentSoft;
+			ctx.lineWidth = LW;
+			pts.forEach((q, i) => {
+				const o = outs[i];
+				if (!o || (Math.abs(o[0]) < 1e-9 && Math.abs(o[1]) < 1e-9)) return;
+				const a = toS([q[0] - o[0], q[1] - o[1]]);
+				const b = toS([q[0] + o[0], q[1] + o[1]]);
+				ctx.beginPath();
+				ctx.moveTo(a[0], a[1]);
+				ctx.lineTo(b[0], b[1]);
+				ctx.stroke();
+			});
+			world();
 		}
 		screen();
 		ctx.strokeStyle = css;

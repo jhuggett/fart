@@ -111,7 +111,8 @@
           "enum": [
             "circle",
             "line",
-            "poly"
+            "poly",
+            "path"
           ]
         },
         "color": {
@@ -214,6 +215,48 @@
                 }
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "path"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "points"
+            ],
+            "properties": {
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "$ref": "#/$defs/vec2"
+                }
+              },
+              "closed": {
+                "type": "boolean",
+                "description": "Closed fills; open strokes with w."
+              },
+              "in": {
+                "$ref": "#/$defs/handles"
+              },
+              "out": {
+                "$ref": "#/$defs/handles"
+              },
+              "w": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The stroke width of an open path, round joins and caps."
+              },
+              "bake": {
+                "$ref": "#/$defs/path_bake"
+              }
+            },
+            "description": "Since 1.7: a cubic polyb\u00e9zier. The validator checks in/out counts, w on an open path, and three points when closed (error path)."
           }
         }
       ]
@@ -546,7 +589,8 @@
           "enum": [
             "mesh",
             "ball",
-            "rod"
+            "rod",
+            "sweep"
           ]
         },
         "color": {
@@ -656,8 +700,208 @@
                   "type": "integer",
                   "minimum": 0
                 }
+              },
+              "normals": {
+                "enum": [
+                  "flat",
+                  "smooth"
+                ],
+                "description": "Since 1.7: flat (the default) lights each face by its normal; smooth averages vertex normals up to sharp edges. Default smooth once smooth > 0."
+              },
+              "angle": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Since 1.7: degrees; faces meeting at more than this keep their own normals."
+              },
+              "smooth": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Since 1.7: Catmull-Clark subdivision levels; the cage stays the file."
+              },
+              "creases": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 3
+                },
+                "description": "Since 1.7: [a, b, c] the edge a\u2013b with crease c in 0\u20131 (1 is sharp; c \u00d7 10 is OpenSubdiv sharpness), or [a, c] a corner."
+              },
+              "bake": {
+                "type": "object",
+                "required": [
+                  "points",
+                  "faces"
+                ],
+                "properties": {
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    }
+                  },
+                  "faces": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minItems": 3
+                    }
+                  },
+                  "tris": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "of": {
+                    "type": "string"
+                  }
+                },
+                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sweep"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "op",
+              "axis",
+              "profile"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "lathe",
+                  "extrude"
+                ]
+              },
+              "axis": {
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ]
+              },
+              "profile": {
+                "type": "object",
+                "required": [
+                  "points"
+                ],
+                "properties": {
+                  "points": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                      "$ref": "#/$defs/vec2"
+                    }
+                  },
+                  "in": {
+                    "$ref": "#/$defs/handles"
+                  },
+                  "out": {
+                    "$ref": "#/$defs/handles"
+                  },
+                  "closed": {
+                    "type": "boolean"
+                  }
+                },
+                "description": "A path body: [radius, along] pairs for a lathe; a closed outline in the plane's other two axes for an extrude."
+              },
+              "segments": {
+                "type": "integer",
+                "minimum": 3,
+                "description": "Steps around the axis for a lathe; 12 by default."
+              },
+              "from": {
+                "type": "number"
+              },
+              "to": {
+                "type": "number"
+              },
+              "normals": {
+                "enum": [
+                  "flat",
+                  "smooth"
+                ],
+                "description": "Since 1.7: flat (the default) lights each face by its normal; smooth averages vertex normals up to sharp edges. Default smooth once smooth > 0."
+              },
+              "angle": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Since 1.7: degrees; faces meeting at more than this keep their own normals."
+              },
+              "smooth": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Since 1.7: Catmull-Clark subdivision levels; the cage stays the file."
+              },
+              "creases": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 3
+                },
+                "description": "Since 1.7: [a, b, c] the edge a\u2013b with crease c in 0\u20131 (1 is sharp; c \u00d7 10 is OpenSubdiv sharpness), or [a, c] a corner."
+              },
+              "bake": {
+                "type": "object",
+                "required": [
+                  "points",
+                  "faces"
+                ],
+                "properties": {
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    }
+                  },
+                  "faces": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minItems": 3
+                    }
+                  },
+                  "tris": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "of": {
+                    "type": "string"
+                  }
+                },
+                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
+              }
+            },
+            "description": "Since 1.7: a solid generated from a profile, kept as the profile. Never in collision."
           }
         }
       ]
@@ -1239,6 +1483,19 @@
             "$ref": "#/$defs/vec2"
           },
           "description": "The shape's points in this pose, replacing the base's whole: the same count, the same order."
+        },
+        "in": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vec2"
+          },
+          "description": "Since 1.7: a path's in-handles in this pose."
+        },
+        "out": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vec2"
+          }
         }
       },
       "description": "Since 1.6: a shape's points as they are in this pose. The validator checks the part is not like another, the shape exists and has points, and the count matches (error morph)."
@@ -1260,9 +1517,122 @@
           "items": {
             "$ref": "#/$defs/vec3"
           }
+        },
+        "in": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vec3"
+          },
+          "description": "Since 1.7: a path's in-handles in this pose."
+        },
+        "out": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vec3"
+          }
         }
       },
       "description": "Since 1.6: a mesh's points in this pose (see morph)."
+    },
+    "path_bake": {
+      "type": "object",
+      "required": [
+        "points"
+      ],
+      "properties": {
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vec2"
+          }
+        },
+        "tris": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "description": "Since 1.7: the flattened polygon, baked on save; a reader that does not flatten draws it as a poly."
+    },
+    "handles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/vec2"
+      },
+      "description": "One tangent handle per point, relative to it; [0,0] or absent is a corner."
+    },
+    "smooth_fields": {
+      "type": "object",
+      "properties": {
+        "normals": {
+          "enum": [
+            "flat",
+            "smooth"
+          ],
+          "description": "Since 1.7: flat (the default) lights each face by its normal; smooth averages vertex normals up to sharp edges. Default smooth once smooth > 0."
+        },
+        "angle": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Since 1.7: degrees; faces meeting at more than this keep their own normals."
+        },
+        "smooth": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Since 1.7: Catmull-Clark subdivision levels; the cage stays the file."
+        },
+        "creases": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 3
+          },
+          "description": "Since 1.7: [a, b, c] the edge a\u2013b with crease c in 0\u20131 (1 is sharp; c \u00d7 10 is OpenSubdiv sharpness), or [a, c] a corner."
+        },
+        "bake": {
+          "type": "object",
+          "required": [
+            "points",
+            "faces"
+          ],
+          "properties": {
+            "points": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/vec3"
+              }
+            },
+            "faces": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "minItems": 3
+              }
+            },
+            "tris": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "of": {
+              "type": "string"
+            }
+          },
+          "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
+        }
+      }
     }
   },
   "if": {

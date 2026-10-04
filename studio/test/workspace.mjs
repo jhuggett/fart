@@ -194,5 +194,67 @@ await served(
 	},
 );
 
+// curves and smooth surfaces (1.7): the corpus trio, the pen, 2D deform into a morph, the smooth cage, a sweep
+await served(
+	(P) => {
+		fs.mkdirSync(path.join(P, "assets"));
+		for (const f of ["curve", "smooth", "sweep"]) fs.copyFileSync(path.join(repo, `spec/examples/valid/${f}.fart`), path.join(P, `assets/${f}.fart`));
+	},
+	async (page, shot) => {
+	const openVia = async (name) => { await page.locator(".scheme .seg.asset").click(); await page.waitForTimeout(120); await page.locator(".ctx .row", { hasText: name }).first().click(); await page.waitForTimeout(900); };
+	await page.locator(".tree-row.folder").first().click(); await page.waitForTimeout(150);
+	await page.locator(".tree-row.leaf", { hasText: "curve" }).click(); await page.waitForTimeout(900);
+	check("curve opens clean", await page.evaluate(() => fastart.project.screen.value === "edit" && fastart.ed.issues.value.length === 0), await page.evaluate(() => JSON.stringify(fastart.ed.issues.value)));
+	// select the path by clicking it, see tangent rings; squash state
+	await page.locator(".side-body .layer").first().click(); await page.waitForTimeout(100);
+	const box = await page.locator(".canvas-wrap canvas").first().boundingBox();
+	const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+	await page.mouse.click(cx + 20, cy); await page.waitForTimeout(250);
+	check("path selected", await page.evaluate(() => fastart.ed.sel.value.length === 1 && fastart.ed.doc.value.parts[0].shapes[fastart.ed.sel.value[0].s].kind === "path"));
+	await shot("15-curve-round");
+	await page.locator(".side-body .row", { hasText: "squash" }).click(); await page.waitForTimeout(250);
+	await shot("16-curve-squash");
+	// 2D deform: D on, drag a vertex of the path in the squash state -> the morph gains the vertex
+	await page.keyboard.press("d"); await page.waitForTimeout(100);
+	check("2D deform on", await page.evaluate(() => fastart.ed.deform.value === true));
+	await page.mouse.click(cx + 20, cy + 20); await page.waitForTimeout(250);
+	check("path selected again in squash", await page.evaluate(() => fastart.ed.sel.value.length === 1 && fastart.worldHandles().length > 6), await page.evaluate(() => JSON.stringify(fastart.ed.sel.value)));
+	const handle = await page.evaluate(() => { const c = document.querySelector(".canvas-wrap canvas"); const h = fastart.worldHandles(); const s = fastart.toScreen(h[2], c.clientWidth, c.clientHeight); return [s[0], s[1]]; });
+	console.log("handle at", handle);
+	await page.mouse.move(box.x + handle[0], box.y + handle[1]); await page.mouse.down(); await page.mouse.move(box.x + handle[0] + 40, box.y + handle[1], { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(250);
+	const morph = await page.evaluate(() => fastart.ed.doc.value.states[1].parts[0].morph[0]);
+	check("vertex drag landed in the morph", morph && morph.points[2][0] > 10, JSON.stringify(morph.points[2]));
+	check("base path untouched", await page.evaluate(() => fastart.ed.doc.value.parts[0].shapes[0].points[2][0] === 8));
+	await page.keyboard.press("d");
+	// the pen: draw a curved triangle in the round state
+	await page.locator(".side-body .row", { hasText: "round" }).click(); await page.waitForTimeout(150);
+	await page.keyboard.press("p"); await page.waitForTimeout(100);
+	const at = (dx, dy) => [box.x + box.width / 2 + dx, box.y + box.height / 2 + dy];
+	let [x, y] = at(-200, -150); await page.mouse.click(x, y);
+	[x, y] = at(-100, -150); await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 60, y + 40, { steps: 5 }); await page.mouse.up();
+	[x, y] = at(-150, -60); await page.mouse.click(x, y);
+	await page.keyboard.press("Enter"); await page.waitForTimeout(300);
+	const made = await page.evaluate(() => { const ss = fastart.ed.doc.value.parts[fastart.ed.curPart.value].shapes; return ss[ss.length - 1]; });
+	check("the pen made a path with a curved vertex", made.kind === "path" && made.out && Math.hypot(...made.out[1]) > 1, JSON.stringify(made.out));
+	await shot("17-pen");
+	// the smooth cage
+	await openVia("assets/smooth");
+	check("smooth opens clean", await page.evaluate(() => fastart.project.screen.value === "model" && fastart.md.issues.value.length === 0), await page.evaluate(() => JSON.stringify(fastart.md.issues.value)));
+	await page.locator(".side-body .layer").first().click(); await page.waitForTimeout(100);
+	const b3 = await page.locator(".canvas-wrap canvas").first().boundingBox();
+	await page.mouse.click(b3.x + b3.width / 2, b3.y + b3.height / 2 + 10); await page.waitForTimeout(300);
+	check("mesh selected", await page.evaluate(() => !!fastart.md.sel.value));
+	check("inspector shows smooth", (await page.locator(".inspector").textContent()).includes("smooth"));
+	await shot("18-smooth");
+	await page.locator(".side-body .row", { hasText: "breathe" }).click(); await page.waitForTimeout(150);
+	await page.evaluate(() => (fastart.md.clipTime.value = 0.8)); await page.waitForTimeout(250);
+	await shot("19-smooth-full");
+	await openVia("assets/sweep");
+	check("sweep opens clean", await page.evaluate(() => fastart.project.screen.value === "model" && fastart.md.issues.value.length === 0));
+	await page.evaluate(() => fastart.md.turn.value = [0.5, 0.6, 0]); await page.waitForTimeout(300);
+	await shot("20-sweep");
+	},
+);
+
 console.log(fails ? `${fails} FAILED` : "all passed");
 process.exit(fails ? 1 : 0);

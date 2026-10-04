@@ -21,6 +21,8 @@ import {
 	frameParts,
 	framePartOf,
 	selShapePosed,
+	selShape,
+	isEdge,
 	poseOfCur,
 	addShape,
 	extrudeView,
@@ -179,6 +181,14 @@ export function onDown(wm: Vec2, mods: Mods) {
 	if (!preview) {
 		for (const h of vertexHandles()) {
 			if (dist(wm, h.at) < px(7)) {
+				// Shift with a corner already chosen: the edge between them (1.7, for its crease)
+				const prev = md.vert.value;
+				if (mods.shift && prev !== null && prev !== h.i && md.sel.value && isEdge(selShape()!, prev, h.i)) {
+					md.edge.value = [prev, h.i];
+					md.vert.value = h.i;
+					return;
+				}
+				md.edge.value = null;
 				md.vert.value = h.i;
 				ix3.vertex = h.i;
 				ix3.dragging = true;
@@ -377,7 +387,7 @@ export function frameBounds(): { lo: Vec2; hi: Vec2 } | null {
 			else if (sh.kind === "circle") {
 				take([sh.at[0] - sh.r, sh.at[1] - sh.r]);
 				take([sh.at[0] + sh.r, sh.at[1] + sh.r]);
-			} else {
+			} else if (sh.kind === "line") {
 				take(sh.a);
 				take(sh.b);
 			}
@@ -434,8 +444,11 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 		const css = f.outline ? C.text2 : cssColor(shadeColor(colorOf(tokens, f.shape.color ?? ""), f.shape.shade));
 		if (paint || f.outline) fillShape(ctx, f.shape, css);
 		const srcIndex = fp.part.like ? -1 : fp.index;
-		if (sel && sel.part === srcIndex && sel.shape === f.src && !f.outline) selShapes.push(f.shape);
-		if (hov && hov.part === srcIndex && hov.shape === f.src && !f.outline) hovShapes.push(f.shape);
+		// a smooth mesh or a sweep (1.7) has too many faces to outline one by one: its cage wire marks it instead
+		const src = fp.solids[f.src];
+		const quiet = !!src && (src.kind === "sweep" || (src.kind === "mesh" && (src.smooth ?? 0) > 0));
+		if (sel && sel.part === srcIndex && sel.shape === f.src && !f.outline && !quiet) selShapes.push(f.shape);
+		if (hov && hov.part === srcIndex && hov.shape === f.src && !f.outline && !quiet) hovShapes.push(f.shape);
 	}
 	// the rig: a bone from each child's pivot to its parent's
 	screen();
@@ -459,6 +472,39 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 	for (const sh of hovShapes) if (!selShapes.includes(sh)) outlineShape(ctx, sh, HOVER, LW, zoom);
 	for (const sh of selShapes) outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom);
 
+	// a smooth mesh's cage (1.7): the control polygon the corners belong to, drawn as a wire over the surface
+	const selP = selShapePosed();
+	const selFp = md.sel.value ? framePartOf(md.sel.value.part) : undefined;
+	if (!preview && selP && selFp && selP.kind === "mesh" && (selP.smooth ?? 0) > 0) {
+		world();
+		ctx.strokeStyle = C.accentSoft;
+		ctx.lineWidth = LW;
+		ctx.setLineDash([2, 3]);
+		for (const f of selP.faces) {
+			ctx.beginPath();
+			f.forEach((i, k) => {
+				const v = viewPoint(selFp, selP.points[i]);
+				if (k === 0) ctx.moveTo(v[0], v[1]);
+				else ctx.lineTo(v[0], v[1]);
+			});
+			ctx.closePath();
+			ctx.stroke();
+		}
+		ctx.setLineDash([]);
+	}
+	// the chosen edge (1.7)
+	const edge = md.edge.value;
+	if (!preview && edge && selP && selFp && selP.kind === "mesh") {
+		world();
+		ctx.strokeStyle = ACCENT;
+		ctx.lineWidth = 2.5 * LW;
+		const a = viewPoint(selFp, selP.points[edge[0]]);
+		const b = viewPoint(selFp, selP.points[edge[1]]);
+		ctx.beginPath();
+		ctx.moveTo(a[0], a[1]);
+		ctx.lineTo(b[0], b[1]);
+		ctx.stroke();
+	}
 	// the selected mesh's corners
 	if (!preview) {
 		const vert = md.vert.value;

@@ -143,14 +143,17 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 				// one target per reshaping pose, in the mesh's vertex layout: a delta per corner, zero where the pose leaves this shape alone
 				const sh = shapes[si];
 				const mesh = sh.kind === "mesh" ? sh : null;
-				const tris = mesh ? meshTris(asMesh(mesh)) : [];
+				// the surface of the base cage, and of each morphed cage: subdivision keeps the layout, so corners line up
+				const base = mesh ? asMesh(mesh) : null;
+				const tris = base ? meshTris(base) : [];
 				prim.targets = targets.map((t) => {
 					const delta = new Float32Array(tm.positions.length);
 					const m = mesh ? t.morph?.find((x) => x.shape === si) : undefined;
-					if (mesh && m && m.points.length === mesh.points.length) {
+					if (mesh && base && m && m.points.length === mesh.points.length) {
+						const posed = asMesh({ ...mesh, points: m.points });
 						for (let v = 0; v < tris.length; v++) {
-							const b = mesh.points[tris[v]];
-							const q = m.points[tris[v]];
+							const b = base.points[tris[v]];
+							const q = posed.points[tris[v]];
 							delta.set(yUp([q[0] - b[0], q[1] - b[1], q[2] - b[2]]), v * 3);
 						}
 					}

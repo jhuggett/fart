@@ -32,6 +32,33 @@ Shape3 :: struct {
 	layer:  string, // 1.4, collision: an engine's tag; "" reads as "solid"
 	texture: string, // 1.5: a texture of the document, tiled over the shape; "" for none
 	mapping: Mapping3, // 1.5
+	normals:  string, // 1.7: "" or "flat" (one normal per face), "smooth" (averaged up to sharp edges; the default once smooth > 0)
+	angle:    f32, // 1.7: degrees; faces meeting at more than this keep their own normals (0 = no limit)
+	smooth:   int, // 1.7: Catmull-Clark levels; the cage stays the file
+	creases:  [dynamic][dynamic]f32, // 1.7: [a, b, c] an edge's crease in 0..1, [a, c] a corner
+	bake:     Mesh_Bake, // 1.7: the subdivided or generated surface, when a tool wrote one
+	op:       string, // 1.7, sweep: "lathe" | "extrude"
+	axis:     string, // 1.7, sweep: "x" | "y" | "z"
+	profile:  Profile, // 1.7, sweep
+	segments: int, // 1.7, sweep (lathe): steps around the axis, 12 when 0
+	from:     f32, // 1.7, sweep (extrude)
+	to:       f32,
+}
+
+// 1.7: a subdivided (or generated) surface a tool baked; `of` hashes the cage it came from.
+Mesh_Bake :: struct {
+	points: [dynamic]V3,
+	faces:  [dynamic][dynamic]u16,
+	tris:   [dynamic]u16,
+	of:     string,
+}
+
+// 1.7: a sweep's profile, a path body: [radius, along] for a lathe, an outline for an extrude.
+Profile :: struct {
+	points: [dynamic]V2,
+	in_:    [dynamic]V2 `json:"in"`,
+	out:    [dynamic]V2,
+	closed: bool,
 }
 
 // 1.5: a 3D shape's mapping: world units per pattern unit (0 = 1), or explicit pattern coordinates per face corner.
@@ -735,7 +762,21 @@ flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, s
 	out.texture = sh.texture
 	scale := sh.mapping.scale
 	switch sh.kind {
+	case "sweep":
+		// 1.7: the profile swept into a cage, then on as a mesh (smoothing included)
+		cage := sweep_mesh(sh, context.temp_allocator)
+		flatten_shape(&cage, out, rings, segments, sides)
+		return
 	case "mesh":
+		if sh.smooth > 0 {
+			// 1.7: the subdivided surface, from the bake when a tool wrote one, else subdivided now
+			surf := surface_of(sh, context.temp_allocator)
+			if raw_data(surf.points[:]) != raw_data(sh.points[:]) {
+				flatten_shape(&surf, out, rings, segments, sides)
+				return
+			}
+		}
+		defer if smooth_normals(sh) do smooth_tri_normals(sh, out)
 		// explicit uvs (1.5) need the face each triangle came from: triangulate per face here
 		if sh.texture != "" && len(sh.mapping.uvs) == len(sh.faces) {
 			for f, fi in sh.faces {
@@ -831,6 +872,7 @@ flatten_part_posed :: proc(doc: ^Doc3, part: ^Part3, sp: ^State_Part3, out: ^[dy
 			posed := sh
 			posed.points = make([dynamic]V3, len(pts), context.temp_allocator)
 			copy(posed.points[:], pts)
+			posed.bake = {} // a bake is the base cage's surface: a morphed cage subdivides afresh
 			flatten_shape(&posed, &m)
 		} else {
 			flatten_shape(&sh, &m)

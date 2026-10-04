@@ -34,7 +34,9 @@ export type ErrorCode =
 	| "convex"
 	| "ref.texture"
 	| "dup.texture"
-	| "morph";
+	| "morph"
+	| "curve"
+	| "crease";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -62,8 +64,11 @@ export interface ValidateOptions {
 	unresolvedRefs?: Iterable<string>;
 }
 
-const KINDS = ["circle", "line", "poly"];
-const KINDS3 = ["mesh", "ball", "rod"];
+const KINDS = ["circle", "line", "poly", "path"];
+const KINDS3 = ["mesh", "ball", "rod", "sweep"];
+const COLLISION_KINDS3 = ["mesh", "ball", "rod", "box"];
+const SMOOTH_FIELDS = ["normals", "angle", "smooth", "creases", "bake"];
+const SWEEP_FIELDS = ["kind", "color", "shade", "op", "axis", "profile", "segments", "from", "to"];
 const RESERVED_KINDS = ["ring", "path"];
 const SPACES = ["2d", "3d"];
 // "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
@@ -84,12 +89,13 @@ const KNOWN_CONSTRAINT3 = ["name", "chain", "end", "pole"];
 const RESERVED_PART = ["children"];
 // every shape field is known on every kind: writers that serialise a
 // whole struct (the classic editor did) leave the others at zero
-const SHAPE_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "tris"];
+const SHAPE_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "tris", "closed", "in", "out", "bake"];
 const COLLISION_FIELDS = ["part", "layer", "meta"];
 const KNOWN_SHAPE: Record<string, string[]> = {
 	circle: SHAPE_FIELDS,
 	line: SHAPE_FIELDS,
 	poly: SHAPE_FIELDS,
+	path: SHAPE_FIELDS,
 };
 const SHAPE3_FIELDS = ["kind", "color", "shade", "at", "r", "a", "b", "w", "points", "faces", "tris"];
 const KNOWN_TOKEN = ["name", "rgb", "emissive"];
@@ -97,7 +103,7 @@ const KNOWN_ANCHOR = ["name", "at", "angle"];
 const KNOWN_ANCHOR3 = ["name", "at", "dir"];
 const KNOWN_STATE = ["name", "parts", "targets"];
 const KNOWN_STATE_PART = ["part", "offset", "rotate", "scale", "mirror", "morph"];
-const KNOWN_MORPH = ["shape", "points"];
+const KNOWN_MORPH = ["shape", "points", "in", "out"];
 
 type Obj = Record<string, unknown>;
 
@@ -216,12 +222,84 @@ function checkShape(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string
 			if ("tris" in sh) checkTris(ctx, sh.tris, `${path}/tris`, pointsOk ? (sh.points as unknown[]).length : -1);
 			break;
 		}
+		case "path":
+			checkPath(ctx, sh, path);
+			break;
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
 	if (drawn) checkTextureFields(ctx, sh, path, 2, 0);
 	ctx.unknown(sh, drawn ? [...KNOWN_SHAPE[kind], ...TEXTURE_FIELDS] : [...KNOWN_SHAPE[kind], ...COLLISION_FIELDS], [], path);
 	return kind;
+}
+
+/** 1.7: a path's points, its handles (one per point when given), its width when open, and its bake. */
+function checkPath(ctx: Ctx, sh: Obj, path: string) {
+	let n = -1;
+	if (ctx.array(sh.points, `${path}/points`)) {
+		const ok = sh.points.every((p, i) => ctx.vec2(p, `${path}/points/${i}`));
+		if (sh.points.length < 2) ctx.err("schema", `${path}/points`, "a path needs at least two points");
+		else if (ok) n = sh.points.length;
+	}
+	if ("closed" in sh && typeof sh.closed !== "boolean") ctx.err("schema", `${path}/closed`, "expected true or false");
+	for (const k of ["in", "out"] as const) {
+		if (!(k in sh)) continue;
+		if (!ctx.array(sh[k], `${path}/${k}`)) continue;
+		(sh[k] as unknown[]).forEach((v, i) => ctx.vec2(v, `${path}/${k}/${i}`));
+		if (n >= 0 && (sh[k] as unknown[]).length !== n) ctx.err("curve", `${path}/${k}`, `${k} has one handle per point: ${(sh[k] as unknown[]).length} for ${n} points`);
+	}
+	if (sh.closed === true && n >= 0 && n < 3) ctx.err("curve", `${path}/points`, "a closed path needs at least three points");
+	if (sh.closed !== true) {
+		if (!("w" in sh)) ctx.err("curve", `${path}/w`, "an open path strokes with a width w");
+		else ctx.number(sh.w, `${path}/w`, 0);
+	} else if ("w" in sh) ctx.number(sh.w, `${path}/w`, 0);
+	if ("bake" in sh && ctx.object(sh.bake, `${path}/bake`)) {
+		const b = sh.bake;
+		let bn = -1;
+		if (ctx.array(b.points, `${path}/bake/points`)) {
+			const ok = b.points.every((p, i) => ctx.vec2(p, `${path}/bake/points/${i}`));
+			if (ok) bn = b.points.length;
+		}
+		if ("tris" in b) checkTris(ctx, b.tris, `${path}/bake/tris`, bn);
+	}
+}
+
+/** 1.7: how a mesh (or a sweep) is lit and smoothed: normals, angle, smooth levels, creases over n points, a bake. */
+function checkSmoothFields(ctx: Ctx, sh: Obj, path: string, n: number, edges: Set<string> | null) {
+	if ("normals" in sh && sh.normals !== "flat" && sh.normals !== "smooth") ctx.err("schema", `${path}/normals`, "normals is flat or smooth");
+	if ("angle" in sh) ctx.number(sh.angle, `${path}/angle`, 0);
+	if ("smooth" in sh && !(Number.isInteger(sh.smooth) && (sh.smooth as number) >= 0)) ctx.err("schema", `${path}/smooth`, "smooth is a whole number of subdivision levels, 0 or more");
+	if ("creases" in sh && ctx.array(sh.creases, `${path}/creases`)) {
+		sh.creases.forEach((c, i) => {
+			const cp = `${path}/creases/${i}`;
+			if (!Array.isArray(c) || (c.length !== 2 && c.length !== 3) || !c.every(isNum)) {
+				ctx.err("schema", cp, "a crease is [a, b, c] for the edge a–b, or [a, c] for a corner");
+				return;
+			}
+			const val = c[c.length - 1] as number;
+			const idx = c.slice(0, -1) as number[];
+			if (val < 0 || val > 1) ctx.err("crease", cp, `a crease is in 0–1; got ${val}`);
+			for (const k of idx) {
+				if (!Number.isInteger(k) || k < 0 || (n >= 0 && k >= n)) ctx.err("crease", cp, `point ${k} is not a point of the mesh`);
+			}
+			if (c.length === 3 && edges && n >= 0 && idx.every((k) => Number.isInteger(k) && k >= 0 && k < n)) {
+				const key = idx[0] < idx[1] ? `${idx[0]}:${idx[1]}` : `${idx[1]}:${idx[0]}`;
+				if (idx[0] === idx[1] || !edges.has(key)) ctx.err("crease", cp, `${idx[0]}–${idx[1]} is not an edge of a face`);
+			}
+		});
+	}
+	if ("bake" in sh && ctx.object(sh.bake, `${path}/bake`)) {
+		const b = sh.bake;
+		let bn = -1;
+		if (ctx.array(b.points, `${path}/bake/points`) && b.points.every((p, i) => ctx.vec3(p, `${path}/bake/points/${i}`))) bn = b.points.length;
+		if (ctx.array(b.faces, `${path}/bake/faces`)) {
+			b.faces.forEach((f, i) => {
+				if (!Array.isArray(f) || f.length < 3 || !f.every((t) => Number.isInteger(t) && (t as number) >= 0 && (bn < 0 || (t as number) < bn))) ctx.err("face", `${path}/bake/faces/${i}`, "a baked face is three or more indices into bake.points");
+			});
+		}
+		if ("tris" in b) checkTris(ctx, b.tris, `${path}/bake/tris`, bn);
+		if ("of" in b && typeof b.of !== "string") ctx.err("schema", `${path}/bake/of`, "of is the cage's hash, a string");
+	}
 }
 
 /** 1.5: a shape's texture name (checked against the textures later) and its mapping. */
@@ -337,9 +415,9 @@ function checkTris(ctx: Ctx, tris: unknown, path: string, n: number) {
 function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): string | null {
 	if (!ctx.object(sh, path)) return null;
 	const kind = sh.kind;
-	const kinds = drawn ? KINDS3 : [...KINDS3, "box"];
+	const kinds = drawn ? KINDS3 : COLLISION_KINDS3;
 	if (typeof kind !== "string" || !kinds.includes(kind)) {
-		const hint = KINDS.includes(kind as string) ? ` ("${kind}" is a 2D kind; a mesh face is what a poly becomes)` : kind === "box" ? ' ("box" is a collision kind, never drawn)' : "";
+		const hint = KINDS.includes(kind as string) ? ` ("${kind}" is a 2D kind; a mesh face is what a poly becomes)` : kind === "box" ? ' ("box" is a collision kind, never drawn)' : kind === "sweep" ? ' ("sweep" is drawn, never collision: give the collision its mesh)' : "";
 		ctx.err("schema", `${path}/kind`, `kind must be one of ${kinds.join(", ")} in a 3D document${hint}`);
 		return null;
 	}
@@ -395,13 +473,33 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 			}
 			if ("tris" in sh) checkTris(ctx, sh.tris, `${path}/tris`, n);
 			if (!drawn && meshOk) checkConvex(ctx, sh, path);
+			if (drawn) {
+				const edges = new Set<string>();
+				if (meshOk) for (const f of sh.faces as number[][]) for (let i = 0; i < f.length; i++) {
+					const a = f[i];
+					const b = f[(i + 1) % f.length];
+					edges.add(a < b ? `${a}:${b}` : `${b}:${a}`);
+				}
+				checkSmoothFields(ctx, sh, path, n, meshOk ? edges : null);
+			}
+			break;
+		}
+		case "sweep": {
+			if (sh.op !== "lathe" && sh.op !== "extrude") ctx.err("schema", `${path}/op`, "op is lathe or extrude");
+			if (sh.axis !== "x" && sh.axis !== "y" && sh.axis !== "z") ctx.err("schema", `${path}/axis`, "axis is x, y or z");
+			if (!ctx.object(sh.profile, `${path}/profile`)) break;
+			checkPath(ctx, { closed: sh.op === "extrude" ? true : sh.profile.closed === true, w: 0, ...sh.profile }, `${path}/profile`);
+			if ("segments" in sh && !(Number.isInteger(sh.segments) && (sh.segments as number) >= 3)) ctx.err("schema", `${path}/segments`, "segments is a whole number, 3 or more");
+			if ("from" in sh) ctx.number(sh.from, `${path}/from`);
+			if ("to" in sh) ctx.number(sh.to, `${path}/to`);
+			checkSmoothFields(ctx, sh, path, -1, null);
 			break;
 		}
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
 	if (drawn) checkTextureFields(ctx, sh, path, 3, kind === "mesh" && Array.isArray(sh.faces) ? sh.faces.length : -1);
-	ctx.unknown(sh, drawn ? [...SHAPE3_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
+	ctx.unknown(sh, drawn ? (kind === "sweep" ? [...SWEEP_FIELDS, ...SMOOTH_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, ...SMOOTH_FIELDS, ...TEXTURE_FIELDS]) : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
 	return kind;
 }
 
@@ -465,6 +563,13 @@ function checkMorph(ctx: Ctx, morph: unknown, path: string, part: Obj | undefine
 			m.points.forEach((p, j) => ctx.point(p, `${mp}/points/${j}`));
 			n = m.points.length;
 		}
+		for (const k of ["in", "out"] as const) {
+			if (!(k in m)) continue;
+			if (ctx.array(m[k], `${mp}/${k}`)) {
+				(m[k] as unknown[]).forEach((p, j) => ctx.point(p, `${mp}/${k}/${j}`));
+				if (n >= 0 && (m[k] as unknown[]).length !== n) ctx.err("morph", `${mp}/${k}`, `${k} has one handle per point`);
+			}
+		}
 		ctx.unknown(m, KNOWN_MORPH, [], mp);
 		if (!part || typeof idx !== "number" || n < 0) return;
 		if (isName(part.like)) {
@@ -477,7 +582,7 @@ function checkMorph(ctx: Ctx, morph: unknown, path: string, part: Obj | undefine
 			return;
 		}
 		if (!Array.isArray(sh.points)) {
-			ctx.err("morph", `${mp}/shape`, `shape ${idx} is a ${String(sh.kind)}: only a ${ctx.dim === 3 ? "mesh" : "poly"} has points to morph`);
+			ctx.err("morph", `${mp}/shape`, `shape ${idx} is a ${String(sh.kind)}: only a ${ctx.dim === 3 ? "mesh" : "poly or path"} has points to morph`);
 			return;
 		}
 		if (sh.points.length !== n) ctx.err("morph", `${mp}/points`, `${n} points for a shape with ${sh.points.length}: a morph moves every corner, so the counts match`);

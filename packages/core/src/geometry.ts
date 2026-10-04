@@ -4,6 +4,7 @@
 // agrees on what a file looks like.
 
 import type { Anchor, Doc, Part, Shape, State, StatePart, Vec2 } from "./types.ts";
+import { pathBake, bakePath } from "./curves.ts";
 
 // ------------------------------------------------------------- transforms
 // Since 1.1 a part may have a parent; poses compose. An affine map in the
@@ -159,7 +160,19 @@ export function shapesOfPosed(doc: Doc, part: Part, sp?: StatePart): Shape[] {
 	if (!sp?.morph?.length || part.like) return base;
 	return base.map((sh, i) => {
 		const m = sp.morph!.find((x) => x.shape === i);
-		return m && sh.kind === "poly" && m.points.length === sh.points.length ? { ...sh, points: m.points } : sh;
+		const n = sh.kind === "poly" || sh.kind === "path" ? sh.points.length : -1;
+		if (!m || m.points.length !== n) return sh;
+		if (sh.kind === "poly") return { ...sh, points: m.points };
+		if (sh.kind === "path") {
+			// 1.7: the handles ride along (relative), unless the morph moves them too; the bake is the base's, so drop it
+			const { bake: _bake, ...rest } = sh;
+			void _bake;
+			const out = { ...rest, points: m.points } as typeof sh;
+			if (m.in && m.in.length === m.points.length) out.in = m.in;
+			if (m.out && m.out.length === m.points.length) out.out = m.out;
+			return out;
+		}
+		return sh;
 	});
 }
 export function anchorsOf(doc: Doc, part: Part): Anchor[] {
@@ -267,6 +280,22 @@ export function shapeDistance(sh: Shape, p: Vec2): number {
 			for (let i = 0; i < n; i++) d = Math.min(d, distSeg(p, sh.points[i], sh.points[(i + 1) % n]));
 			return d;
 		}
+		case "path": {
+			// 1.7: through the flattened polygon; an open path is a stroke
+			const pts = pathBake(sh).points;
+			const n = pts.length;
+			if (n === 0) return Infinity;
+			if (sh.closed) {
+				if (pointInPoly(p, pts)) return 0;
+				let d = Infinity;
+				for (let i = 0; i < n; i++) d = Math.min(d, distSeg(p, pts[i], pts[(i + 1) % n]));
+				return d;
+			}
+			let d = Infinity;
+			for (let i = 0; i + 1 < n; i++) d = Math.min(d, distSeg(p, pts[i], pts[i + 1]));
+			if (n === 1) d = dist(p, pts[0]);
+			return Math.max(d - (sh.w ?? 0) * 0.5, 0);
+		}
 	}
 }
 
@@ -287,15 +316,18 @@ export function shapeBounds(sh: Shape): Bounds | null {
 				hi: [Math.max(sh.a[0], sh.b[0]) + hw, Math.max(sh.a[1], sh.b[1]) + hw],
 			};
 		}
-		case "poly": {
-			if (sh.points.length === 0) return null;
+		case "poly":
+		case "path": {
+			const pts = sh.kind === "path" ? pathBake(sh).points : sh.points;
+			if (pts.length === 0) return null;
+			const pad = sh.kind === "path" && !sh.closed ? (sh.w ?? 0) * 0.5 : 0;
 			const lo: Vec2 = [Infinity, Infinity];
 			const hi: Vec2 = [-Infinity, -Infinity];
-			for (const q of sh.points) {
-				lo[0] = Math.min(lo[0], q[0]);
-				lo[1] = Math.min(lo[1], q[1]);
-				hi[0] = Math.max(hi[0], q[0]);
-				hi[1] = Math.max(hi[1], q[1]);
+			for (const q of pts) {
+				lo[0] = Math.min(lo[0], q[0] - pad);
+				lo[1] = Math.min(lo[1], q[1] - pad);
+				hi[0] = Math.max(hi[0], q[0] + pad);
+				hi[1] = Math.max(hi[1], q[1] + pad);
 			}
 			return { lo, hi };
 		}
@@ -377,7 +409,10 @@ export function triangulate(pts: readonly Vec2[]): number[] {
 /** Bake tris into every poly (parts and collision), the way an editor does on save. */
 export function bakeTris(doc: Doc): void {
 	const bake = (shapes?: Shape[]) => {
-		for (const sh of shapes ?? []) if (sh.kind === "poly") sh.tris = triangulate(sh.points);
+		for (const sh of shapes ?? []) {
+			if (sh.kind === "poly") sh.tris = triangulate(sh.points);
+			else if (sh.kind === "path") sh.bake = bakePath(sh);
+		}
 	};
 	for (const part of doc.parts ?? []) bake(part.shapes);
 	bake(doc.collision);

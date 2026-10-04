@@ -133,6 +133,25 @@ recoloured in a tree. The format is the contract; the checkout at
   override a slot locally only when one file must differ.
 - Unknown fields are kept by every tool, so `meta` and your own keys are safe.
 
+## Paths (1.7)
+
+A `path` is a cubic polybézier: `points`, and per point `in` and `out`
+tangent handles **relative to the point** (absent or `[0,0]`: a
+corner). `closed: true` fills; open, it strokes with `w`. Editors (and
+`fart bake`) write `bake: {points, tris}`, the polygon it flattens to
+at 0.05 units, so a 1.6 reader draws it as a poly; a hand-written file
+can skip the bake. A poly with no handles is still a `poly`. Morphs
+replace `points` and the handles ride along (a morph may carry `in`/
+`out` too). The circle constant: a quarter turn of radius r is one cubic
+with handles of length 0.5523·r along the tangents.
+
+```json
+{"kind": "path", "color": "skin", "closed": true,
+ "points": [[-6,-4],[6,-4],[8,0],[6,4],[-6,4],[-8,0]],
+ "in":  [[-2,0],[-2,0],[0,-2],[2,0],[2,0],[0,2]],
+ "out": [[2,0],[2,0],[0,2],[-2,0],[-2,0],[0,-2]]}
+```
+
 ## 3D
 
 A file with `"space": "3d"` is a low-poly model in the same words with a
@@ -205,8 +224,25 @@ third coordinate. Model props once, then project them to the 2D views a
   Build one by script (`points` is `mesh.points.map(...)`), or in Uranus
   with the model screen's **Deform** toggle (D): corner drags then land
   in the current state's morph instead of the base mesh.
+- **Smooth surfaces (1.7)**: a mesh stays its low-poly cage; `normals:
+  "smooth"` lights it by averaged vertex normals (no new geometry;
+  `angle` in degrees keeps edges sharper than that flat), and `smooth: n`
+  draws it Catmull-Clark subdivided n times (1 or 2; the cage is the
+  file, readers subdivide). `creases` is `[[a, b, c], ...]` for edges
+  (c in 0–1, 1 sharp; a fraction is a fillet) and `[a, c]` for corners,
+  OpenSubdiv's rules. Morphs move the cage and the surface follows;
+  collision and `fart hull` use the cage. `fart bake --smooth` writes
+  the subdivided surface into `bake` for a game that will not subdivide
+  (the Odin loader subdivides itself). Keep `smooth` at 1–2.
+- **Sweeps (1.7)**: `{"kind": "sweep", "op": "lathe"|"extrude", "axis",
+  "profile": {points, in, out}, "segments" | "from"/"to"}` keeps the
+  profile (a path body: `[radius, along]` pairs for a lathe, a closed
+  outline for an extrude) and generates the mesh; `smooth`, `normals`,
+  `texture` apply to it. Prefer a sweep to a baked lathe when the shape
+  may change later. A sweep does not morph and never goes in collision.
 - **Look at it**: open the folder in Uranus; a 3D file opens the model
-  screen (orbit, the four tools make box/ball/rod/prism, Deform, Project…).
+  screen (orbit, the four tools make box/ball/rod/prism, Deform, the
+  inspector's normals/smooth/crease fields, Project…).
 
 ### Loading in a 3D game (Odin, raylib)
 
@@ -436,3 +472,7 @@ and the note.
   base's order, and never add or drop one (the validator refuses the
   count, `morph`). To stretch a mesh in a state, morph it; to move the
   part, pose it; the two compose (morph first, then the pose).
+- A path's `in`/`out` are **relative to their vertex** and there is one
+  per point (error `curve`); an open path needs `w`. A crease of 0.5 is
+  sharpness 5: fully sharp for five levels, which at `smooth: 2` means
+  sharp. Use 0.1–0.3 for a fillet you can see at two levels.

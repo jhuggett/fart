@@ -5,6 +5,8 @@
 // collision lens edits doc.collision in rest space with the same tools.
 
 import {
+	shapesOfPosed,
+	pathBake,
 	dist,
 	shapeDistance,
 	worldTransforms,
@@ -55,6 +57,9 @@ import {
 	mode,
 	pickableParts,
 	dupSelInPlace,
+	deforming,
+	morphView,
+	selShapePosed,
 	type Ref,
 } from "../state/editor.ts";
 
@@ -68,6 +73,7 @@ export interface Mods {
 /** Everything a gesture in progress remembers. */
 export const ix = {
 	handle: 0, // >0: dragging that handle (1-based) of the primary shape
+	pen: false, // the pen (1.7): the pointer is down on a fresh vertex, dragging its handles
 	scaling: false,
 	scaleAnchor: [0, 0] as Vec2, // world
 	scaleD: 1,
@@ -150,6 +156,12 @@ export function shapeWorldBounds(p: number, sh: Shape, w?: Map<string, Xf>): { l
 			if (!sh.points.length) return null;
 			pts = sh.points.map((q) => xfApply(xf, q));
 			break;
+		case "path": {
+			const b = pathBake(sh).points;
+			if (!b.length) return null;
+			pts = b.map((q) => xfApply(xf, q));
+			break;
+		}
 	}
 	const lo: Vec2 = [Infinity, Infinity];
 	const hi: Vec2 = [-Infinity, -Infinity];
@@ -206,13 +218,31 @@ export function handlesOf(sh: Shape): Vec2[] {
 			return [sh.a, sh.b];
 		case "poly":
 			return sh.points;
+		case "path": {
+			// 1.7: the vertices, then every in-handle, then every out-handle (absolute), so index k past n names a tangent
+			const n = sh.points.length;
+			const abs = (hs: Vec2[] | undefined, i: number): Vec2 => [sh.points[i][0] + (hs?.[i]?.[0] ?? 0), sh.points[i][1] + (hs?.[i]?.[1] ?? 0)];
+			const out: Vec2[] = [...sh.points];
+			for (let i = 0; i < n; i++) out.push(abs(sh.in, i));
+			for (let i = 0; i < n; i++) out.push(abs(sh.out, i));
+			return out;
+		}
 	}
 }
 
-/** The primary shape's handles on screen. */
+/** Which handles of a path are tangents, for drawing: [index, vertex index]. */
+export function tangentHandles(sh: Shape): { h: number; v: number }[] {
+	if (sh.kind !== "path") return [];
+	const n = sh.points.length;
+	const out: { h: number; v: number }[] = [];
+	for (let i = 0; i < n; i++) out.push({ h: n + i, v: i }, { h: 2 * n + i, v: i });
+	return out;
+}
+
+/** The primary shape's handles on screen: the posed shape's when deforming, so a morph shows its own corners. */
 export function worldHandles(): Vec2[] {
 	const r = primary();
-	const sh = selShape();
+	const sh = selShapePosed() ?? selShape();
 	if (!r || !sh) return [];
 	const xf = partXf(r.p);
 	return handlesOf(sh).map((h) => xfApply(xf, h));
@@ -224,12 +254,13 @@ export function pick(at: Vec2): Ref | null {
 	const w = frameW();
 	let best: Ref | null = null;
 	let bd = 10 / z() + 2;
+	const st = curState();
 	for (const p of pickableParts()) {
 		const xf = partXf(p, w);
 		const inv = xfInvert(xf);
 		const s = xfScale(xf) || 1;
 		const local = xfApply(inv, at);
-		shapesIn(ps[p]).forEach((sh, si) => {
+		shapesOfPosed(doc(), ps[p], st?.parts.find((sp) => sp.part === ps[p].name)).forEach((sh, si) => {
 			const d = shapeDistance(sh, local) * s;
 			if (d <= bd) {
 				bd = d;
@@ -339,6 +370,26 @@ function dragHandle(sh: Shape, h: number, lm: Vec2, alt: boolean) {
 			if (h === 1) sh.a = lm;
 			else sh.b = lm;
 			break;
+		case "path": {
+			// 1.7: a vertex drag carries its handles (they are relative); a tangent drag sets one handle and, unless Alt, mirrors the other
+			const n = sh.points.length;
+			const i = h - 1;
+			if (i < n) {
+				sh.points[i] = lm;
+				return;
+			}
+			const v = i < 2 * n ? i - n : i - 2 * n;
+			if (v >= n) return;
+			const rel: Vec2 = [lm[0] - sh.points[v][0], lm[1] - sh.points[v][1]];
+			const ins = (sh.in ??= sh.points.map(() => [0, 0] as Vec2));
+			const outs = (sh.out ??= sh.points.map(() => [0, 0] as Vec2));
+			const [mine, other] = i < 2 * n ? [ins, outs] : [outs, ins];
+			const wasMirrored = Math.abs(mine[v][0] + other[v][0]) < 1e-6 && Math.abs(mine[v][1] + other[v][1]) < 1e-6;
+			mine[v] = rel;
+			if (!alt && wasMirrored) other[v] = [-rel[0], -rel[1]];
+			delete sh.bake;
+			return;
+		}
 		case "poly": {
 			const i = h - 1;
 			if (i >= sh.points.length) return;
@@ -390,9 +441,24 @@ function commitPoly() {
 	if (pts.length < 3) return;
 	const collision = ed.collide.value;
 	const p = ed.curPart.value;
-	const sh: Shape = { kind: "poly", color: collision ? undefined : curTokName(), points: collision ? pts : pts.map((q) => toLocal(p, q)) };
+	const outs = ed.polyOut.value;
+	const curved = outs.some((o) => o && (Math.abs(o[0]) > 1e-9 || Math.abs(o[1]) > 1e-9));
+	const local = collision ? pts : pts.map((q) => toLocal(p, q));
+	let sh: Shape;
+	if (curved) {
+		// the pen drew handles: a path, each dragged vertex mirrored (1.7)
+		const xf = collision ? undefined : partXf(p);
+		const s = xf ? xfScale(xf) || 1 : 1;
+		const ang = xf ? Math.atan2(xf[1], xf[0]) : 0;
+		const toLocalDir = (d: Vec2): Vec2 => [(d[0] * Math.cos(-ang) - d[1] * Math.sin(-ang)) / s, (d[0] * Math.sin(-ang) + d[1] * Math.cos(-ang)) / s];
+		const out = pts.map((_, i) => (outs[i] ? toLocalDir(outs[i]) : ([0, 0] as Vec2)));
+		const inn = out.map((o) => [-o[0], -o[1]] as Vec2);
+		sh = { kind: "path", color: collision ? undefined : curTokName(), closed: true, points: local, in: inn, out };
+	} else sh = { kind: "poly", color: collision ? undefined : curTokName(), points: local };
 	addShape(sh);
 	ed.polyPts.value = [];
+	ed.polyOut.value = [];
+	ix.pen = false;
 }
 
 function addShape(sh: Shape) {
@@ -466,7 +532,11 @@ export function onDown(wm: Vec2, mods: Mods) {
 		case "poly": {
 			const pts = ed.polyPts.value;
 			if (pts.length >= 3 && dist(pts[0], wm) * z() < 10) commitPoly();
-			else ed.polyPts.value = [...pts, snap(wm, mods)];
+			else {
+				ed.polyPts.value = [...pts, snap(wm, mods)];
+				ed.polyOut.value = [...ed.polyOut.value, [0, 0]];
+				ix.pen = true; // a drag now shapes this vertex's handles
+			}
 			return;
 		}
 	}
@@ -593,6 +663,18 @@ export function onMove(wm: Vec2, mods: Mods) {
 	ix.cursor = wm;
 	ix.mods = mods;
 	const collide = mode() === "collide";
+	if (ix.down && ix.pen) {
+		// the pen (1.7): drag from the vertex pulls its out-handle, the in-handle mirrors it
+		const pts = ed.polyPts.value;
+		const k = pts.length - 1;
+		if (k >= 0) {
+			const outs = [...ed.polyOut.value];
+			const d: Vec2 = [wm[0] - pts[k][0], wm[1] - pts[k][1]];
+			outs[k] = Math.hypot(d[0], d[1]) * z() < 4 ? [0, 0] : d;
+			ed.polyOut.value = outs;
+		}
+		return;
+	}
 	if (!ix.down) {
 		// hover: what a click would pick
 		if (ed.tool.value === "select" && mode() === "state") {
@@ -610,7 +692,10 @@ export function onMove(wm: Vec2, mods: Mods) {
 		else if (prim) {
 			const at = snap(wm, mods, ed.sel.value);
 			const lm = toLocal(prim.p, at);
-			mutate(() => dragHandle(target, ix.handle, lm, mods.alt), "handle");
+			// deform (1.6/1.7): the drag lands in the current state's morph instead of the base shape
+			const morph = deforming(prim);
+			mutate((d) => dragHandle(morph ? (morphView(d, prim) ?? target) : target, ix.handle, lm, mods.alt), morph ? "handle-morph" : "handle");
+			if (!morph && target.kind === "path") mutate((d) => void d, "handle");
 		}
 	} else if (ix.scaling) {
 		const d = Math.max(dist(ix.scaleAnchor, wm), 0.001);
@@ -676,6 +761,7 @@ export function onMove(wm: Vec2, mods: Mods) {
 }
 
 export function onUp(wm: Vec2, mods: Mods) {
+	ix.pen = false;
 	ix.cursor = wm;
 	ix.down = false;
 	if (ix.marquee) {
@@ -757,6 +843,8 @@ export function escape() {
 	selClear();
 	ed.colSel.value = -1;
 	ed.polyPts.value = [];
+	ed.polyOut.value = [];
+	ix.pen = false;
 	ed.pending.value = "none";
 	cancelGesture();
 }

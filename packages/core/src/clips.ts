@@ -112,7 +112,7 @@ export function basePoints(doc: Doc, partName: string): (shape: number) => reado
 	const shapes = part ? shapesOf(doc, part) : [];
 	return (i) => {
 		const sh = shapes[i];
-		return sh && sh.kind === "poly" ? sh.points : null;
+		return sh && (sh.kind === "poly" || sh.kind === "path") ? sh.points : null;
 	};
 }
 

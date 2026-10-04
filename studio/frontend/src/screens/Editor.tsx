@@ -19,7 +19,7 @@ export const EDITOR_TOOLS: ToolSpec<Tool>[] = [
 	{ tool: "rect", label: "Rect", key: "R", icon: I.rect },
 	{ tool: "circle", label: "Circle", key: "O", icon: I.circle },
 	{ tool: "line", label: "Line", key: "L", icon: I.line },
-	{ tool: "poly", label: "Poly", key: "P", icon: I.poly },
+	{ tool: "poly", label: "Pen", key: "P", icon: I.poly, makes: "click for corners, drag for curves; click the first point or press Enter to close" },
 ];
 
 /** The sidebar's Add menu for a 2D asset. */
@@ -61,7 +61,7 @@ function hintNow(): string {
 	if (clip) return `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`;
 	if (ed.pending.value === "pivot") return "click the canvas to place the pivot";
 	if (ed.pending.value === "anchor") return "click the canvas to place the anchor";
-	if (ed.tool.value === "poly") return "click to add points · click the first point or press Enter to close · Esc drops it";
+	if (ed.tool.value === "poly") return "pen: click for a corner, drag for a curve · click the first point or press Enter to close · Esc drops it";
 	if (st) return `state "${st.name}" · shapes edit in place · drag the part's ⌖ to move it, its lever to turn it, a ring to reach`;
 	return "";
 }
@@ -75,6 +75,10 @@ export function EditorTools() {
 		<Tools hint={hintNow()}>
 			<ToolButtons tools={EDITOR_TOOLS} current={ed.tool.value} disabled={(t) => posing && t !== "select"} why="a clip is a preview; pick a state to edit" />
 			<span class="sep" />
+			<button class={`tool ${ed.deform.value ? "active" : ""}`} disabled={posing || collide} title={posing ? "a clip is a preview; pick a state to deform" : "deform: corner and handle drags reshape the part in this state only, a morph the clips lerp  (D)"} onClick={() => run("edit.deform")}>
+				<I.state />
+				<span class="key">D</span>
+			</button>
 			<button class={`tool ${collide ? "active" : ""}`} title="the collision lens  (C)" onClick={() => run("view.collision")}>
 				<I.collision />
 				<span class="key">C</span>

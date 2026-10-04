@@ -2,7 +2,8 @@
 // fart: the command line.
 //
 //   fart validate <file|dir>...   check documents (exit 1 if any fail)
-//   fart bake <file>...           write tris into every poly (or mesh), in place
+//   fart bake <file>...           write tris into every poly (or mesh) and bakes into every path, in place
+//   fart bake --smooth <file>...  also the subdivided surface of every smooth mesh (1.7), for readers that do not subdivide
 //   fart project <3d.fart> [--view v]... [-o out]   a 2D view of a 3D document (1.3)
 //   fart gltf <3d.fart> [-o out.glb] [--fps n]      the model as a binary glTF (1.3)
 //   fart hull <3d.fart> [--part name]...           convex hulls of parts, into collision (1.4)
@@ -22,6 +23,7 @@ import { bakeTris } from "./geometry.ts";
 import { stringifyDoc } from "./parse.ts";
 import { as3d, type Doc, type Vec3 } from "./types.ts";
 import { bakeTris3 } from "./space3.ts";
+import { bakeSmooth } from "./subdiv.ts";
 import { DEFAULT_AMBIENT, DEFAULT_FPS, DEFAULT_LIGHT, VIEWS, projectDoc } from "./project.ts";
 import { toGlb } from "./gltf.ts";
 import { setHull } from "./collision.ts";
@@ -141,10 +143,12 @@ async function bakeCmd(args: string[]): Promise<number> {
 	// --textures <dir>: the maps as PNGs instead of tris into the file
 	let texDir: string | undefined;
 	let px = 64;
+	let smooth = false;
 	const paths: string[] = [];
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === "--textures") texDir = args[++i];
 		else if (args[i] === "--px") px = Math.max(1, Number(args[++i]) || 64);
+		else if (args[i] === "--smooth") smooth = true;
 		else paths.push(args[i]);
 	}
 	if (texDir !== undefined) return bakeTextures(paths, texDir, px);
@@ -159,8 +163,10 @@ async function bakeCmd(args: string[]): Promise<number> {
 			continue;
 		}
 		const d3 = as3d(doc);
-		if (d3) bakeTris3(d3);
-		else bakeTris(doc);
+		if (d3) {
+			bakeTris3(d3);
+			if (smooth) bakeSmooth(d3);
+		} else bakeTris(doc);
 		await writeFile(file, stringifyDoc(doc));
 		console.log(`baked ${file}`);
 	}
@@ -168,7 +174,7 @@ async function bakeCmd(args: string[]): Promise<number> {
 }
 
 const USAGE = `usage: fart validate <file|dir>...
-       fart bake <file>...                        tris into every poly or mesh, in place
+       fart bake [--smooth] <file>...             tris into every poly or mesh and bakes into every path; --smooth: subdivided surfaces too
        fart bake --textures <dir> [--px n] <file>...   every texture map as a PNG
        fart gltf <3d.fart> [-o out.glb] [--fps n]
        fart hull <3d.fart> [--part name]...     (no --part: every part) hulls into collision, in place

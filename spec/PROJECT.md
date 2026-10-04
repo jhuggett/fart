@@ -136,6 +136,17 @@ to know which is which: the test is per part, per pose.
 Nothing new. The output is a 1.3 2D document that uses `shade`; a 1.2
 reader draws it flat and otherwise right.
 
+## Smooth surfaces and sweeps (1.7)
+
+A smooth mesh projects its **subdivided surface** at the file's
+`smooth` level, so the 2D views carry the curved silhouette; a sweep
+projects the mesh it generates. Faces of the surface are shaded one by
+one as any mesh face is (a 2D shape has one `shade`, so smooth
+normals do not survive projection: a smooth surface at two levels
+reads as smooth because its faces are small). The projected polys may
+be many: keep `smooth` at one or two for things that will be
+projected.
+
 ## Morphs (1.6)
 
 A pose entry with a `morph` changes the part's points, so no 2D pose of
