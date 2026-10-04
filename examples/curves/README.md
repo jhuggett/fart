@@ -19,6 +19,30 @@ folder in Uranus to play them.
 - **shelf.shart**: the solids placed together in one 3D scene, two
   slimes on different clips and the vase turning.
 
+The complex ones, from `node examples/curves/generate-faces.mjs`:
+
+- **head.fart** (3D): a 130-point cage lathed from a profile and
+  sculpted (a mouth dented in, a nose out), drawn subdivided once with
+  smooth normals. Five states are blend shapes on that one cage, `open`,
+  `smile`, `frown`, `pout` and `blink`, each a morph of the same 130
+  points; the `talk` clip speaks through them, `moods` drifts between
+  expressions. Hair is a second lathe, the eyes ride the face.
+- **flag.fart** (3D): a 17 × 11 grid of 160 quads on a pole, smooth
+  normals, six states carrying the wave at six phases; the `wave` clip
+  lerps cage to cage and the cloth travels.
+- **face.fart** (2D): a face of paths whose mouth is one six-vertex path
+  morphed through the visemes `A`, `O`, `E`, `M` and `smile` (the
+  handles morph too); the `speak` clip runs them. The brows and eyes
+  pose as parts.
+
+## Playing
+
+The clips recorded from the studio (`node studio/test/gifs.mjs <dir>` records them):
+
+![head talking](gifs/head-talk.gif) ![head moods](gifs/head-moods.gif) ![flag waving](gifs/flag-wave.gif)
+
+![slime bouncing](gifs/slime-bounce.gif) ![face speaking](gifs/face-speak.gif) ![blob bouncing](gifs/blob-bounce.gif)
+
 ## Shots
 
 Frames from the studio (`node studio/test/shots.mjs <dir>` regenerates them):
