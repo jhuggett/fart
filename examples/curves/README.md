@@ -18,3 +18,13 @@ folder in Uranus to play them.
   once, with an extruded flat lid; the `turn` clip spins it.
 - **shelf.shart**: the solids placed together in one 3D scene, two
   slimes on different clips and the vase turning.
+
+## Shots
+
+Frames from the studio (`node studio/test/shots.mjs <dir>` regenerates them):
+
+| blob: idle, squash, stretch | slime: rest, squash, stretch |
+|---|---|
+| ![](shots/blob-idle.png) ![](shots/blob-squash.png) ![](shots/blob-stretch.png) | ![](shots/slime-rest.png) ![](shots/slime-squash.png) ![](shots/slime-stretch.png) |
+
+![the vase](shots/vase.png) ![the shelf scene](shots/scene.png)
