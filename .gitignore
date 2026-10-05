@@ -5,3 +5,5 @@ node_modules/
 *.fart~
 # release zips are built into the scratch, never here
 *.zip
+# compiled sidecars are build artifacts (fart build)
+*.fart.glb

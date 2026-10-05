@@ -60,6 +60,8 @@
 .ur-row.selected.inactive { background: var(--selection-inactive); color: var(--text-primary); }
 .ur-row.selected.inactive .ur-icon, .ur-row.selected.inactive .ur-row-count, .ur-row.selected.inactive .ur-chip-link, .ur-row.selected.inactive .ur-row-disc { color: var(--text-secondary); }
 .ur-row.dim { color: var(--text-tertiary); }
+/* a shape of a part, under its row: its colour at the right edge; a colour the palette lacks shows as the danger colour */
+.ur-shape .ur-swatch.missing { background: var(--danger); }
 .ur-row-vis { color: var(--text-tertiary); opacity: 0; }
 .ur-row:hover .ur-row-vis, .ur-row-vis.off { opacity: 1; }
 .ur-group { display: flex; align-items: center; height: 26px; padding: 6px 16px 0; font: 600 11px/14px var(--font-sans); color: var(--text-secondary); }

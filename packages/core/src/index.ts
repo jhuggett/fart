@@ -21,3 +21,5 @@ export * from "./png.ts";
 export * from "./scene.ts";
 export * from "./curves.ts";
 export * from "./subdiv.ts";
+export * from "./mods.ts";
+export * from "./gltfImport.ts";

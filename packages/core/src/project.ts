@@ -239,7 +239,11 @@ function projectShapes(rest: RestPart, M: Xf3, light: Vec3, ambient: number, out
 				if (!vis) return;
 				const points = face.map((i) => flat(pts[i]));
 				const depth = face.reduce((acc, i) => acc + pts[i][2], 0) / face.length;
-				const poly: Shape = { kind: "poly", color: sh.color, shade: shadeOf(n, sh.shade), points, tris: triangulate(points) };
+				// 1.8: a painted face wears its own token; a face has one shade in 2D, so its points' shades are averaged
+				const pi = sh.paint && sh.paint.length === sh.faces.length ? sh.paint[fi] : 0;
+				const token = (pi > 0 ? sh.colors?.[pi - 1] : undefined) ?? sh.color;
+				const own = sh.shades && sh.shades.length === sh.points.length ? face.reduce((acc, i) => acc + sh.shades![i], 0) / face.length : 1;
+				const poly: Shape = { kind: "poly", color: token, shade: shadeOf(n, (sh.shade ?? 1) * own), points, tris: triangulate(points) };
 				if (sh.texture && uvs) {
 					// the pattern's affine onto the projected face, from three corners that are not collinear
 					const xf = affineFrom(uvs[fi].slice(0, 3), points.slice(0, 3)) ?? affineFrom([uvs[fi][0], uvs[fi][1], uvs[fi][uvs[fi].length - 1]], [points[0], points[1], points[points.length - 1]]);

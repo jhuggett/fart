@@ -12,14 +12,20 @@ import { ModelCanvas } from "../canvas/ModelCanvas.tsx";
 import { TexturesPanel } from "../ui/Textures.tsx";
 import { project } from "../state/project.ts";
 import { gizmoStatus } from "../canvas/gizmo3.ts";
+import { meshStatus } from "../canvas/meshtool3.ts";
+import { shell } from "../shell/shell.ts";
+import { ask } from "../state/prompt.ts";
+import { dirname } from "../state/paths.ts";
+import { work, shading, setShading, mirrorOn, setMirror, setRef, refFailed, refForget, REF_VIEWS, type RefView } from "../state/workspace.ts";
 import { ToolBar, Transport, gridMode, keyReadout, type ToolSpec } from "../ui/Tools.tsx";
-import { Button, Checkbox, Chip, ColorRow, GroupHeader, Icon, InspectorSection, NumberField, Property, SegmentedControl, Select, Sheet, SidebarRow, TextField, cx, type NumberFieldProps } from "../ui/ur.tsx";
+import { Button, Checkbox, Chip, ColorRow, GroupHeader, Icon, InspectorSection, NumberField, Property, SegmentedControl, Select, Sheet, SidebarRow, TextField, cx, type IconName, type NumberFieldProps } from "../ui/ur.tsx";
 import { showIssues } from "../ui/ProjectBar.tsx";
 import { renaming, menuAt, type MenuItem } from "../state/menu.ts";
 import { sidebar } from "../state/sidebar.ts";
 import { openSheet, closeSheet } from "../state/prompt.ts";
 import { busy, logActivity } from "../state/activity.ts";
-import { run } from "../state/commands.ts";
+import { run, keysFor } from "../state/commands.ts";
+import { ShapeRow, folding, opens, shapeLabels, revealShapeRow, type ShapeRowActs } from "../ui/ShapeRows.tsx";
 import { basename } from "../state/paths.ts";
 import {
 	md,
@@ -65,8 +71,12 @@ import {
 	setVertexAxis,
 	setSmoothField,
 	setSweepField,
-	setCrease,
 	creaseOf,
+	setCreaseSel,
+	setPick,
+	liveOp,
+	adjustOp,
+	chooseMannequin,
 	morphCount,
 	resetMorph,
 	selShapePosed,
@@ -91,8 +101,35 @@ import {
 	deleteMap,
 	setSelTexture,
 	setSelMappingScale,
+	paintToken,
+	faceToken,
+	modsOf,
+	addMod,
+	removeMod,
+	moveMod,
+	setModField,
+	modToken,
+	applyMod,
+	mirrorModOn,
+	isPipe,
+	pipeTwin,
+	setPipeField,
+	setPipeRadiusAt,
+	setPipeRound,
+	setPipePoint,
+	setPipeSymmetry,
+	selected,
+	sameSel,
+	selectShapes,
+	chooseVerts,
+	chooseEdges,
+	chooseFaces,
 	type Tool3,
+	type Sel3,
+	type Pick3,
+	type ModOp,
 } from "../state/model.ts";
+import type { Mod, Part3, Shape3, Vec3 } from "@fastart/core";
 
 const DEG = 180 / Math.PI;
 const TOOLS: ToolSpec<Tool3>[] = [
@@ -101,14 +138,16 @@ const TOOLS: ToolSpec<Tool3>[] = [
 	{ tool: "circle", label: "Ball", key: "O", icon: "circle", makes: "drag from the centre: a ball" },
 	{ tool: "line", label: "Rod", key: "L", icon: "slash", makes: "drag a line: a rod, half the depth wide" },
 	{ tool: "poly", label: "Prism", key: "P", icon: "pentagon", makes: "click a profile, close it: a prism, as deep as the depth field" },
+	{ tool: "pipe", label: "Pipe", key: "U", icon: "route", makes: "click points along a path: a pipe through them, half the depth wide" },
 ];
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const EASES: Ease[] = ["linear", "in", "out", "in-out", "step"];
 
 // ------------------------------------------------------------- top
 
 /** The status bar's line: the mode, and what a gesture does in it. */
 export function modelStatus(): string {
-	const moving = gizmoStatus();
+	const moving = meshStatus() ?? gizmoStatus();
 	if (moving) return moving;
 	const tool = md.tool.value;
 	const st = curState();
@@ -117,7 +156,24 @@ export function modelStatus(): string {
 	if (clip) return `Previewing ${clip.name} · ${vn} · Space plays · keys name states, pose those to change a key`;
 	if (md.pending.value === "pivot") return "Click the canvas to place the pivot";
 	if (tool === "poly") return "Click a profile in the view plane · click the first point or press Enter to close it into a prism · Esc drops it";
+	if (tool === "pipe") {
+		const n = md.pipePts.value.length;
+		const where = md.onSurface.value ? `on the surface under the pointer, lifted ${md.lift.value}` : "on the view plane";
+		return `${vn} · Pipe: ${n ? plural(n, "point") : "click its first point"} · each click lands ${where}${md.pipeTwin.value ? " · with a mirrored twin across x" : ""} · Return or a click on the last point finishes · Esc drops it`;
+	}
 	if (tool !== "select") return `${vn} · ${TOOLS.find((t) => t.tool === tool)?.makes ?? ""}`;
+	const sh = selShape();
+	if (st && md.painting.value && sh?.kind === "mesh") return `${st.name} · ${vn} · painting faces ${paintToken()} · click or drag over the mesh · B or Esc stops`;
+	if (st && isPipe(sh) && !md.also.value.length) {
+		const twin = md.sel.value && pipeTwin(md.sel.value) ? " · its twin follows, mirrored across x" : "";
+		return `${st.name} · ${vn} · a pipe of ${plural(sh.path?.points.length ?? 0, "point")} · drag a point to move it${md.onSurface.value ? " along the surface" : " in the view plane"}${twin} · ⌫ takes the chosen point out`;
+	}
+	if (st && sh?.kind === "mesh" && !md.also.value.length) {
+		const what = md.pick.value === "corner" ? "corners" : md.pick.value === "edge" ? "edges" : "faces";
+		const sym = mirrorOn(parts()[md.sel.value!.part]?.name ?? "", md.sel.value!.shape) && !mirrorModOn(sh) ? " · mirrored across x" : "";
+		const cage = sh.mods?.length ? ` · the cage under ${plural(sh.mods.length, "modifier")}` : "";
+		return `${st.name} · ${vn} · choosing ${what}${sym}${cage} · ⇧ adds · E extrudes, I insets, K cuts a loop, M merges, B paints · G T S move, turn and size what is chosen`;
+	}
 	if (st) return `${st.name} · ${vn} · Arrows move along an axis, rings turn about one · G T S move, turn and size by key · middle-drag orbits`;
 	return "";
 }
@@ -139,8 +195,20 @@ export function ModelTools() {
 					{ id: "outline", command: "model.outline", label: "Silhouettes, the way Project draws them", icon: "square-dashed", on: md.outline.value },
 					{ id: "collision", command: "view.collision", label: "Collision solids", icon: "shield", key: "C", on: md.collide.value },
 					gridMode(),
+					...(md.tool.value === "pipe"
+						? [
+								{ id: "surface", command: "model.onSurface", label: "On surface: each point lands on the mesh under the pointer, lifted along its normal", icon: "magnet" as const, on: md.onSurface.value },
+								{ id: "twin", command: "model.pipeTwin", label: "Symmetry: the pipe gets a mirrored twin across x", icon: "flip-horizontal-2" as const, on: md.pipeTwin.value },
+							]
+						: []),
 				]}
 			/>
+			{md.tool.value === "pipe" && md.onSurface.value && (
+				<>
+					<span class="ur-pathbar-sep" />
+					<NumberField value={md.lift.value} step={0.05} min={0} width={72} suffix="lift" stepper={false} title="How far off the surface a pipe's points sit, along its normal" label="Lift" onChange={(v) => (md.lift.value = Math.max(0, v))} />
+				</>
+			)}
 			<span class="ur-pathbar-sep" />
 			<NumberField value={md.thick.value} step={0.5} min={0.1} width={78} suffix="deep" stepper={false} title="How deep a new box, prism, ball or rod is, along the view axis" label="Depth" onChange={(v) => (md.thick.value = Math.max(0.1, v))} />
 			{clip && (
@@ -154,6 +222,106 @@ export function ModelTools() {
 }
 
 const CAMERAS = Object.keys(VIEWS).filter((v) => v !== "side");
+
+const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
+const REF_NAMES: Record<RefView, string> = { front: "Front", side: "Side", top: "Top" };
+/** the pin the section is showing, by view: it lasts the session */
+const refTab = signal<RefView>("front");
+
+/** Choose an image of the project for a view's pin: the platform's dialog in the app, a path where there is none. */
+async function pinReference(v: RefView) {
+	const root = project.root.value ?? "";
+	let rel: string | null;
+	if (shell.kind === "wails") rel = await shell.pickFile(root, dirname(md.path.value ?? ""), `Reference image for the ${v} view`, "Pin", IMAGE_EXTS);
+	else
+		rel = await ask("Reference image", work.value.refs?.[v]?.path ?? "", {
+			ok: "Pin",
+			mono: true,
+			hint: `An image of the project, by its path from the project's root (refs/helm-${v}.png). It shows behind the model in the ${v} view only.`,
+			validate: (p) => (IMAGE_EXTS.some((e) => p.toLowerCase().endsWith(`.${e}`)) ? null : "A png, jpg, webp or gif"),
+		});
+	if (!rel) return;
+	refForget(root, rel);
+	setRef(v, { path: rel });
+	refTab.value = v;
+	// the view it is pinned to, so it shows at once
+	setView(v === "side" ? "right" : v);
+}
+
+/** The View tab's reference images: one per straight-on view, behind the model, kept in the studio's notes and never in the file. */
+function ReferenceSection() {
+	const v = refTab.value;
+	const ref = work.value.refs?.[v];
+	const failed = ref ? refFailed(project.root.value ?? "", ref.path) : false;
+	const pinned = REF_VIEWS.filter((k) => work.value.refs?.[k]);
+	return (
+		<InspectorSection title="Reference images" hint="an image pinned behind the model in the front, side or top view, to model over; kept with the studio, never in the file" tail={pinned.length ? `${pinned.length} pinned` : undefined}>
+			<Property label="View" title="which view's image this is; it shows only when the canvas looks from there">
+				<SegmentedControl label="Reference view" options={REF_VIEWS.map((k) => ({ value: k, label: REF_NAMES[k] }))} value={v} onChange={(k) => (refTab.value = k)} />
+			</Property>
+			{ref ? (
+				<>
+					<Property label="Image" title={ref.path}>
+						<span class="ur-prop-val model-grow" title={ref.path}>
+							{basename(ref.path)}
+						</span>
+					</Property>
+					{failed && <div class="insp-hint flush">Could not read {ref.path}: it has moved, or is not an image</div>}
+					<Property label="Position" layout="pair" title="where the image's middle sits, in the canvas's units">
+						<N axis="x" value={ref.x} step={0.5} stepper={false} onChange={(x) => setRef(v, { x })} />
+						<N axis="y" value={ref.y} step={0.5} stepper={false} onChange={(y) => setRef(v, { y })} />
+					</Property>
+					<Property label="Width" title="how wide the image is, in the canvas's units; its height follows">
+						<N value={ref.w} min={0.1} step={1} onChange={(w) => setRef(v, { w: Math.max(0.1, w) })} />
+					</Property>
+					<Property label="Opacity">
+						<input class="ed-range" type="range" aria-label="Reference opacity" min={0} max={1} step={0.05} value={ref.opacity} onInput={(e) => setRef(v, { opacity: Number((e.target as HTMLInputElement).value) })} />
+						<span class="ed-range-val">{Math.round(ref.opacity * 100)}%</span>
+					</Property>
+					<div class="insp-actions">
+						<Button title={`Look from the ${v}, where this image shows`} onClick={() => setView(v === "side" ? "right" : v)}>
+							Show
+						</Button>
+						<Button onClick={() => void pinReference(v)}>Replace…</Button>
+						<Button variant="danger" onClick={() => setRef(v, null)}>
+							Unpin
+						</Button>
+					</div>
+				</>
+			) : (
+				<>
+					<div class="insp-hint flush">No image pinned to the {v} view</div>
+					<div class="insp-actions">
+						<Button icon="image" title={`Pin an image of the project behind the model in the ${v} view`} onClick={() => void pinReference(v)}>
+							Pin an image…
+						</Button>
+					</div>
+				</>
+			)}
+		</InspectorSection>
+	);
+}
+
+/** The View tab's mannequin: another model of the project under this one, dimmed and out of reach, to fit clothing and armour to. */
+function MannequinSection() {
+	const cur = work.value.mannequin;
+	const loaded = md.mannequin.value;
+	const files = project.files.value.filter((f) => project.kinds.value[f] === "3D" && f !== md.path.value);
+	const sts = loaded?.doc.states ?? [];
+	return (
+		<InspectorSection title="Mannequin" hint="another model of the project shown under this one, dimmed and never selected: a body to fit clothing and armour to; kept with the studio, never in the file" tail={cur ? basename(cur.path).replace(/\.fart$/, "") : undefined}>
+			<Property label="Model" title="a 3D file of the project; it is drawn where its own coordinates put it">
+				<Select value={cur?.path ?? ""} options={[{ value: "", label: "None" }, ...(cur && !files.includes(cur.path) ? [{ value: cur.path, label: `${cur.path} (missing)` }] : []), ...files.map((f) => ({ value: f, label: f.replace(/\.fart$/, "") }))]} onChange={(p) => chooseMannequin(p ? { path: p } : null)} />
+			</Property>
+			{cur && sts.length > 0 && (
+				<Property label="State" title="the state the mannequin stands in">
+					<Select value={cur.state && sts.some((x) => x.name === cur.state) ? cur.state : sts[0].name} options={sts.map((x) => x.name)} onChange={(st) => chooseMannequin({ path: cur.path, state: st })} />
+				</Property>
+			)}
+			{!cur && files.length === 0 && <div class="insp-hint flush">No other 3D model in this project</div>}
+		</InspectorSection>
+	);
+}
 
 /** The View tab's own sections: the camera laid on the model, and the overlays. */
 export function ModelView() {
@@ -181,6 +349,17 @@ export function ModelView() {
 						/>
 					))}
 				</Property>
+				<Property label="Shading" title="plain: one flat light, as Project draws it. Clay: a warm key light with a soft edge, a cool fill and a little rim, so rounded forms read as a cel or clay shaded game shows them. It changes the canvas only, never the file">
+					<SegmentedControl
+						label="Shading"
+						options={[
+							{ value: "plain", label: "Plain" },
+							{ value: "clay", label: "Clay" },
+						]}
+						value={shading.value}
+						onChange={setShading}
+					/>
+				</Property>
 				<Property label="Ambient" title="how much light reaches the faces turned away">
 					<NumberField value={md.ambient.value} min={0} max={1} step={0.05} onChange={(v) => (md.ambient.value = Math.max(0, Math.min(1, v)))} />
 				</Property>
@@ -199,6 +378,8 @@ export function ModelView() {
 					<Checkbox checked={md.deform.value} disabled={!!curClip()} label="Deform in this state" onChange={() => run("edit.deform")} />
 				</Property>
 			</InspectorSection>
+			<ReferenceSection />
+			<MannequinSection />
 			<InspectorSection title="Project to 2D" hint="write the 2D views a game draws, beside this file">
 				<div class="insp-actions">
 					<button type="button" class="ur-btn" onClick={() => run("model.project")}>
@@ -212,15 +393,82 @@ export function ModelView() {
 
 // ------------------------------------------------------------- left
 
-/** the parents whose children are folded away, by name: it lasts the session */
-const folded = signal<Set<string>>(new Set());
-function toggleFold(name: string) {
-	const n = new Set(folded.value);
-	if (!n.delete(name)) n.add(name);
-	folded.value = n;
+/** which parts are open in the outline, by file and name: it lasts the session and is never saved */
+const fold = folding();
+const foldKey = (name: string) => `${md.path.value ?? ""}\n${name}`;
+
+/** A shape's kind in the studio's words: a sweep goes by what it does. */
+const shapeWord = (sh: Shape3): string => (sh.kind === "sweep" ? sh.op : sh.kind);
+/** The tools' own icons where a tool makes the kind: the ball's, the rod's, the pipe's, the prism's for a profile given depth. */
+const SHAPE_ICONS: Record<string, IconName> = { mesh: "box", ball: "circle", rod: "slash", pipe: "route", extrude: "pentagon", lathe: "cylinder" };
+
+/** The palette's colours as css, by name; made again only when the palette changes. */
+let tokenCss: { of: unknown; css: Map<string, string> } | null = null;
+function cssOfTokens(): Map<string, string> {
+	const toks = md.tokens.value;
+	if (tokenCss?.of !== toks) tokenCss = { of: toks, css: new Map(toks.map((t) => [t.name, cssColor(t.rgb)])) };
+	return tokenCss.css;
 }
 
+/** Let go of corners, edges, faces and a pipe's point, so Delete means the shapes themselves. */
+function wholeShapes() {
+	chooseVerts([]);
+	chooseEdges([]);
+	chooseFaces([]);
+	md.pipePt.value = null;
+}
+/** A shape's row acts as the shape does on the canvas: the same selection, the same commands. */
+const shapeActs: ShapeRowActs = {
+	pick(part, shape, e) {
+		const hit = { part, shape };
+		const all = selected();
+		// ⇧ or ⌘ adds a shape to what is chosen, or takes it out, as ⇧ does on the canvas
+		if ((e.shiftKey || e.metaKey || e.ctrlKey) && all.length) selectShapes(all.some((t) => sameSel(t, hit)) ? all.filter((t) => !sameSel(t, hit)) : [hit, ...all]);
+		else selectShapes([hit]);
+	},
+	menu(part, shape, e) {
+		const hit = { part, shape };
+		if (!selected().some((t) => sameSel(t, hit))) selectShapes([hit]);
+		menuAt(e, [
+			{ label: "Duplicate", keys: keysFor("edit.duplicate"), run: () => run("edit.duplicate") },
+			{ label: "Mirror across x", run: () => run("model.mirror") },
+			{
+				label: "Delete",
+				keys: "⌫",
+				danger: true,
+				sep: true,
+				run: () => {
+					wholeShapes();
+					run("edit.delete");
+				},
+			},
+		]);
+	},
+	remove(part, shape) {
+		const hit = { part, shape };
+		if (!selected().some((t) => sameSel(t, hit))) selectShapes([hit]);
+		wholeShapes();
+		run("edit.delete");
+	},
+};
+// a shape chosen anywhere (the canvas, a marquee, a tool): its part's row opens, and its parents', and its own row comes into view
+md.sel.subscribe((s) => {
+	if (!s) return;
+	const ps = parts();
+	const seen = new Set<string>();
+	for (let p: Part3 | undefined = ps[s.part]; p && !seen.has(p.name); p = ps.find((q) => q.name === p!.parent)) {
+		seen.add(p.name);
+		const name = p.name;
+		const n = p.like ? 0 : (p.shapes ?? []).length;
+		const kids = ps.filter((q) => q.parent === name).length;
+		if (!fold.peekOpen(foldKey(name), n, kids)) fold.set(foldKey(name), true);
+	}
+	revealShapeRow();
+});
+
 function pickPart(i: number) {
+	// the part's own row: the part is what is chosen now, not a shape of it or of another
+	if (md.sel.value) selectShapes([]);
 	md.curPart.value = i;
 	md.partPicked.value = true;
 }
@@ -248,12 +496,24 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 	if (!p) return null;
 	const st = curState();
 	const kids = childrenOf(p.name);
-	const open = !folded.value.has(p.name);
+	// a part drawn like another has no shapes of its own; a part of one shape is that shape, and stays a plain row
+	const shapes = p.like ? [] : (p.shapes ?? []);
+	const can = opens(shapes.length, kids.length);
+	const open = can && fold.isOpen(foldKey(p.name), shapes.length, kids.length);
 	const member = st ? st.parts.some((sp) => sp.part === p.name) : true;
 	const ren = renaming.value;
 	const isRen = ren?.kind === "part" && ren.index === i;
 	const preview = !!curClip();
 	const morphed = morphCount(i) > 0;
+	const listed = open && shapes.length > 1;
+	const sel = md.sel.value;
+	const also = md.also.value;
+	const chosen = (k: number) => (sel?.part === i && sel.shape === k) || also.some((t) => t.part === i && t.shape === k);
+	// with one of its shapes marked below it, the part's own row is tinted and the shape's wears the selection
+	const shapeMarked = listed && shapes.some((_, k) => chosen(k));
+	const inactive = sidebar.focus.value !== "nav";
+	const labels = listed ? shapeLabels(shapes, (k) => shapeWord(shapes[k])) : [];
+	const css = listed ? cssOfTokens() : null;
 	return (
 		<>
 			<SidebarRow
@@ -273,16 +533,17 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 				}
 				icon="layers"
 				depth={depth}
-				expandable={kids.length > 0}
+				expandable={can}
 				open={open}
-				onToggle={kids.length ? () => toggleFold(p.name) : undefined}
-				selected={i === md.curPart.value}
-				inactive={sidebar.focus.value !== "nav"}
+				onToggle={can ? () => fold.set(foldKey(p.name), !open) : undefined}
+				selected={i === md.curPart.value && !shapeMarked}
+				current={i === md.curPart.value && shapeMarked}
+				inactive={inactive}
 				dim={!!st && !member}
 				link={p.like || undefined}
 				chip={morphed ? "morph" : undefined}
-				count={p.like ? undefined : (p.shapes ?? []).length}
-				title={morphed ? "Reshaped in this state (a morph)" : p.like ? `Drawn like ${p.like}` : undefined}
+				count={p.like ? undefined : shapes.length}
+				title={morphed ? "Reshaped in this state (a morph)" : p.like ? `Drawn like ${p.like}` : shapes.length > 1 ? `${plural(shapes.length, "shape")}${open ? "" : ": open the row to see and choose them"}` : undefined}
 				leading={
 					st && !preview ? (
 						<span class="model-member" title={member ? "Drawn in this state · click to leave it out" : "Not drawn in this state · click to add it"} onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
@@ -298,6 +559,24 @@ function PartRow({ i, depth }: { i: number; depth: number }) {
 				}}
 				onDelete={parts().length > 1 ? () => deletePart(i) : undefined}
 			/>
+			{listed &&
+				shapes.map((sh, k) => (
+					<ShapeRow
+						key={`s${k}`}
+						part={i}
+						shape={k}
+						depth={depth + 1}
+						icon={SHAPE_ICONS[shapeWord(sh)] ?? "box"}
+						label={labels[k]}
+						token={sh.color}
+						color={sh.color ? css!.get(sh.color) : undefined}
+						title={`Shape ${k + 1} of ${shapes.length} in ${p.name}, in file order: a ${shapeWord(sh)}${sh.color ? ` filled ${sh.color}${css!.has(sh.color) ? "" : ", a colour the palette does not have"}` : ""} · click chooses it as on the canvas, ⇧ adds`}
+						selected={chosen(k)}
+						inactive={inactive}
+						dim={!!st && !member}
+						acts={shapeActs}
+					/>
+				))}
 			{open && kids.map((k) => <PartRow key={k.p.name} i={k.i} depth={depth + 1} />)}
 		</>
 	);
@@ -312,7 +591,7 @@ export function ModelSidebar() {
 	const ren = renaming.value;
 	return (
 		<>
-			<GroupHeader title="The parts of this model, children under their parents" addLabel="New part" onAdd={addPartNow}>
+			<GroupHeader title="The parts of this model, children under their parents; a part of several shapes opens to them, in file order" addLabel="New part" onAdd={addPartNow}>
 				Parts
 			</GroupHeader>
 			{childrenOf(undefined).map((k) => (
@@ -512,7 +791,7 @@ export function ModelTimeline() {
 // ------------------------------------------------------------- right: the inspector
 
 /** A shape's fill: one of the palette's colours, picked from a list of swatches. */
-function TokenPick({ current, onPick }: { current: string | undefined; onPick: (t: string) => void }) {
+function TokenPick({ current, onPick, title = "Fill: a colour of the palette", label = "Fill", none }: { current: string | undefined; onPick: (t: string) => void; title?: string; label?: string; none?: { label: string; pick: () => void } }) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLSpanElement>(null);
 	useEffect(() => {
@@ -536,14 +815,26 @@ function TokenPick({ current, onPick }: { current: string | undefined; onPick: (
 				}
 			}}
 		>
-			<button type="button" class="model-fill-btn" title="Fill: a colour of the palette" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>
-				<span class={cx("ur-swatch", !tk && "model-swatch-missing")} style={tk ? { background: cssColor(tk.rgb) } : undefined} />
-				<span class="model-fill-name">{current ?? "None"}</span>
+			<button type="button" class="model-fill-btn" title={title} aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>
+				<span class={cx("ur-swatch", !tk && !(none && current === undefined) && "model-swatch-missing", none && current === undefined && "model-swatch-none")} style={tk ? { background: cssColor(tk.rgb) } : undefined} />
+				<span class="model-fill-name">{current ?? none?.label ?? "None"}</span>
 				<Icon name="chevrons-up-down" size={12} />
 			</button>
 			{open && (
-				<div class="ur-popover model-fill-pop" role="listbox" aria-label="Fill">
+				<div class="ur-popover model-fill-pop" role="listbox" aria-label={label}>
 					{toks.length === 0 && <div class="insp-hint flush">No colours yet</div>}
+					{none && (
+						<ColorRow
+							name={none.label}
+							color="transparent"
+							hex=""
+							selected={current === undefined}
+							onClick={() => {
+								none.pick();
+								setOpen(false);
+							}}
+						/>
+					)}
 					{toks.map((t) => (
 						<ColorRow
 							key={t.name}
@@ -560,6 +851,341 @@ function TokenPick({ current, onPick }: { current: string | undefined; onPick: (
 				</div>
 			)}
 		</span>
+	);
+}
+
+const PICKS: { value: Pick3; label: string; title: string }[] = [
+	{ value: "corner", label: "Corners", title: "A click on the mesh chooses a corner" },
+	{ value: "edge", label: "Edges", title: "A click on the mesh chooses an edge" },
+	{ value: "face", label: "Faces", title: "A click on the mesh chooses a face" },
+];
+/** The numbers of the mesh operation just done: changing one runs it again, in the same undo step. */
+function LiveOpFields() {
+	const op = liveOp();
+	if (!op) return null;
+	const p = op.params;
+	const title = { extrude: "Extrude", inset: "Inset", loopcut: "Loop cut", merge: "Merge", creaseAngle: "Crease by angle" }[op.kind];
+	return (
+		<>
+			<div class="model-op-head caption-strong">{title}</div>
+			{op.kind === "extrude" && (
+				<Property label="Amount" title="how far along the normal; negative digs in">
+					<N value={p.amount} step={0.1} onChange={(v) => adjustOp({ amount: v })} />
+				</Property>
+			)}
+			{op.kind === "inset" && (
+				<>
+					<Property label="Amount" title="how far in from the border">
+						<N value={p.amount} min={0} step={0.05} onChange={(v) => adjustOp({ amount: Math.max(0, v) })} />
+					</Property>
+					<Property label="Raise" title="lift the inner faces along their normal; negative sinks them">
+						<N value={p.raise ?? 0} step={0.05} onChange={(v) => adjustOp({ raise: v })} />
+					</Property>
+					<Property label="Border" title="the colour of the border ring: a raised border in another colour is a trim. None leaves the ring the colour of the faces it came from">
+						<TokenPick current={op.border} label="Border colour" title="Border colour: a colour of the palette for the ring of faces the inset makes" onPick={(t) => adjustOp({}, { border: t })} none={{ label: "As the faces", pick: () => adjustOp({}, { border: null }) }} />
+					</Property>
+				</>
+			)}
+			{op.kind === "loopcut" && (
+				<Property label="Place" title="where the new loop crosses the edge: 0 at its first corner, 1 at its second">
+					<input class="ed-range" type="range" aria-label="Loop cut place" min={0.02} max={0.98} step={0.01} value={p.at} onInput={(e) => adjustOp({ at: Number((e.target as HTMLInputElement).value) })} />
+					<span class="ed-range-val">{p.at.toFixed(2)}</span>
+				</Property>
+			)}
+			{op.kind === "merge" && (
+				<Property label="Distance" title="corners this near each other become one, at their middle">
+					<N value={p.distance} min={0} step={0.01} onChange={(v) => adjustOp({ distance: Math.max(0, v) })} />
+				</Property>
+			)}
+			{op.kind === "creaseAngle" && (
+				<>
+					<Property label="Angle" title="every edge whose faces meet at more than this is creased">
+						<N value={p.angle} min={0} max={180} step={5} suffix="°" onChange={(v) => adjustOp({ angle: Math.max(0, Math.min(180, v)) })} />
+					</Property>
+					<Property label="Crease" title="the crease those edges get: 1 sharp, a fraction a fillet">
+						<N value={p.value} min={0} max={1} step={0.1} onChange={(v) => adjustOp({ value: Math.max(0, Math.min(1, v)) })} />
+					</Property>
+				</>
+			)}
+			<div class={cx("insp-hint flush", op.failed && "model-op-failed")}>{op.note}</div>
+		</>
+	);
+}
+
+/** Editing the selected mesh: what clicks choose, symmetry, and the operations on what is chosen. */
+function MeshSection({ sel }: { sel: Sel3 }) {
+	const sh = selShape();
+	const part = parts()[sel.part];
+	if (!sh || sh.kind !== "mesh" || !part) return null;
+	const mode = md.pick.value;
+	const nf = md.faces.value.length;
+	const ne = md.edges.value.length;
+	const nv = md.verts.value.length;
+	const edge = md.edge.value;
+	const count = mode === "face" ? plural(nf, "face") : mode === "edge" ? plural(ne, "edge") : plural(nv, "corner");
+	const locked = !!part.like;
+	const modMirror = mirrorModOn(sh);
+	const brush = paintToken();
+	// what the chosen faces wear: one colour's name, or that they differ
+	const worn = [...new Set(md.faces.value.map((f) => faceToken(sh, f)))];
+	return (
+		<InspectorSection title="Mesh" hint="reshape the mesh: choose corners, edges or faces on the canvas (Shift adds), then extrude, inset, cut, bridge, fill" tail={`${count} chosen`}>
+			<Property label="Choose" title="what a click on the mesh chooses; Shift adds one or takes it out, ⌘A chooses all, a drag moves what is chosen along the view plane">
+				<SegmentedControl label="Choose" options={PICKS} value={mode} onChange={setPick} />
+			</Property>
+			<Property label="Symmetry" title="while on, every edit to this mesh is done to its mirror across x too, and points on the plane stay on it. A working aid: the file holds plain geometry">
+				<Checkbox checked={mirrorOn(part.name, sel.shape) && !modMirror} disabled={modMirror} label="Mirror across x" onChange={(v) => setMirror(part.name, sel.shape, v)} />
+			</Property>
+			{modMirror && <div class="insp-hint flush">Its Mirror modifier across x does this in the file already: edit the half that is there, the other follows</div>}
+			{locked && <div class="insp-hint flush">This part is drawn like {part.like}: edit that one</div>}
+			{mode === "face" && (
+				<div class="insp-actions">
+					<Button disabled={!nf} title="Extrude the chosen faces along their normal (E): on the canvas the pointer says how far" onClick={() => run("mesh.extrude")}>
+						Extrude
+					</Button>
+					<Button disabled={!nf} title="Inset the chosen faces (I): a border ring of quads, the inner faces kept" onClick={() => run("mesh.inset")}>
+						Inset
+					</Button>
+					<Button disabled={!nf} title="Turn the chosen faces to wind the other way" onClick={() => run("mesh.flip")}>
+						Flip
+					</Button>
+					<Button variant="danger" disabled={!nf} title="Delete the chosen faces (⌫); the hole they leave has a rim" onClick={() => run("edit.delete")}>
+						Delete
+					</Button>
+				</div>
+			)}
+			{mode === "face" && (
+				<>
+					<Property label="Colour" title="the colour faces are painted with (1.8): a face may wear another colour of the palette than the shape's fill">
+						<TokenPick current={brush} label="Paint colour" title="Paint colour: the colour of the palette faces are painted with" onPick={(t) => (md.paintTok.value = t)} />
+					</Property>
+					<div class="insp-actions">
+						<Button icon="paintbrush" disabled={!nf} title={nf ? `Paint the ${plural(nf, "chosen face")} ${brush}${worn.length === 1 ? ` (now ${worn[0] ?? "the fill"})` : ""}` : "Choose faces first, then paint them this colour"} onClick={() => run("mesh.paintChosen")}>
+							Paint
+						</Button>
+						<Button active={md.painting.value} title="Paint by brush (B): while on, a click or a drag over the mesh paints the faces under the pointer; B or Esc stops" onClick={() => run("mesh.paint")}>
+							Brush
+						</Button>
+					</div>
+				</>
+			)}
+			{mode === "edge" && (
+				<div class="insp-actions">
+					<Button disabled={!ne} title="Loop cut (K): a new edge loop across the ring of four-sided faces the chosen edge belongs to" onClick={() => run("mesh.loopCut")}>
+						Loop cut
+					</Button>
+					<Button disabled={!ne} title="Extrude the chosen open edges outward (E): each grows a quad" onClick={() => run("mesh.extrude")}>
+						Extrude
+					</Button>
+					<Button disabled={!ne} title="Choose the whole rim the chosen edge is on: the loop of open edges around a hole" onClick={() => run("mesh.rim")}>
+						Rim
+					</Button>
+					<Button disabled={ne < 2} title="Bridge two rims of the same count with a band of quads: choose an edge on each" onClick={() => run("mesh.bridge")}>
+						Bridge
+					</Button>
+					<Button disabled={!ne} title="Fill the rim the chosen edge is on with one face" onClick={() => run("mesh.fill")}>
+						Fill
+					</Button>
+				</div>
+			)}
+			{ne > 0 && edge && (
+				<Property label="Crease" title={`the crease of ${ne === 1 ? `edge ${edge[0]}–${edge[1]}` : `the ${ne} chosen edges`} (1.7): 0 smooth to 1 sharp; a fraction is a fillet that rounds off after a few levels`}>
+					<N value={creaseOf(sh, edge[0], edge[1])} min={0} max={1} step={0.1} suffix={ne === 1 ? `${edge[0]}–${edge[1]}` : `${ne} edges`} onChange={(v) => setCreaseSel(sel, v)} />
+				</Property>
+			)}
+			<div class="insp-actions">
+				<Button title={nv > 1 && mode === "corner" ? "Merge the chosen corners that lie within a distance of each other (M)" : "Merge every pair of corners that lie within a distance of each other (M)"} onClick={() => run("mesh.merge")}>
+					Merge
+				</Button>
+				<Button title="Crease every edge sharper than an angle, the others keeping what they have" onClick={() => run("mesh.creaseAngle")}>
+					Crease by angle
+				</Button>
+				<Button title="Turn every face of the mesh to wind outward: neighbours made to agree, each piece turned so its volume is positive" onClick={() => run("mesh.wind")}>
+					Wind outward
+				</Button>
+			</div>
+			<Property label="Shades" title="a shade per corner (1.8): how much of the sky each corner sees past the model's own geometry, so folds and insides sit darker. Strength is how dark a wholly hidden corner gets">
+				<NumberField value={md.shadeStrength.value} min={0} max={1} step={0.1} suffix="strength" label="Shade strength" onChange={(v) => (md.shadeStrength.value = Math.max(0, Math.min(1, v)))} />
+			</Property>
+			<div class="insp-actions">
+				<Button title="Shade corners: work out a shade for every corner of this mesh from the model as it stands in this state, and write it into the file" onClick={() => run("mesh.shade")}>
+					Shade corners
+				</Button>
+				<Button disabled={!sh.shades} title="Take this mesh's shades away" onClick={() => run("mesh.clearShades")}>
+					Clear
+				</Button>
+			</div>
+			{sh.shades && <div class="insp-hint flush">{`Shaded: the darkest corner at ${Math.min(...sh.shades)}`}</div>}
+			<LiveOpFields />
+		</InspectorSection>
+	);
+}
+
+const MOD_NAMES: Record<string, string> = { mirror: "Mirror", solidify: "Solidify", crease: "Crease" };
+
+/** One modifier of the stack: its fields, and moving, applying and removing it. */
+function ModRow({ sel, i, mod, count }: { sel: Sel3; i: number; mod: Mod; count: number }) {
+	const sh = selShape();
+	if (!sh) return null;
+	const name = MOD_NAMES[mod.op] ?? mod.op;
+	const apply = () => {
+		try {
+			logActivity(applyMod(sel, i), "check");
+		} catch (e) {
+			project.error.value = e instanceof Error ? e.message : String(e);
+		}
+	};
+	return (
+		<div class="model-mod" data-mod={mod.op}>
+			<div class="model-mod-head">
+				<span class="caption-strong model-grow">
+					{i + 1} · {name}
+				</span>
+				<Button variant="toolbar" class="ur-btn-sm" icon="arrow-up" disabled={i === 0} title={`Move ${name} earlier: modifiers are applied in order`} onClick={() => moveMod(sel, i, false)} />
+				<Button variant="toolbar" class="ur-btn-sm" icon="arrow-down" disabled={i === count - 1} title={`Move ${name} later`} onClick={() => moveMod(sel, i, true)} />
+				<Button title={i === 0 ? `Apply ${name}: bake it into the mesh's own geometry, with its paint, creases and morphs${sh.kind === "sweep" ? "; the sweep becomes a mesh" : ""}` : `Apply the modifiers down to ${name} (the ones above it are applied on the way)`} onClick={apply}>
+					Apply
+				</Button>
+				<Button variant="toolbar" class="ur-btn-sm" icon="trash-2" title={`Remove ${name}`} onClick={() => removeMod(sel, i)} />
+			</div>
+			{mod.op === "mirror" && (
+				<>
+					<Property label="Axis" title="the plane is where this coordinate is 0 in the shape's own space">
+						<SegmentedControl
+							label="Mirror axis"
+							options={[
+								{ value: "x", label: "X" },
+								{ value: "y", label: "Y" },
+								{ value: "z", label: "Z" },
+							]}
+							value={String(mod.axis ?? "x")}
+							onChange={(v) => setModField(sel, i, "axis", v)}
+						/>
+					</Property>
+					<Property label="Merge" title="a corner this near the plane is welded onto it: one point, not two">
+						<N value={mod.merge ?? 0.001} min={0} step={0.001} onChange={(v) => setModField(sel, i, "merge", Math.max(0, v))} />
+					</Property>
+				</>
+			)}
+			{mod.op === "solidify" && (
+				<>
+					<Property label="Thick" title="how deep the wall is">
+						<N value={mod.thick ?? 0} step={0.05} onChange={(v) => setModField(sel, i, "thick", v)} />
+					</Property>
+					<Property label="Offset" title="−1: the cage is the outside and the wall grows inward; 1: the cage is the inside; 0: it is the middle">
+						<N value={mod.offset ?? -1} min={-1} max={1} step={0.5} onChange={(v) => setModField(sel, i, "offset", Math.max(-1, Math.min(1, v)))} />
+					</Property>
+					<Property label="Inner" title="the colour of the inner faces; None leaves each the colour of the face it backs">
+						<TokenPick current={modToken(sh, mod, "inner")} label="Inner colour" title="Inner colour: a colour of the palette for the inside of the wall" onPick={(t) => setModField(sel, i, "inner", t)} none={{ label: "As the outside", pick: () => setModField(sel, i, "inner", undefined) }} />
+					</Property>
+					<Property label="Rim" title="the colour of the rim, where the wall shows its thickness; None leaves each quad the colour of the face its edge belongs to">
+						<TokenPick current={modToken(sh, mod, "rim")} label="Rim colour" title="Rim colour: a colour of the palette for the rim of the wall" onPick={(t) => setModField(sel, i, "rim", t)} none={{ label: "As the outside", pick: () => setModField(sel, i, "rim", undefined) }} />
+					</Property>
+				</>
+			)}
+			{mod.op === "crease" && (
+				<>
+					<Property label="Angle" title="every edge whose faces stand more than this apart gets the crease, unless it has one already">
+						<N value={mod.angle ?? 30} min={0} max={180} step={5} suffix="°" onChange={(v) => setModField(sel, i, "angle", Math.max(0, Math.min(180, v)))} />
+					</Property>
+					<Property label="Crease" title="the crease those edges get: 1 sharp, a fraction a fillet once the mesh is smooth">
+						<N value={mod.value ?? 1} min={0} max={1} step={0.1} onChange={(v) => setModField(sel, i, "value", Math.max(0, Math.min(1, v)))} />
+					</Property>
+				</>
+			)}
+			{!(mod.op in MOD_NAMES) && <div class="insp-hint flush">A modifier Uranus does not know: it is kept as it is</div>}
+		</div>
+	);
+}
+
+/** The modifiers of a mesh or a sweep (1.8): operations the file keeps and every reader applies to the cage, in order. */
+function ModifiersSection({ sel }: { sel: Sel3 }) {
+	const sh = selShape();
+	if (!sh || (sh.kind !== "mesh" && sh.kind !== "sweep")) return null;
+	const mods = modsOf(sh);
+	return (
+		<InspectorSection title="Modifiers" hint="operations kept in the file and applied to the cage every time it is drawn, in order (1.8): the cage stays what you edit, half a helm with no thickness" tail={mods.length ? String(mods.length) : undefined}>
+			{mods.length === 0 && <div class="insp-hint flush">None: the shape is drawn as it is</div>}
+			{mods.map((m, i) => (
+				<ModRow key={`${i}-${m.op}`} sel={sel} i={i} mod={m} count={mods.length} />
+			))}
+			<Property label="Add" title="add a modifier at the end of the list: Mirror reflects the cage through a plane and welds the seam, Solidify gives a surface a wall, Crease marks every edge sharper than an angle">
+				<Select
+					value=""
+					options={[
+						{ value: "", label: "Add a modifier…" },
+						{ value: "mirror", label: "Mirror" },
+						{ value: "solidify", label: "Solidify" },
+						{ value: "crease", label: "Crease" },
+					]}
+					onChange={(v) => {
+						if (v) addMod(sel, v as ModOp);
+					}}
+				/>
+			</Property>
+			{mods.length > 0 && sh.kind === "mesh" && <div class="insp-hint flush">The dashed wire is the cage: corners, edges and faces are chosen and edited there, and the surface follows</div>}
+		</InspectorSection>
+	);
+}
+
+/** A pipe's own fields (1.8): the section, the path's points, and where its points land. */
+function PipeFields({ sel }: { sel: Sel3 }) {
+	const sh = selShape();
+	if (!isPipe(sh)) return null;
+	const pts = sh.path?.points ?? [];
+	const i = md.pipePt.value;
+	const at = i !== null ? pts[i] : undefined;
+	const rounded = !!(sh.path?.in || sh.path?.out);
+	return (
+		<>
+			<Property label="Sweep" title="a pipe (1.8): a section carried along a path in space, kept as the path">
+				<span class="ur-prop-val">Pipe · {plural(pts.length, "point")}</span>
+			</Property>
+			<Property label="Radius" title="the pipe's radius; each point may scale it">
+				<N value={sh.radius ?? 1} min={0.001} step={0.05} onChange={(v) => setPipeField(sel, "radius", v)} />
+			</Property>
+			<Property label="Segments" title="how many sides the section has">
+				<N value={sh.segments ?? 8} min={3} step={1} onChange={(v) => setPipeField(sel, "segments", Math.max(3, Math.round(v)))} />
+			</Property>
+			<Property label="">
+				<Checkbox checked={sh.caps !== false} disabled={!!sh.closed} label="Caps" title="close the ends of an open pipe" onChange={(v) => setPipeField(sel, "caps", v)} />
+			</Property>
+			<Property label="">
+				<Checkbox checked={!!sh.closed} disabled={pts.length < 3} label="Closed" title="join the last point to the first: a ring" onChange={(v) => setPipeField(sel, "closed", v)} />
+			</Property>
+			<Property label="">
+				<Checkbox checked={rounded} disabled={pts.length < 3} label="Round the path" title="curve the path through its points; off, it runs straight from point to point. The handles are written for you and follow the points" onChange={(v) => setPipeRound(sel, v)} />
+			</Property>
+			<Property label="Symmetry" title="keep a mirrored twin of this pipe across x: moving a point of one moves the other. A working aid: the file holds two pipes">
+				<Checkbox checked={!!pipeTwin(sel)} label="Mirror across x" onChange={(v) => setPipeSymmetry(sel, v)} />
+			</Property>
+			<Property label="" title="while on, a dragged point stays on the mesh under the pointer, lifted along its normal">
+				<Checkbox checked={md.onSurface.value} label="On surface" onChange={() => run("model.onSurface")} />
+			</Property>
+			{md.onSurface.value && (
+				<Property label="Lift" title="how far off the surface a point sits, along its normal">
+					<NumberField value={md.lift.value} min={0} step={0.05} onChange={(v) => (md.lift.value = Math.max(0, v))} />
+				</Property>
+			)}
+			{i !== null && at ? (
+				<>
+					<Trio
+						label={`Point ${i}`}
+						value={at}
+						onAxis={(ax, v) => {
+							const p = [...at] as Vec3;
+							p[ax] = v;
+							setPipePoint(sel, i, p, `pipe-point-${i}-${ax}`);
+						}}
+					/>
+					<Property label="Radius here" title="this point's share of the pipe's radius: 1 is the radius itself, 0 an apex">
+						<N value={sh.radii?.[i] ?? 1} min={0} step={0.1} onChange={(v) => setPipeRadiusAt(sel, i, v)} />
+					</Property>
+				</>
+			) : (
+				<div class="insp-hint flush">Click a point of the path to move it or to set its radius</div>
+			)}
+		</>
 	);
 }
 
@@ -583,7 +1209,6 @@ export function Inspector3() {
 	const texs = textures();
 	const pal = palette();
 	const morphs = p ? morphCount(i) : 0;
-	const edge = md.edge.value;
 	const removeToken = (k: number) => {
 		deleteToken(k);
 		setTok(null);
@@ -630,7 +1255,7 @@ export function Inspector3() {
 					{sh.kind === "mesh" && (
 						<Property label="Corners" title="drag a corner on the canvas along the view plane; the fields move it on any axis">
 							<span class="ur-prop-val">
-								{sh.points.length} · {sh.faces.length} faces
+								{sh.points.length} · {sh.faces.length} faces{sh.colors?.length ? ` · ${plural(sh.colors.length + 1, "colour")}` : ""}
 							</span>
 						</Property>
 					)}
@@ -655,11 +1280,12 @@ export function Inspector3() {
 							</Property>
 						</>
 					)}
-					{sh.kind === "sweep" && (
+					{sh.kind === "sweep" && sh.op === "pipe" && <PipeFields sel={sel} />}
+					{sh.kind === "sweep" && sh.op !== "pipe" && (
 						<>
 							<Property label="Sweep" layout="pair" title="a solid generated from a profile (1.7): a lathe revolves [radius, along] pairs about the axis, an extrude runs the closed outline along it">
 								<Select
-									value={sh.op}
+									value={sh.op as "lathe" | "extrude"}
 									options={[
 										{ value: "lathe", label: "Lathe" },
 										{ value: "extrude", label: "Extrude" },
@@ -667,7 +1293,7 @@ export function Inspector3() {
 									onChange={(v) => setSweepField(sel, "op", v)}
 								/>
 								<Select
-									value={sh.axis}
+									value={sh.axis ?? "y"}
 									title="The axis it sweeps about or along"
 									options={[
 										{ value: "x", label: "X" },
@@ -693,15 +1319,10 @@ export function Inspector3() {
 							)}
 							<Property label="Profile" title="edit it in the file or a generator">
 								<span class="ur-prop-val">
-									{sh.profile.points.length} points{sh.profile.in || sh.profile.out ? " · curved" : ""} · edit it in the file
+									{sh.profile?.points.length ?? 0} points{sh.profile?.in || sh.profile?.out ? " · curved" : ""} · edit it in the file
 								</span>
 							</Property>
 						</>
-					)}
-					{sh.kind === "mesh" && edge && (
-						<Property label={`Crease ${edge[0]}–${edge[1]}`} title="the edge chosen with Shift-click on a second corner: its crease (1.7), 0 smooth to 1 sharp; a fraction is a fillet that rounds off after a few levels">
-							<N value={creaseOf(sh, edge[0], edge[1])} min={0} max={1} step={0.1} onChange={(v) => setCrease(sel, edge[0], edge[1], Math.max(0, Math.min(1, v)))} />
-						</Property>
 					)}
 					{sh.kind === "mesh" && vert !== null && sh.points[vert] && <Trio label={`Corner ${vert}`} value={shp && shp.kind === "mesh" && shp.points[vert] ? shp.points[vert] : sh.points[vert]} onAxis={(ax, v) => setVertexAxis(sel, vert, ax, v)} />}
 					<div class="insp-actions">
@@ -711,12 +1332,14 @@ export function Inspector3() {
 						<Button title="Duplicate (⌘D)" onClick={() => run("edit.duplicate")}>
 							Duplicate
 						</Button>
-						<Button variant="danger" title="Delete (⌫)" onClick={deleteSel}>
-							{vert !== null && sh.kind === "mesh" ? "Delete corner" : "Delete"}
+						<Button variant="danger" title={md.pipePt.value !== null && isPipe(sh) ? "Take the chosen point out of the path (⌫)" : "Delete (⌫)"} onClick={deleteSel}>
+							{vert !== null && sh.kind === "mesh" ? "Delete corner" : md.pipePt.value !== null && isPipe(sh) ? "Delete point" : "Delete"}
 						</Button>
 					</div>
 				</InspectorSection>
 			)}
+			{sh && sel && sh.kind === "mesh" && !preview && !md.also.value.length && <MeshSection sel={sel} />}
+			{sh && sel && (sh.kind === "mesh" || sh.kind === "sweep") && !preview && !md.also.value.length && <ModifiersSection sel={sel} />}
 			{p && picked && (
 				<InspectorSection title="Part" hint="a part: the unit that poses" tail={p.name}>
 					<Property label="Name">

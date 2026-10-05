@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -100,6 +101,27 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 			return
 		}
 		writeJSON(w, kindsOf(root, files))
+	})
+	// a picture of the project, for a reference image behind a model
+	mux.HandleFunc("/api/image", func(w http.ResponseWriter, r *http.Request) {
+		noStore(w)
+		full, err := rooted(root, r.URL.Query().Get("path"))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		mime, ok := imageTypes[strings.ToLower(filepath.Ext(full))]
+		if !ok || r.Method != http.MethodGet {
+			http.Error(w, "not an image", 400)
+			return
+		}
+		data, err := os.ReadFile(full)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		_, _ = w.Write(data)
 	})
 	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
@@ -213,6 +235,8 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 			h(w, r)
 		}
 	}
+	importRoutes(mux, local) // Import glTF reads a model from anywhere on this machine (gltf.go)
+	sidecarRoutes(mux, root) // compiled sidecars beside their documents (sidecar.go)
 	mux.HandleFunc("/api/setup/home", local(func(w http.ResponseWriter, r *http.Request) {
 		h, _ := os.UserHomeDir()
 		writeJSON(w, h)

@@ -596,13 +596,19 @@ low-poly rendering of the same thing.
   boundary is sharp and its corners are pinned (`EDGE_AND_CORNER`).
   The limit surface is the target: a reader that subdivides `smooth`
   levels with these rules conforms, and so does one that evaluates it
-  another way. Explicit `uvs` interpolate linearly within their face.
+  another way. Explicit `uvs` interpolate linearly within their face:
+  each level, a face's child at one of its corners takes that corner's
+  coordinates, the middles of the two edges there, and the mean of the
+  face's corners, in the child's own corner order. Coordinates never
+  cross an edge, so a seam in the pattern stays where the cage has it.
 - **The cage is the file.** Morphs move cage points; the surface
   follows (subdivision is linear in the cage, so a lerp of cages is a
   lerp of surfaces). Collision and `fart hull` use the cage. Vertex
   handles in an editor are cage points.
 - **The bake.** `bake` is the subdivided surface `{points, faces,
-  tris, of}` with `of` a hash of the cage it came from; a reader
+  tris, of}` with `of` a hash of the cage it came from (and, for a cage
+  with explicit `uvs`, `uvs` for the bake's own faces with `uvOf` a hash
+  of the cage's; a bake without them is not used for such a cage); a reader
   that does not subdivide draws it, and drops it when `of` no longer
   matches. Editors do **not** write it on save (two levels on a
   200-face cage is 3,200 faces of JSON); `fart bake --smooth` does,
@@ -636,6 +642,305 @@ so an editor can change it after the fact:
   generated (and subdivided) mesh for readers that do not generate.
 - A sweep has no `points` of its own, so it does not morph; it never
   occurs in `collision` (give the collision its mesh).
+
+## Paint (1.8)
+
+A shape names one token, and that was the whole of colour until a helm
+wanted a brass band round its brow. A `mesh` or a `sweep` may carry
+further tokens and say which face wears which:
+
+```json
+{"kind": "mesh", "color": "steel", "colors": ["brass", "lining"],
+ "points": [...], "faces": [[0,1,2,3], [4,5,6,7], [0,4,7,3], ...],
+ "paint": [1, 1, 0, ...]}
+```
+
+- `colors` is a list of palette tokens. `paint` has one whole number
+  per face, in the order of `faces`: `0` is the shape's own `color`,
+  `n` is `colors[n - 1]`. A shape without `paint` is all `color`, and
+  so is one whose reader knows neither field: the file is still right,
+  in one colour.
+- Tokens in `colors` resolve as `color` does, and one that nothing
+  supplies is the same `ref.token`.
+- Through subdivision a face's children wear their face's paint. A
+  morph changes no paint. `shade`, textures and normals are the
+  shape's, whatever the paint.
+- On a `sweep` the faces counted are those of the mesh it generates, in
+  the order its op makes them: a lathe's sides ring by ring along the
+  profile (each ring's faces in the order of the steps round the axis),
+  then the cap at the profile's start and the cap at its end where
+  there are any; an extrude's cap at `from`, its cap at `to`, then one
+  side for each edge of the profile in order; a pipe's as **Pipes**
+  says. A profile or path with handles is flattened first, and the
+  count then depends on the flattening: paint a sweep whose outline is
+  corners, or paint its `bake`.
+- Error `paint`: a `paint` whose count differs from the faces, an index
+  past the last of `colors`, or `paint` on a shape with no `colors`. A
+  loader inside a game that meets a `paint` it cannot use draws the
+  shape in `color`.
+- 2D shapes are one face each and take no paint.
+
+## Shades (1.8)
+
+`shade` darkens a whole shape. `shades` darkens it point by point, for
+the soft shadow a modelling tool bakes into a fold:
+
+```json
+{"kind": "mesh", "color": "steel", "shade": 0.9, "points": [...8 points...],
+ "faces": [...], "shades": [1, 1, 0.8, 0.8, 1, 1, 0.8, 0.8]}
+```
+
+- `shades` has one number per point, 0 or more, in the order of
+  `points`. The colour at a point is the token's times `shade` times
+  that point's number; across a face it is interpolated between the
+  corners, as a renderer's vertex colour is.
+- Through subdivision a shade is refined as a fourth coordinate: every
+  rule that places a new point from old ones (a face point, an edge
+  point, a moved vertex, creases included) gives it the same weighted
+  sum of their shades. A result below 0 is 0.
+- A morph moves points and leaves `shades` as they are.
+- Only a `mesh` has points, so only a `mesh` has `shades`. A sweep's
+  bake may carry them (below). Error `shades`: a count that differs
+  from `points`, or `shades` on a sweep.
+- Projection (`PROJECT.md`) gives a face one shade: the mean of its
+  corners' shades times the shape's, under the light as ever.
+- 2D shapes keep the one `shade`.
+
+## Modifiers (1.8)
+
+A `mesh` or a `sweep` may carry `mods`: an ordered list of operations a
+reader applies to the cage before it draws. The cage stays the file,
+half a helm with no thickness, and the mods make the rest every time:
+
+```json
+{"kind": "mesh", "color": "steel", "colors": ["lining", "brass"],
+ "points": [...], "faces": [...], "smooth": 2,
+ "mods": [
+   {"op": "mirror", "axis": "x", "merge": 0.001},
+   {"op": "solidify", "thick": 0.3, "offset": -1, "inner": 1, "rim": 2},
+   {"op": "crease", "angle": 40, "value": 0.2}
+ ]}
+```
+
+The order of work is fixed: the cage (a sweep's generated mesh), then a
+morph's points, then the mods in list order, then `smooth`, then
+triangles. Each mod takes the mesh the one before it left. `creases`,
+`paint`, `shades` and explicit `uvs` in the file are over the cage and
+ride through every mod as told below. A reader that knows no mods draws
+the cage: half the helm, thin, and still the right shape as far as it
+goes.
+
+- **`mirror`**: `axis` is `x`, `y` or `z`; the plane is where that
+  coordinate is 0 in the shape's own space. A point within `merge` of
+  the plane (0.001 when absent) is **welded**: it stays one point and
+  its coordinate on the axis becomes exactly 0. Every other point gets
+  a copy with that coordinate negated; the copies follow the cage's
+  points, in the cage's order. After the cage's faces come their
+  copies in the same order, each with its points mapped to the copies
+  and listed in reverse, so the copy faces out as its source does. A
+  face whose every point is welded lies in the plane and is not
+  copied. A copied face has its source's paint and its `uvs` in
+  reverse; a copied point its source's shade; a crease is copied to
+  the copied edge or corner (not when it lies wholly on the plane).
+- **`solidify`**: gives a surface, open or closed, a wall `thick`
+  deep. Each point has a normal: the unit normals of the faces that use
+  it, summed and made unit. With `offset` o in −1…1 (−1 when absent)
+  the outer shell is every point moved `thick × (1 + o) / 2` along its
+  normal and the inner shell every point moved `thick × (1 − o) / 2`
+  against it: at −1 the cage is the outside and the wall grows inward,
+  at 1 the cage is the inside, at 0 it is the middle. The outer shell's
+  points keep the mesh's indices; the inner shell's follow, point i at
+  i + n for n points. The faces are the mesh's own, then the inner
+  faces in the same order (each face's points plus n, reversed), then
+  the **rim**: for every edge a → b that only one face uses, taken face
+  by face and edge by edge, the quad `[b, a, a + n, b + n]`. A closed
+  surface has no such edge and becomes a hollow shell. `inner` and
+  `rim` are paint indices for those faces; absent, an inner face wears
+  its source's paint and a rim quad the paint of the face its edge
+  belongs to. Shades and creases are copied to the inner shell; an
+  inner face has its source's `uvs` in reverse, and a rim quad its
+  edge's two, repeated across it.
+- **`crease`**: every edge with two faces whose normals stand more than
+  `angle` degrees apart (30 when absent) gets the crease `value` (1
+  when absent), unless it already has one: explicit `creases` win, and
+  so does an earlier mod. With `smooth` above 0 this is a bevel, a
+  fraction a fillet, as **Smooth surfaces** has it; with `smooth` at 0
+  and `normals` smooth, a value of 1 is a hard edge.
+- **Morphs.** What a mod decides, it decides on the rest cage: which
+  points weld, which edges crease. A morph then moves positions only (a
+  welded point stays on the plane, wherever the morph put it), so every
+  pose has the same points and faces and a lerp of cages is still a
+  lerp of surfaces. Solidify's normals are the posed cage's.
+- **`fart hull`** reads the cage with its mods applied, before
+  smoothing: both halves, with their thickness.
+- **The bake.** A shape with `mods` may carry `bake` as a smooth one
+  does: the final mesh, mods and subdivision done. A bake may hold
+  `paint`, one index per face of the bake, and `shades`, one number per
+  point of the bake; a reader drawing a bake uses those, never the
+  cage's. `of` covers what the bake was made from: for a shape with
+  any of `mods`, `paint` or `shades`, the cage's points, faces, creases
+  and `smooth` as in 1.7, then its `mods`, `paint` and `shades`. A
+  shape with none of the three hashes exactly as it did in 1.7, so its
+  old bakes stand. A bake that lacks the `paint` or `shades` its shape
+  would give it is not used. `fart bake --smooth` writes the bake of
+  every generated shape: smooth meshes, shapes with mods, and sweeps.
+- Errors. `mod`: an `op` that is not one of these three. `paint`: an
+  `inner` or `rim` past the last of `colors`. `crease`: a `value`
+  outside 0–1. A missing `axis` or `thick`, or an `offset` outside
+  −1…1, is `schema`.
+- 2D shapes take no mods: a mirrored part is `like` and `mirror`, and
+  a path has its width.
+
+## Pipes (1.8)
+
+The third sweep carries a section along a path in space: a plume, a
+horn, a strap, the wire of a lantern.
+
+```json
+{"kind": "sweep", "color": "plume", "op": "pipe", "segments": 6,
+ "path": {"points": [[0,-9,0], [0,-12.5,1.5], [0,-12,5.5], [0,-8,8]],
+          "out":    [[0,-1.5,0], [0,-0.8,1.6], [0,1.2,1.4], [0,0,0]],
+          "in":     [[0,0,0], [0,1.2,-1], [0,-1,-1.6], [0,-1.6,-0.8]]},
+ "radius": 0.8, "radii": [0.5, 1, 0.9, 0], "caps": true, "closed": false}
+```
+
+- `path` is a path body with three coordinates: `points`, and optional
+  `in` and `out` handles relative to their points, one per point. It is
+  flattened as a path is, within 0.05 units of the curve; a flattened
+  point that sits on the one before it is dropped. `closed` (on the
+  shape, false when absent) joins the last point to the first. A pipe
+  has no `axis`.
+- **The section** is a circle of radius 1 in `segments` sides (8 when
+  absent, 3 or more), its corner k at angle 2πk / `segments`; or
+  `profile`, a closed path body in two coordinates as an extrude has,
+  flattened, taken in reverse when its signed area (Σ xₖ yₖ₊₁ − xₖ₊₁ yₖ)
+  is negative. At each point of the flattened path the section is
+  scaled by `radius` (1 when absent) times that place's entry of
+  `radii`. `radii` has one number per point of `path.points`; between
+  two path points the factor is linear in the cubic's own parameter;
+  absent, it is 1 everywhere. So a round pipe's `radius` is its radius.
+- **The frame.** Each point of the flattened path has a tangent T: at
+  an open end the direction of its one segment, elsewhere the unit
+  directions of the two segments that meet there, summed and made
+  unit. The first normal N is the world axis T leans on least (the
+  smallest component of T by size; x before y before z in a tie), made
+  perpendicular to T. Each next N is the last one turned by the
+  shortest rotation that takes the last T onto this one: parallel
+  transport, so the section never rolls about the path. B is T × N,
+  and a section point (x, y) stands at `P + s (x N + y B)`. On a closed
+  path the frame returns to the start turned by some angle; that angle
+  is undone evenly, ring i of m turned by i / m of it about its own T.
+  No ring is stretched at a bend.
+- **The mesh.** One ring of points per flattened path point, in path
+  order, each in section order. Faces: for each ring and the next (and
+  on a closed path the last and the first), for each section corner k,
+  the quad `[aₖ, aₖ₊₁, bₖ₊₁, bₖ]`; then, on an open path with `caps`
+  (true when absent), the first ring reversed and the last ring as it
+  is. All of it faces out. A scale of 0 at an open end is an apex: one
+  point, triangles to it, no cap.
+- `normals`, `angle`, `smooth`, `creases` (over the generated points),
+  `colors` and `paint` (over the generated faces, in the order above),
+  `texture`, `mapping`, `mods` and `bake` apply as to the other sweeps.
+  Like them a pipe has no `points`, does not morph, and never occurs in
+  `collision`.
+- Error `pipe`: `radii` with a count that differs from the path's
+  points, or a closed pipe with fewer than three path points. Handles
+  with the wrong count are `curve`, as on any path. A pipe without a
+  `path` is `schema`.
+- A 1.7 validator refuses `op: "pipe"` at the schema stage. A loader
+  that does not know the op draws the shape's `bake` when it has one.
+
+## The compiled sidecar (1.8)
+
+A document full of cages, mods, sweeps and subdivision is small to
+write and slow to turn into triangles. A build may do that once and
+keep the result beside the file: for `helm.fart`, the **sidecar** is
+`helm.fart.glb`, a binary glTF 2.0 holding every part's shapes as the
+triangles a reader would have generated.
+
+- The sidecar is **derived**. The `.fart` is the source of truth and
+  the only thing an editor opens or writes; tools never edit a sidecar,
+  only replace or remove it. It is a build artifact: keep `*.fart.glb`
+  out of version control and make it in the build (`fart build art/`).
+- A reader **may** use a sidecar in place of generating, and only when
+  it is its source's: `asset.extras.fart.of` equals the hash of the
+  `.fart` file's bytes. When it does not, or there is no sidecar, the
+  reader generates from the `.fart` as if the sidecar were not there.
+  The sidecar holds geometry, the rest pose and clips; palettes,
+  states, targets, collision, textures and `meta` are still read from
+  the `.fart`.
+- **The hash** is FNV-1a, 64 bits, over the source file's bytes exactly
+  as they are on disk (offset basis `cbf29ce484222325`, prime
+  `100000001b3`), written as sixteen lowercase hex digits. The hash of
+  no bytes is `cbf29ce484222325`; of the one byte `a`,
+  `af63dc4c8601ec8c`. Any change to the file, a space included, makes
+  another hash.
+- Only a 3D document has a sidecar. A 2D document, a palette file and
+  a scene have none.
+
+The layout, which a reader may rely on:
+
+- `asset.extras.fart` is `{"format": "1.8", "generator": "...", "of":
+  "<hash>"}`: the format this sidecar was generated to, the tool that
+  made it, the source's hash. `asset.generator` is `fastart`.
+- **Nodes.** One node per part, in the document's order, so node i is
+  part i; `name` is the part's name; a part with a `parent` is among
+  its parent's `children`, and the scene's `nodes` are the parts with
+  none. glTF is y-up: every position and direction in an accessor or a
+  node's `translation` is the document's with y and z negated, `(x,
+  −y, −z)`. A node's `translation` is its pivot less its parent's
+  pivot, so a mesh's positions are **relative to its part's pivot**: a
+  document-space rest point is `pivot + (x, −y, −z)`. A node's `extras`
+  holds `pivot`, the part's pivot, and `anchors`, the part's anchors
+  (through `like`) as `{name, at, dir?}`: these three in the
+  document's own frame and the part's rest space, the file's numbers
+  untouched.
+- **Meshes.** One mesh per part that draws anything, named for the
+  part; a part drawn `like` another has its source's mesh on its node.
+  A mesh has one **primitive per shape and token**: for each shape in
+  order, its triangles grouped by the token they paint, the groups in
+  the order the shape's triangles first use them. A primitive's
+  `extras` is `{"shape": i, "token": "name"}` and, on a textured
+  shape, `"texture": "name"`: `shape` indexes the part's `shapes`,
+  `token` is the palette token to resolve at run time, as it would be
+  from `color`, `colors` and `paint`.
+- **Accessors**, all 32-bit floats, unindexed, three vertices per
+  triangle (`mode` 4), triangles in the order generation makes them:
+  - `POSITION` (VEC3): pivot-relative, y-up, as above. Everything is
+    done: a sweep generated, mods applied, `smooth` subdivided.
+  - `NORMAL` (VEC3): unit, y-up. The face's normal for a flat shape;
+    for one with smooth normals, the corner's, with `angle` and sharp
+    creases already respected.
+  - `_SHADE` (SCALAR): the shape's `shade` (1 when absent) times the
+    point's entry of `shades` (1 when absent). The colour at a vertex
+    is the resolved token's r, g, b times this.
+  - `COLOR_0` (VEC4): that product for the palette the builder had, so
+    the file shows in any glTF viewer. A reader that resolves tokens
+    ignores it.
+  - `TEXCOORD_0` (VEC2), on a textured shape only: pattern coordinates
+    over the texture's `cell`, so 0…1 is one tile; multiply by the cell
+    to have 1.5's pattern coordinates back. No image is embedded: a
+    texture is a drawing, named in `extras.texture`.
+- **Morphs.** A mesh whose part morphs has one morph target per pose
+  that reshapes it; `mesh.extras.targetNames` names each by its source,
+  a state's name or `clip#key` for an inline key, and every primitive's
+  `targets` holds `POSITION` deltas in the primitive's own vertex
+  order (zero for a shape the pose leaves alone). Since mods and
+  subdivision keep their layout under a morph, a pose's surface is the
+  base plus its target, and between two keys the weighted sum.
+- **Animations.** One per clip, by name, sampled as `fart gltf` samples
+  it (24 frames a second unless asked): `translation`, `rotation` and
+  `scale` per node, targets reached by the solver, and `weights` for a
+  part that morphs. A reader holding the `.fart` may play the clip
+  from the document instead and take only the meshes from here.
+
+`fart build <file or directory>…` writes the sidecar of every 3D
+document it is given or finds, leaves one whose `of` already matches
+(`--force` rebuilds; so does a sidecar some other generator made), and
+with `--check` writes nothing and exits 1 when any is missing or stale;
+`--clean` removes them. `fart gltf` is
+unchanged: one primitive per shape with colours resolved, for engines
+that want a model and not a cache.
 
 ## Color at runtime
 
@@ -737,6 +1042,10 @@ the same from any tool:
 | `morph`     | a morph on a `like` part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6) |
 | `curve`     | a path's `in`/`out` with a count that differs from its points, an open path without `w`, a closed one with fewer than three points (1.7) |
 | `crease`    | a crease outside 0–1, on a point the mesh lacks, or on a pair that is not an edge (1.7) |
+| `paint`     | `paint` with a count that differs from the faces, an index past the last of `colors`, or `paint` without `colors` (1.8) |
+| `shades`    | `shades` with a count that differs from the points, or on a sweep (1.8) |
+| `mod`       | a modifier whose `op` this version does not have (1.8)          |
+| `pipe`      | a pipe's `radii` with a count that differs from its path's points, or a closed pipe with fewer than three path points (1.8) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -787,6 +1096,15 @@ the corpus only requires it to load every valid file and refuse those two.
   `sweep` kind (errors `curve`, `crease`). A file without them is a 1.6
   file; a 1.6 reader skips paths and sweeps (unknown kinds) and draws a
   smooth mesh's cage flat.
+- 1.8 added `colors` and `paint` on meshes and sweeps, `shades` on
+  meshes, `mods` (`mirror`, `solidify`, `crease`) on both, `paint` and
+  `shades` in a mesh bake with `of` covering the mods, the sweep op
+  `pipe` with `path`, `radius`, `radii`, `caps` and `closed`, and the
+  compiled sidecar `name.fart.glb` (errors `paint`, `shades`, `mod`,
+  `pipe`). A file without them is a 1.7 file; a 1.7 reader draws a
+  painted shape in its one colour and a shape with mods as its cage,
+  ignores `shades`, and refuses a pipe at the schema stage (a lenient
+  loader draws nothing for it, or its bake).
 
 ## Reserved for later
 

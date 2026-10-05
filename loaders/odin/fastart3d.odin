@@ -7,6 +7,15 @@ package fastart
 // load_bytes_3d loads them. Rendering is the game's: for each part in a
 // pose, world_xf_3d, then the mesh's tris (index triples into points)
 // in color_of_3d(token), times the shape's shade.
+//
+// 1.8: a mesh or a sweep may paint its faces in several tokens (`colors`,
+// `paint`), darken point by point (`shades`), carry modifiers (`mods`:
+// mirror, solidify, crease) and be a `pipe`. None of it changes the
+// calls: flatten_part still gives one Tri_Mesh per shape, now with
+// `tokens` (one per triangle, when the shape is painted) and `shades`
+// (one per vertex, when it is shaded) beside the one `color` and `shade`.
+// gen.odin makes the meshes (as_mesh); sidecar.odin reads them ready-made
+// from a compiled sidecar (`name.fart.glb`) when a build left a fresh one.
 
 import "core:encoding/json"
 import "core:math"
@@ -43,6 +52,16 @@ Shape3 :: struct {
 	segments: int, // 1.7, sweep (lathe): steps around the axis, 12 when 0
 	from:     f32, // 1.7, sweep (extrude)
 	to:       f32,
+	colors:   [dynamic]string, // 1.8: further tokens the faces may wear
+	paint:    [dynamic]int, // 1.8: one per face (a sweep's: of the mesh it generates): 0 is `color`, n is colors[n - 1]
+	shades:   [dynamic]f32, // 1.8, mesh: one per point, multiplying `shade` there
+	mods:     [dynamic]Mod, // 1.8: applied to the cage in order, after a morph and before `smooth`
+	path:     Path3, // 1.8, sweep (pipe): the spine
+	radius:   Maybe(f32), // 1.8, pipe: the section's scale; 1 when absent
+	radii:    [dynamic]f32, // 1.8, pipe: one factor per path point, linear between
+	caps:     Maybe(bool), // 1.8, pipe: close the ends of an open pipe; true when absent
+	closed:   bool, // 1.8, pipe: the path joins its last point to its first
+	rest:     []V3 `json:"-"`, // 1.8: under a morph, the rest cage the mods decide on (flatten_part_posed sets it)
 }
 
 // 1.7: a subdivided (or generated) surface a tool baked; `of` hashes the cage it came from.
@@ -51,6 +70,10 @@ Mesh_Bake :: struct {
 	faces:  [dynamic][dynamic]u16,
 	tris:   [dynamic]u16,
 	of:     string,
+	uvs:    [dynamic][dynamic]V2, // the cage's explicit pattern coordinates on the surface: one list per face of the bake
+	uv_of:  string `json:"uvOf"`, // a hash of the cage's own
+	paint:  [dynamic]int, // 1.8: one per face of the bake; a reader drawing the bake uses these, never the cage's
+	shades: [dynamic]f32, // 1.8: one per point of the bake
 }
 
 // 1.7: a sweep's profile, a path body: [radius, along] for a lathe, an outline for an extrude.
@@ -322,6 +345,14 @@ destroy_3d :: proc(doc: ^Doc3) {
 			for &f in s.faces do delete(f)
 			delete(s.faces)
 			delete(s.tris)
+			delete(s.colors)
+			delete(s.paint)
+			delete(s.shades)
+			delete(s.mods)
+			delete(s.radii)
+			delete(s.path.points)
+			delete(s.path.in_)
+			delete(s.path.out)
 		}
 		delete(shapes^)
 	}
@@ -701,6 +732,19 @@ Tri_Mesh :: struct {
 	normals:   [dynamic]V3, // the face's, per vertex
 	texture:   string, // 1.5: "" for none
 	uvs:       [dynamic]V2, // 1.5: pattern coordinates per vertex, in the map drawings' units (divide by the cell for 0..1)
+	tokens:    [dynamic]string, // 1.8: the token each triangle paints, one per triangle, when the shape is painted; empty, every triangle is `color`
+	shades:    [dynamic]f32, // 1.8: the shade at each vertex, when the shape has `shades` (or came from a sidecar); it multiplies `shade`
+}
+
+// The token triangle `t` of a flattened shape paints: its own under paint (1.8), else the shape's.
+tri_token :: proc(tm: ^Tri_Mesh, t: int) -> string {
+	return t >= 0 && t < len(tm.tokens) ? tm.tokens[t] : tm.color
+}
+
+// The shade at vertex `v` of a flattened shape: the shape's `shade` times the point's own (1.8).
+vertex_shade :: proc(tm: ^Tri_Mesh, v: int) -> f32 {
+	s := tm.shade == 0 ? f32(1) : tm.shade
+	return v >= 0 && v < len(tm.shades) ? s * tm.shades[v] : s
 }
 
 // One face's triangles by ear clipping in the face's own plane, as index triples.
@@ -762,52 +806,56 @@ flatten_shape :: proc(sh: ^Shape3, out: ^Tri_Mesh, rings := 7, segments := 12, s
 	out.texture = sh.texture
 	scale := sh.mapping.scale
 	switch sh.kind {
-	case "sweep":
-		// 1.7: the profile swept into a cage, then on as a mesh (smoothing included)
-		cage := sweep_mesh(sh, context.temp_allocator)
-		flatten_shape(&cage, out, rings, segments, sides)
-		return
-	case "mesh":
-		if sh.smooth > 0 {
-			// 1.7: the subdivided surface, from the bake when a tool wrote one, else subdivided now
-			surf := surface_of(sh, context.temp_allocator)
-			if raw_data(surf.points[:]) != raw_data(sh.points[:]) {
-				flatten_shape(&surf, out, rings, segments, sides)
-				return
-			}
-		}
-		defer if smooth_normals(sh) do smooth_tri_normals(sh, out)
-		// explicit uvs (1.5) need the face each triangle came from: triangulate per face here
-		if sh.texture != "" && len(sh.mapping.uvs) == len(sh.faces) {
-			for f, fi in sh.faces {
-				tris := make([dynamic]u16, context.temp_allocator)
-				triangulate_face(sh.points[:], f[:], &tris)
-				uv_of :: proc(f: [dynamic]u16, uvs: [dynamic]V2, idx: u16) -> V2 {
-					for k, ci in f do if k == idx && ci < len(uvs) do return uvs[ci]
-					return {}
-				}
-				for i := 0; i + 2 < len(tris); i += 3 {
-					a, b, c := sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]]
-					nn := linalg.normalize0(linalg.cross(b - a, c - a))
-					append(&out.positions, a, b, c)
-					append(&out.normals, nn, nn, nn)
-					append(&out.uvs, uv_of(f, sh.mapping.uvs[fi], tris[i]), uv_of(f, sh.mapping.uvs[fi], tris[i + 1]), uv_of(f, sh.mapping.uvs[fi], tris[i + 2]))
-				}
-			}
+	case "sweep", "mesh":
+		if generated(sh) {
+			// 1.7, 1.8: the cage generated, its mods applied, subdivided (or the bake a tool wrote), then on as a plain mesh
+			m := as_mesh(sh, context.temp_allocator)
+			if !generated(&m) do flatten_shape(&m, out, rings, segments, sides)
 			return
 		}
+		for f in sh.faces do for i in f do if int(i) >= len(sh.points) do return // a face that names no point: nothing to draw
+		// paint (1.8): a token per triangle, from its face; a paint the reader cannot use leaves the shape in `color`
+		painted := false
+		if paint_fits(sh.paint[:], len(sh.faces), len(sh.colors)) do for p in sh.paint do if p > 0 do painted = true
+		shaded := len(sh.shades) == len(sh.points) && len(sh.points) > 0
+		// explicit uvs (1.5) and paint need the face each triangle came from: triangulate per face then
+		explicit := sh.texture != "" && len(sh.mapping.uvs) == len(sh.faces)
 		tris := sh.tris[:]
-		ok := len(tris) % 3 == 0 && len(tris) > 0
+		ok := len(tris) % 3 == 0 && len(tris) > 0 && !painted && !explicit
 		for i in tris do if int(i) >= len(sh.points) do ok = false
-		fresh: [dynamic]u16
+		face_of: [dynamic]int
 		if !ok {
-			fresh = make([dynamic]u16, context.temp_allocator)
-			for f in sh.faces do triangulate_face(sh.points[:], f[:], &fresh)
+			fresh := make([dynamic]u16, context.temp_allocator)
+			face_of = make([dynamic]int, context.temp_allocator)
+			for f, fi in sh.faces {
+				triangulate_face(sh.points[:], f[:], &fresh)
+				for len(face_of) * 3 < len(fresh) do append(&face_of, fi)
+			}
 			tris = fresh[:]
 		}
-		for i := 0; i + 2 < len(tris); i += 3 {
-			push_tri(out, sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]], {}, false, scale)
+		uv_of :: proc(f: [dynamic]u16, uvs: [dynamic]V2, idx: u16) -> V2 {
+			for k, ci in f do if k == idx && ci < len(uvs) do return uvs[ci]
+			return {}
 		}
+		for i := 0; i + 2 < len(tris); i += 3 {
+			a, b, c := sh.points[tris[i]], sh.points[tris[i + 1]], sh.points[tris[i + 2]]
+			nn := linalg.normalize0(linalg.cross(b - a, c - a))
+			append(&out.positions, a, b, c)
+			append(&out.normals, nn, nn, nn)
+			if explicit {
+				fi := face_of[i / 3]
+				f, uvs := sh.faces[fi], sh.mapping.uvs[fi]
+				append(&out.uvs, uv_of(f, uvs, tris[i]), uv_of(f, uvs, tris[i + 1]), uv_of(f, uvs, tris[i + 2]))
+			} else if out.texture != "" {
+				append(&out.uvs, box_uv(a, nn, scale), box_uv(b, nn, scale), box_uv(c, nn, scale))
+			}
+			if painted {
+				p := sh.paint[face_of[i / 3]]
+				append(&out.tokens, p > 0 ? sh.colors[p - 1] : sh.color)
+			}
+			if shaded do append(&out.shades, sh.shades[tris[i]], sh.shades[tris[i + 1]], sh.shades[tris[i + 2]])
+		}
+		if smooth_normals(sh) do smooth_tri_normals(sh, out)
 	case "ball":
 		pt :: proc(c: V3, r: f32, ph, th: f32) -> V3 {
 			return c + V3{math.sin(ph) * math.cos(th), -math.cos(ph), math.sin(ph) * math.sin(th)} * r
@@ -865,20 +913,32 @@ flatten_part :: proc(doc: ^Doc3, part: ^Part3, out: ^[dynamic]Tri_Mesh) {
 // with the morph's points (faces, tris and mapping are the base's). Call
 // it each frame for the parts morphs_3d says yes to, and re-upload.
 flatten_part_posed :: proc(doc: ^Doc3, part: ^Part3, sp: ^State_Part3, out: ^[dynamic]Tri_Mesh) {
-	for &sh, si in shapes_of_3d(doc, part) {
+	for _, si in shapes_of_3d(doc, part) {
 		m: Tri_Mesh
-		pts := shape_points_3d(doc, part, sp, si)
-		if sh.kind == "mesh" && raw_data(pts) != raw_data(sh.points[:]) {
-			posed := sh
-			posed.points = make([dynamic]V3, len(pts), context.temp_allocator)
-			copy(posed.points[:], pts)
-			posed.bake = {} // a bake is the base cage's surface: a morphed cage subdivides afresh
-			flatten_shape(&posed, &m)
-		} else {
-			flatten_shape(&sh, &m)
-		}
+		posed := posed_shape_3d(doc, part, sp, si, context.temp_allocator)
+		flatten_shape(&posed, &m)
 		append(out, m)
 	}
+}
+
+// One shape of a part as a pose entry has it (1.6): a mesh the entry
+// morphs comes back with the morph's points (a copy), its bake dropped
+// (a bake is the rest cage's surface) and the rest cage remembered for
+// the mods (1.8: what a mod decides, it decides at rest). Any other
+// shape, or a nil entry, is the shape itself. Hand the result to as_mesh
+// or flatten_shape.
+posed_shape_3d :: proc(doc: ^Doc3, part: ^Part3, sp: ^State_Part3, shape: int, allocator := context.allocator) -> Shape3 {
+	shapes := shapes_of_3d(doc, part)
+	if shape < 0 || shape >= len(shapes) do return {}
+	sh := &shapes[shape]
+	pts := shape_points_3d(doc, part, sp, shape)
+	if sh.kind != "mesh" || raw_data(pts) == raw_data(sh.points[:]) do return sh^
+	posed := sh^
+	posed.points = make([dynamic]V3, len(pts), allocator)
+	copy(posed.points[:], pts)
+	posed.rest = sh.points[:]
+	posed.bake = {}
+	return posed
 }
 
 destroy_tri_meshes :: proc(ms: ^[dynamic]Tri_Mesh) {
@@ -886,6 +946,8 @@ destroy_tri_meshes :: proc(ms: ^[dynamic]Tri_Mesh) {
 		delete(m.positions)
 		delete(m.normals)
 		delete(m.uvs)
+		delete(m.tokens)
+		delete(m.shades)
 	}
 	delete(ms^)
 }

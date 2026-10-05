@@ -7,11 +7,12 @@
 // Morphs (1.6) are morph targets: one per pose that reshapes the part,
 // its weights animated so a sampled frame lands on the lerped points.
 
-import type { Doc3, Token, Vec3 } from "./types.ts";
+import { FORMAT_MINOR, FORMAT_VERSION, type Doc3, type Token, type Vec3 } from "./types.ts";
 import { colorOf, shadeColor } from "./palette.ts";
 import { asMesh, flattenPart, meshTris, yUp } from "./solids.ts";
-import { clipSpan3, keyPoses3, pivotOf3, quatFromEuler, sampleClip3, sampleTargets3, shapesOf3, clipDuration3, type Quat } from "./space3.ts";
+import { anchorsOf3, clipSpan3, keyPoses3, pivotOf3, quatFromEuler, sampleClip3, sampleTargets3, shapesOf3, clipDuration3, type Quat } from "./space3.ts";
 import { solveTargets3 } from "./ik3.ts";
+import { posedMesh } from "./mods.ts";
 
 export interface GltfOptions {
 	/** the resolved palette; the document's own when absent */
@@ -20,6 +21,65 @@ export interface GltfOptions {
 	fps?: number;
 	/** 1.5: a PNG of each texture's colour map, by texture name; textured primitives sample it with wrapping */
 	images?: Record<string, Uint8Array>;
+	/**
+	 * 1.8: write the compiled sidecar's layout (`name.fart.glb`): a
+	 * primitive per shape and token with the token's name in its extras, a
+	 * `_SHADE` per vertex, each node's pivot and anchors in its extras, and
+	 * `of` (the source's hash, `sourceHash`) in the asset's.
+	 */
+	sidecar?: { of: string };
+}
+
+/** What a sidecar says made it; `fart build` rebuilds one made by another. */
+export const SIDECAR_GENERATOR = "@fastart/core 1.8";
+
+/** A document's sidecar: its own path with `.glb` after it. */
+export function sidecarPath(file: string): string {
+	return `${file}.glb`;
+}
+
+/** The hash a sidecar keeps of its source: FNV-1a, 64 bits, over the file's bytes as they are on disk; sixteen hex digits. */
+export function sourceHash(bytes: Uint8Array): string {
+	let h = 0xcbf29ce484222325n;
+	for (let i = 0; i < bytes.length; i++) {
+		h ^= BigInt(bytes[i]);
+		h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+	}
+	return h.toString(16).padStart(16, "0");
+}
+
+/** A binary glTF's JSON chunk, or null when the bytes are not one. */
+export function glbJson(glb: Uint8Array): Record<string, unknown> | null {
+	if (glb.length < 20) return null;
+	const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+	if (dv.getUint32(0, true) !== 0x46546c67 || dv.getUint32(16, true) !== 0x4e4f534a) return null;
+	const len = dv.getUint32(12, true);
+	if (20 + len > glb.length) return null;
+	try {
+		const json: unknown = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + len)));
+		return json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** What a sidecar says of itself (`asset.extras.fart`), or null when the bytes are not a sidecar. */
+export function sidecarInfo(glb: Uint8Array): { format: string; generator: string; of: string } | null {
+	const asset = glbJson(glb)?.asset as { extras?: { fart?: { format?: unknown; generator?: unknown; of?: unknown } } } | undefined;
+	const f = asset?.extras?.fart;
+	if (!f || typeof f.of !== "string") return null;
+	return { format: String(f.format ?? ""), generator: String(f.generator ?? ""), of: f.of };
+}
+
+/** Is this sidecar the one this library would write for these source bytes? */
+export function sidecarFresh(glb: Uint8Array | null, source: Uint8Array): boolean {
+	const info = glb ? sidecarInfo(glb) : null;
+	return !!info && info.of === sourceHash(source) && info.generator === SIDECAR_GENERATOR;
+}
+
+/** The sidecar for a 3D document read from `source` (its bytes on disk): everything generated, tokens kept by name. */
+export function buildSidecar(doc: Doc3, source: Uint8Array, opts: Omit<GltfOptions, "sidecar"> = {}): Uint8Array {
+	return toGlb(doc, { ...opts, sidecar: { of: sourceHash(source) } });
 }
 
 const FLOAT = 5126;
@@ -113,54 +173,81 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		const targets = targetsOf.get(src) ?? [];
 		flattenPart(doc, srcPart).forEach((tm, si) => {
 			if (!tm.count) return;
-			const pos = new Float32Array(tm.positions.length);
-			const nor = new Float32Array(tm.normals.length);
-			for (let i = 0; i < tm.positions.length; i += 3) {
-				const p = yUp([tm.positions[i] - pivot[0], tm.positions[i + 1] - pivot[1], tm.positions[i + 2] - pivot[2]]);
-				const n = yUp([tm.normals[i], tm.normals[i + 1], tm.normals[i + 2]]);
-				pos.set(p, i);
-				nor.set(n, i);
-			}
-			const rgba = shadeColor(colorOf(tokens, tm.color ?? ""), tm.shade);
-			const col = new Float32Array((tm.positions.length / 3) * 4);
-			for (let v = 0; v < tm.positions.length / 3; v++) col.set([rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3] / 255], v * 4);
-			const attributes: Record<string, number> = { POSITION: pushAccessor(pos, "VEC3", ARRAY_BUFFER, true), NORMAL: pushAccessor(nor, "VEC3", ARRAY_BUFFER), COLOR_0: pushAccessor(col, "VEC4", ARRAY_BUFFER) };
-			let material = 0;
-			if (tm.texture && tm.uvs) {
-				// pattern coordinates in cell units become 0..1 per tile; glTF wraps them
-				const tex = (doc.textures ?? []).find((t) => t.name === tm.texture);
-				const cell = tex?.cell ?? [1, 1];
-				const uv = new Float32Array(tm.uvs.length);
-				for (let i = 0; i < tm.uvs.length; i += 2) {
-					uv[i] = tm.uvs[i] / cell[0];
-					uv[i + 1] = tm.uvs[i + 1] / cell[1];
+			// the sidecar (1.8) keeps tokens apart: a primitive per shape and token, so a reader recolours by name
+			const groups: { token?: string; tris: number[] }[] = [];
+			if (opts.sidecar) {
+				const by = new Map<string, number[]>();
+				for (let t = 0; t < tm.count; t++) {
+					const token = tm.colors?.[t] ?? tm.color ?? "";
+					const list = by.get(token);
+					if (list) list.push(t);
+					else by.set(token, [t]);
 				}
-				attributes.TEXCOORD_0 = pushAccessor(uv, "VEC2", ARRAY_BUFFER);
-				material = materialOf.get(tm.texture) ?? 0;
-			}
-			const prim: Record<string, unknown> = { attributes, material, mode: 4 };
-			if (targets.length) {
-				// one target per reshaping pose, in the mesh's vertex layout: a delta per corner, zero where the pose leaves this shape alone
-				const sh = shapes[si];
-				const mesh = sh.kind === "mesh" ? sh : null;
-				// the surface of the base cage, and of each morphed cage: subdivision keeps the layout, so corners line up
-				const base = mesh ? asMesh(mesh) : null;
-				const tris = base ? meshTris(base) : [];
-				prim.targets = targets.map((t) => {
-					const delta = new Float32Array(tm.positions.length);
-					const m = mesh ? t.morph?.find((x) => x.shape === si) : undefined;
-					if (mesh && base && m && m.points.length === mesh.points.length) {
-						const posed = asMesh({ ...mesh, points: m.points });
-						for (let v = 0; v < tris.length; v++) {
-							const b = base.points[tris[v]];
-							const q = posed.points[tris[v]];
-							delta.set(yUp([q[0] - b[0], q[1] - b[1], q[2] - b[2]]), v * 3);
-						}
+				for (const [token, tris] of by) groups.push({ token, tris });
+			} else groups.push({ tris: Array.from({ length: tm.count }, (_, t) => t) });
+			// one target per reshaping pose, in the shape's vertex layout: a delta per corner, zero where the pose leaves this shape alone
+			const sh = shapes[si];
+			const mesh = sh.kind === "mesh" ? sh : null;
+			// the surface of the base cage, and of each morphed cage: mods and subdivision keep the layout, so corners line up
+			const base = mesh && targets.length ? asMesh(mesh) : null;
+			const baseTris = base ? meshTris(base) : [];
+			const deltas = targets.map((t) => {
+				const delta = new Float32Array(tm.positions.length);
+				const m = mesh ? t.morph?.find((x) => x.shape === si) : undefined;
+				if (mesh && base && m && m.points.length === mesh.points.length) {
+					const posed = asMesh(posedMesh(mesh, m.points));
+					for (let v = 0; v < baseTris.length; v++) {
+						const b = base.points[baseTris[v]];
+						const q = posed.points[baseTris[v]];
+						delta.set(yUp([q[0] - b[0], q[1] - b[1], q[2] - b[2]]), v * 3);
 					}
-					return { POSITION: pushAccessor(delta, "VEC3", ARRAY_BUFFER, true) };
+				}
+				return delta;
+			});
+			const flat = shadeColor(colorOf(tokens, tm.color ?? ""), tm.shade);
+			const tex = tm.texture && tm.uvs ? (doc.textures ?? []).find((t) => t.name === tm.texture) : undefined;
+			const cell = tex?.cell ?? [1, 1];
+			for (const g of groups) {
+				const nv = g.tris.length * 3;
+				const pos = new Float32Array(nv * 3);
+				const nor = new Float32Array(nv * 3);
+				const col = new Float32Array(nv * 4);
+				const shade = opts.sidecar ? new Float32Array(nv) : null;
+				const uv = tm.texture && tm.uvs ? new Float32Array(nv * 2) : null;
+				const moved = deltas.map(() => new Float32Array(nv * 3));
+				g.tris.forEach((t, j) => {
+					for (let k = 0; k < 3; k++) {
+						const v = t * 3 + k;
+						const d = j * 3 + k;
+						pos.set(yUp([tm.positions[v * 3] - pivot[0], tm.positions[v * 3 + 1] - pivot[1], tm.positions[v * 3 + 2] - pivot[2]]), d * 3);
+						nor.set(yUp([tm.normals[v * 3], tm.normals[v * 3 + 1], tm.normals[v * 3 + 2]]), d * 3);
+						// vertex colours: the triangle's token (1.8 paint, else the shape's) times the shade, times the point's own shade (1.8)
+						const token = tm.colors?.[t];
+						const own = tm.shades ? tm.shades[v] : 1;
+						const rgba = token === undefined && own === 1 ? flat : shadeColor(colorOf(tokens, token ?? tm.color ?? ""), (tm.shade ?? 1) * own);
+						col.set([rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3] / 255], d * 4);
+						if (shade) shade[d] = Math.max(0, tm.shade ?? 1) * own;
+						// pattern coordinates in cell units become 0..1 per tile; glTF wraps them
+						if (uv) uv.set([tm.uvs![v * 2] / cell[0], tm.uvs![v * 2 + 1] / cell[1]], d * 2);
+						deltas.forEach((delta, ti) => moved[ti].set(delta.subarray(v * 3, v * 3 + 3), d * 3));
+					}
 				});
+				const attributes: Record<string, number> = { POSITION: pushAccessor(pos, "VEC3", ARRAY_BUFFER, true), NORMAL: pushAccessor(nor, "VEC3", ARRAY_BUFFER), COLOR_0: pushAccessor(col, "VEC4", ARRAY_BUFFER) };
+				let material = 0;
+				if (uv) {
+					attributes.TEXCOORD_0 = pushAccessor(uv, "VEC2", ARRAY_BUFFER);
+					material = materialOf.get(tm.texture!) ?? 0;
+				}
+				if (shade) attributes._SHADE = pushAccessor(shade, "SCALAR", ARRAY_BUFFER);
+				const prim: Record<string, unknown> = { attributes, material, mode: 4 };
+				if (moved.length) prim.targets = moved.map((delta) => ({ POSITION: pushAccessor(delta, "VEC3", ARRAY_BUFFER, true) }));
+				if (opts.sidecar) {
+					const extras: Record<string, unknown> = { shape: si, token: g.token ?? "" };
+					if (tm.texture) extras.texture = tm.texture;
+					prim.extras = extras;
+				}
+				primitives.push(prim);
 			}
-			primitives.push(prim);
 		});
 		if (primitives.length) {
 			const mesh: Record<string, unknown> = { name: src, primitives };
@@ -184,6 +271,11 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 		const pv = pivotOf3(p);
 		const pp = parentPivot(p);
 		const node: Record<string, unknown> = { name: p.name, translation: yUp([pv[0] - pp[0], pv[1] - pp[1], pv[2] - pp[2]]) };
+		if (opts.sidecar) {
+			// the sidecar (1.8): the pivot and the anchors as the file has them, in its own frame and the part's rest space
+			const anchors = anchorsOf3(doc, p).map((a) => ({ name: a.name, at: a.at, ...(a.dir ? { dir: a.dir } : {}) }));
+			node.extras = { pivot: pv, ...(anchors.length ? { anchors } : {}) };
+		}
 		const m = meshOf.get(p.name);
 		if (m !== undefined) node.mesh = m;
 		return node;
@@ -267,7 +359,7 @@ export function toGlb(doc: Doc3, opts: GltfOptions = {}): Uint8Array {
 	}
 
 	const gltf: Record<string, unknown> = {
-		asset: { version: "2.0", generator: "fastart" },
+		asset: { version: "2.0", generator: "fastart", ...(opts.sidecar ? { extras: { fart: { format: `${FORMAT_VERSION}.${FORMAT_MINOR}`, generator: SIDECAR_GENERATOR, of: opts.sidecar.of } } } : {}) },
 		scene: 0,
 		scenes: [{ name: doc.name ?? "fart", nodes: roots }],
 		nodes,

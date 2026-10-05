@@ -84,7 +84,12 @@ func (p *ProjectService) PickFile(root, dir, title, button string, exts []string
 		for i, e := range exts {
 			pats[i] = "*." + strings.TrimPrefix(e, ".")
 		}
-		dlg.AddFilter("Fast Art", strings.Join(pats, ";"))
+		// what the filter is called: the art's own files, or pictures (a reference image)
+		name := "Fast Art"
+		if _, img := imageTypes["."+strings.TrimPrefix(strings.ToLower(exts[0]), ".")]; img {
+			name = "Images"
+		}
+		dlg.AddFilter(name, strings.Join(pats, ";"))
 	}
 	if p.win != nil {
 		dlg.AttachToWindow(p.win)

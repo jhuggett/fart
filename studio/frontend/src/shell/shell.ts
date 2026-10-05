@@ -88,6 +88,16 @@ export interface Shell {
 	kinds(root: string): Promise<Record<string, FileInfo>>;
 	readFile(root: string, rel: string): Promise<string | null>;
 	writeFile(root: string, rel: string, text: string): Promise<void>;
+	/** an image file of the project as a URL an <img> can load (a reference image); null when it is not there or no image */
+	readImage(root: string, rel: string): Promise<string | null>;
+	/** a 3D document's compiled sidecar (name.fart.glb, a derived build artifact), by the document's path; null when it has none */
+	readSidecar(root: string, rel: string): Promise<Uint8Array | null>;
+	/** write a document's sidecar beside it */
+	writeSidecar(root: string, rel: string, glb: Uint8Array): Promise<void>;
+	/** whether sidecars would be committed: "none" outside a repository, "ignored", or "offer" */
+	sidecarIgnore(root: string): Promise<string>;
+	/** add *.fart.glb to the project's .gitignore */
+	ignoreSidecars(root: string): Promise<void>;
 	/** when a file was last written (ms since the epoch), null when it is not there */
 	stat(root: string, rel: string): Promise<number | null>;
 	caps(): Promise<Caps>;
@@ -265,8 +275,29 @@ class HttpShell implements Shell {
 		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`);
 		return r.ok ? await r.text() : null;
 	}
+	async readImage(_root: string, rel: string) {
+		const url = `api/image?path=${encodeURIComponent(rel)}`;
+		const r = await fetch(url, { method: "GET" });
+		return r.ok ? url : null;
+	}
 	async writeFile(_root: string, rel: string, text: string) {
 		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "PUT", body: text });
+		if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
+	}
+	async readSidecar(_root: string, rel: string) {
+		const r = await fetch(`api/sidecar?path=${encodeURIComponent(rel)}`);
+		return r.ok && r.status !== 204 ? new Uint8Array(await r.arrayBuffer()) : null;
+	}
+	async writeSidecar(_root: string, rel: string, glb: Uint8Array) {
+		const r = await fetch(`api/sidecar?path=${encodeURIComponent(rel)}`, { method: "PUT", body: glb as unknown as BodyInit });
+		if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
+	}
+	async sidecarIgnore() {
+		const r = await fetch("api/sidecar/ignore");
+		return r.ok ? ((await r.json()) as string) : "none";
+	}
+	async ignoreSidecars() {
+		const r = await fetch("api/sidecar/ignore", { method: "POST" });
 		if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
 	}
 	async stat(_root: string, rel: string) {

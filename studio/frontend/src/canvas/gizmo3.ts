@@ -8,7 +8,7 @@
 
 import { signal } from "@preact/signals";
 import { quatMul, quatAxis, quatFromEuler, quatToEuler, viewXf3, xf3Apply, xf3ApplyDir, xf3Invert, xf3Det, type Shape3, type StatePart3, type Vec2, type Vec3, type Xf3 } from "@fastart/core";
-import { md, parts, curPart, curClip, curState, poseOfCur, framePartOf, setPose, mutate, endGesture, selected, morphEntry, type Sel3 } from "../state/model.ts";
+import { md, parts, curPart, curClip, curState, poseOfCur, framePartOf, setPose, mutate, endGesture, selected, morphEntry, chosenPoints, symmetryOf, symmetrize, type Sel3 } from "../state/model.ts";
 import { view } from "./view.ts";
 import { canvasColors } from "../state/theme.ts";
 
@@ -79,7 +79,7 @@ interface PoseTarget {
 interface ShapeTarget {
 	kind: "shape";
 	/** every chosen shape, as it was, with the way from view space to its part's rest frame (where its points live) */
-	items: { s: Sel3; base: Shape3; toFrame: Xf3; centreRest: Vec3; morph: boolean }[];
+	items: { s: Sel3; base: Shape3; toFrame: Xf3; centreRest: Vec3; morph: boolean; only?: Set<number>; mirror?: number[] | null }[];
 	centre: Vec2;
 }
 type Target = PoseTarget | ShapeTarget;
@@ -100,7 +100,9 @@ function modelTarget(): Target | null {
 	if (chosen.length) {
 		// one centre for all of them, in view space: they turn and size about it together
 		const morphing = md.deform.value && md.curClip.value < 0;
-		const found: { s: Sel3; base: Shape3; F: Xf3; morph: boolean }[] = [];
+		const found: { s: Sel3; base: Shape3; F: Xf3; morph: boolean; only?: Set<number>; mirror?: number[] | null }[] = [];
+		// corners, edges or faces chosen on the one selected mesh: they are what moves, not the whole shape
+		const elems = chosen.length === 1 ? chosenPoints() : [];
 		let sum: Vec3 = [0, 0, 0];
 		let n = 0;
 		for (const s of chosen) {
@@ -119,15 +121,17 @@ function modelTarget(): Target | null {
 				if (posed && posed.points.length === base.points.length) base = { ...base, points: posed.points.map((p) => [...p] as Vec3) };
 			}
 			const now = pointsOf(base)!;
-			found.push({ s, base, F: fp.F, morph: morphing });
-			for (const p of now) {
+			const only = elems.length && base.kind === "mesh" ? new Set(elems) : undefined;
+			found.push({ s, base, F: fp.F, morph: morphing, only, mirror: only ? symmetryOf(s) : null });
+			now.forEach((p, i) => {
+				if (only && !only.has(i)) return;
 				sum = add(sum, xf3Apply(fp.F, p));
 				n++;
-			}
+			});
 		}
 		if (!found.length) return null;
 		const c = mul(sum, 1 / n);
-		return { kind: "shape", centre: [c[0], c[1]], items: found.map((f) => ({ s: f.s, base: f.base, morph: f.morph, toFrame: xf3Invert(f.F), centreRest: xf3Apply(xf3Invert(f.F), c) })) };
+		return { kind: "shape", centre: [c[0], c[1]], items: found.map((f) => ({ s: f.s, base: f.base, morph: f.morph, only: f.only, mirror: f.mirror, toFrame: xf3Invert(f.F), centreRest: xf3Apply(xf3Invert(f.F), c) })) };
 	}
 	if (!md.partPicked.value) return null;
 	const sp = poseOfCur();
@@ -172,11 +176,23 @@ function applyModel(t: Target, op: Op, axisView: Vec3 | null, amount: number, dV
 			};
 			const base = it.base;
 			const sh = doc.parts![it.s.part].shapes![it.s.shape];
+			// only the chosen corners move, when some are; under symmetry their mirrors follow
+			const each = (p: Vec3, i: number): Vec3 => (it.only && !it.only.has(i) ? p : map(p));
+			const even = (pts: Vec3[]) => {
+				if (it.only && it.mirror) symmetrize(pts, it.only, it.mirror);
+			};
 			if (it.morph) {
 				// into this state's morph, never the base mesh
 				const pts = base.kind === "mesh" ? morphEntry(doc, it.s.part, it.s.shape) : null;
-				if (pts && base.kind === "mesh") base.points.forEach((p, i) => (pts[i] = map(p)));
-			} else if (sh.kind === "mesh" && base.kind === "mesh") sh.points = base.points.map(map);
+				if (pts && base.kind === "mesh") {
+					base.points.forEach((p, i) => (pts[i] = each(p, i)));
+					even(pts);
+				}
+			} else if (sh.kind === "mesh" && base.kind === "mesh") {
+				sh.points = base.points.map(each);
+				even(sh.points);
+				delete sh.tris;
+			}
 			else if (sh.kind === "ball" && base.kind === "ball") {
 				sh.at = map(base.at);
 				if (op === "size") sh.r = Math.max(0.001, Math.round(base.r * amount * 1000) / 1000);

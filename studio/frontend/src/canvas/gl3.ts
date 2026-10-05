@@ -10,8 +10,9 @@
 // scene is one buffer drawn two thousand times. The light is worked out
 // in the shader, from the same rule the projector uses.
 
-import { asMesh, cageOf, cornerNormals, smoothNormals, colorOf, triangulateFace, meshUVs, shapesOf3Posed, worldTransforms3, v3cross, v3dot, v3norm, v3sub, xf3Det, xf3Mul, type Doc3, type Shape3, type StatePart3, type Token, type Vec2, type Vec3, type Xf3 } from "@fastart/core";
+import { asMesh, builtOf, cornerNormals, smoothNormals, colorOf, triangulateFace, meshUVs, shapesOf3Posed, worldTransforms3, v3cross, v3dot, v3norm, v3sub, xf3Det, xf3Mul, type Doc3, type Shape3, type StatePart3, type Token, type Vec2, type Vec3, type Xf3 } from "@fastart/core";
 import type { TexturePattern } from "../state/textures.ts";
+import type { Compiled, CompiledPart } from "../state/sidecarRead.ts";
 
 // p, n: position and normal in the part's rest space. c: the slot's colour. t: pattern coordinates.
 // k: (the shape's own shade, 1 for a smooth corner normal). m0..m2: the part's map into the world (rows);
@@ -19,7 +20,7 @@ import type { TexturePattern } from "../state/textures.ts";
 const VS = `attribute vec3 p; attribute vec3 n; attribute vec4 c; attribute vec2 t; attribute vec2 k;
 uniform vec4 m0; uniform vec4 m1; uniform vec4 m2; uniform vec3 v0; uniform vec3 v1; uniform vec3 v2;
 uniform float f; uniform vec3 L; uniform float a; uniform vec3 u; uniform vec2 h;
-varying vec4 vc; varying vec2 vt; varying float vl;
+varying vec4 vc; varying vec2 vt; varying float vl; varying vec3 vn; varying vec3 vb;
 void main() {
 	vec4 q = vec4(p, 1.0);
 	vec3 w = vec3(dot(m0, q), dot(m1, q), dot(m2, q));
@@ -28,15 +29,38 @@ void main() {
 	vec3 ne = normalize(vec3(dot(v0, nw), dot(v1, nw), dot(v2, nw))) * (k.y > 0.5 ? f : 1.0);
 	float light = (a + (1.0 - a) * max(0.0, dot(ne, L))) * k.x;
 	gl_Position = vec4((e.x - u.x) * u.z / h.x, -(e.y - u.y) * u.z / h.y, e.z / 4000.0, 1.0);
-	vc = vec4(min(c.rgb * light, vec3(1.0)), c.a); vt = t; vl = light;
+	vc = vec4(min(c.rgb * light, vec3(1.0)), c.a); vt = t; vl = light; vn = ne; vb = c.rgb * k.x;
 }`;
-// a textured triangle: the light on the token (vc), the map's colour laid over where it paints (paint) or multiplying it (mask)
-const FS = `precision mediump float; varying vec4 vc; varying vec2 vt; varying float vl; uniform sampler2D s; uniform float tex; uniform float mask;
+// a textured triangle: the light on the token (vc), the map's colour laid over where it paints (paint) or multiplying it (mask).
+// clay: the light is worked out per pixel from the normal instead (vn, in view space; vb is the slot's own colour): a warm key
+// with a soft terminator, a cool fill from the other side, a little rim. Rounded forms read the way a cel or clay shaded game
+// shows them. dim: a mannequin's layer, washed toward the canvas (bgc).
+const FS = `precision mediump float; varying vec4 vc; varying vec2 vt; varying float vl; varying vec3 vn; varying vec3 vb;
+uniform sampler2D s; uniform float tex; uniform float mask; uniform float clay; uniform vec3 K; uniform float dim; uniform vec3 bgc;
+vec3 soft(vec3 base) {
+	vec3 n = normalize(vn);
+	float key = smoothstep(-0.28, 0.72, dot(n, K));
+	float fill = max(0.0, dot(n, normalize(vec3(-K.x, -0.35 * K.y, K.z))));
+	float rim = pow(1.0 - clamp(-n.z, 0.0, 1.0), 3.0);
+	vec3 shade = base * vec3(0.55, 0.56, 0.67) + base * vec3(0.05, 0.07, 0.11) * fill;
+	vec3 light = base * vec3(1.08, 1.03, 0.95);
+	return min(mix(shade, light, key) + vec3(1.0, 0.96, 0.88) * rim * (0.05 + 0.13 * key), vec3(1.0));
+}
 void main() {
-	if (tex < 0.5) { gl_FragColor = vc; return; }
-	vec4 m = texture2D(s, vt);
-	if (mask > 0.5) { float v = dot(m.rgb, vec3(0.2126, 0.7152, 0.0722)) * m.a; gl_FragColor = vec4(vc.rgb * v, vc.a); return; }
-	gl_FragColor = vec4(mix(vc.rgb, m.rgb * vl, m.a), vc.a);
+	vec4 o = vc;
+	if (clay > 0.5) {
+		vec3 base = vb;
+		if (tex > 0.5) {
+			vec4 m = texture2D(s, vt);
+			base = mask > 0.5 ? vb * dot(m.rgb, vec3(0.2126, 0.7152, 0.0722)) * m.a : mix(vb, m.rgb, m.a);
+		}
+		o = vec4(soft(base), vc.a);
+	} else if (tex > 0.5) {
+		vec4 m = texture2D(s, vt);
+		if (mask > 0.5) { float v = dot(m.rgb, vec3(0.2126, 0.7152, 0.0722)) * m.a; o = vec4(vc.rgb * v, vc.a); }
+		else o = vec4(mix(vc.rgb, m.rgb * vl, m.a), vc.a);
+	}
+	gl_FragColor = vec4(mix(o.rgb, bgc, dim), o.a);
 }`;
 
 /** floats per vertex: position 3, normal 3, colour 4, pattern 2, (shade, smooth) 2 */
@@ -46,7 +70,7 @@ interface Gl {
 	gl: WebGLRenderingContext;
 	prog: WebGLProgram;
 	attr: Record<"p" | "n" | "c" | "t" | "k", number>;
-	uni: Record<"m0" | "m1" | "m2" | "v0" | "v1" | "v2" | "f" | "L" | "a" | "u" | "h" | "s" | "tex" | "mask", WebGLUniformLocation>;
+	uni: Record<"m0" | "m1" | "m2" | "v0" | "v1" | "v2" | "f" | "L" | "a" | "u" | "h" | "s" | "tex" | "mask" | "clay" | "K" | "dim" | "bgc", WebGLUniformLocation>;
 	/** uploaded colour maps, by texture name, with the pattern rev they came from */
 	textures: Map<string, { tex: WebGLTexture; rev: number }>;
 	/** the vertex buffers on this context, and the frame each was last drawn in */
@@ -79,7 +103,7 @@ function setup(canvas: HTMLCanvasElement): Gl | null {
 		gl,
 		prog,
 		attr: { p: a("p"), n: a("n"), c: a("c"), t: a("t"), k: a("k") },
-		uni: { m0: u("m0"), m1: u("m1"), m2: u("m2"), v0: u("v0"), v1: u("v1"), v2: u("v2"), f: u("f"), L: u("L"), a: u("a"), u: u("u"), h: u("h"), s: u("s"), tex: u("tex"), mask: u("mask") },
+		uni: { m0: u("m0"), m1: u("m1"), m2: u("m2"), v0: u("v0"), v1: u("v1"), v2: u("v2"), f: u("f"), L: u("L"), a: u("a"), u: u("u"), h: u("h"), s: u("s"), tex: u("tex"), mask: u("mask"), clay: u("clay"), K: u("K"), dim: u("dim"), bgc: u("bgc") },
 		textures: new Map(),
 		buffers: new Map(),
 		frame: 0,
@@ -157,6 +181,8 @@ const stampOf = (solids: readonly Shape3[], tokens: readonly Token[], patterns?:
 	for (const sh of solids) {
 		const c = colorOf(tokens, sh.color ?? "");
 		s += `${c[0]},${c[1]},${c[2]},${c[3]}`;
+		// 1.8: the further tokens its faces are painted with
+		if (sh.kind === "mesh" || sh.kind === "sweep") for (const name of sh.colors ?? []) s += `/${colorOf(tokens, name).join(",")}`;
 		const p = sh.texture ? patterns?.get(sh.texture) : undefined;
 		s += p?.canvas ? `@${sh.texture}:${p.rev};` : ";";
 	}
@@ -171,6 +197,11 @@ export function partMesh(solids: readonly Shape3[], tokens: readonly Token[], pa
 	const have = byTokens.get(tokens);
 	if (have && have.stamp === stamp) return have;
 	const mesh = build(solids, tokens, patterns, stamp);
+	// (an edited document hands over a new token list with every change: the meshes built for the old ones go)
+	if (byTokens.size >= 16) for (const k of byTokens.keys()) {
+		byTokens.delete(k);
+		if (byTokens.size < 8) break;
+	}
 	byTokens.set(tokens, mesh);
 	return mesh;
 }
@@ -194,7 +225,7 @@ function build(solids: readonly Shape3[], tokens: readonly Token[], patterns: Ma
 		const v = list.v;
 		const ZERO: Vec2 = [0, 0];
 		/** One triangle: flat (its own normal, turned away from `out` when given) or with a normal per corner. */
-		const tri = (a: Vec3, b: Vec3, c: Vec3, out?: Vec3, vn?: [Vec3, Vec3, Vec3], uv?: [Vec2, Vec2, Vec2]) => {
+		const tri = (a: Vec3, b: Vec3, c: Vec3, out?: Vec3, vn?: [Vec3, Vec3, Vec3], uv?: [Vec2, Vec2, Vec2], paint: number[] = col, own?: [number, number, number]) => {
 			let n = v3cross(v3sub(b, a), v3sub(c, a));
 			if (out) {
 				const mid: Vec3 = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
@@ -205,7 +236,7 @@ function build(solids: readonly Shape3[], tokens: readonly Token[], patterns: Ma
 				const p = corners[i];
 				const nn = vn ? vn[i] : n;
 				const t = uv ? uv[i] : ZERO;
-				v.push(p[0], p[1], p[2], nn[0], nn[1], nn[2], col[0], col[1], col[2], col[3], t[0], t[1], shade, vn ? 1 : 0);
+				v.push(p[0], p[1], p[2], nn[0], nn[1], nn[2], paint[0], paint[1], paint[2], paint[3], t[0], t[1], own ? shade * own[i] : shade, vn ? 1 : 0);
 				if (p[0] < lo[0]) lo[0] = p[0];
 				if (p[1] < lo[1]) lo[1] = p[1];
 				if (p[2] < lo[2]) lo[2] = p[2];
@@ -215,12 +246,17 @@ function build(solids: readonly Shape3[], tokens: readonly Token[], patterns: Ma
 			}
 		};
 		if (sh.kind === "mesh" || sh.kind === "sweep") {
-			// the surface a mesh or a sweep draws (1.7): subdivided when smooth, generated for a sweep
+			// the surface a mesh or a sweep draws: generated for a sweep, its mods applied (1.8), subdivided when smooth (1.7)
 			const m = asMesh(sh);
-			const cage = cageOf(sh);
+			// what `smooth` refined: the cage with its mods, whose creases and angle are the hard edges
+			const cage = builtOf(sh);
 			const pts = m.points;
 			const cn = smoothNormals(cage) ? cornerNormals(m.points, m.faces, { angle: cage.angle, creases: (cage.smooth ?? 0) > 0 ? undefined : cage.creases }) : null;
-			if (texture || cn) {
+			// paint (1.8): a face wears its own token; shades: a number per point, multiplying the shape's
+			const painted = !!m.paint && m.paint.length === m.faces.length && !!m.colors?.length && m.paint.some((p) => p > 0);
+			const inks = painted ? [col, ...m.colors!.map((name) => colorOf(tokens, name).map((x) => x / 255))] : null;
+			const own = m.shades && m.shades.length === pts.length ? m.shades : null;
+			if (texture || cn || inks || own) {
 				// per face, so a corner's pattern coordinates and normal are known
 				const uvs = texture ? meshUVs(sh) : null;
 				m.faces.forEach((f, fi) => {
@@ -230,9 +266,10 @@ function build(solids: readonly Shape3[], tokens: readonly Token[], patterns: Ma
 						const uv = uvs?.[fi]?.[at(idx)] ?? [0, 0];
 						return [uv[0] / cell[0], uv[1] / cell[1]];
 					};
+					const ink = inks ? (inks[m.paint![fi]] ?? col) : col;
 					for (let i = 0; i + 2 < ft.length; i += 3) {
 						const [i0, i1, i2] = [ft[i], ft[i + 1], ft[i + 2]];
-						tri(pts[i0], pts[i1], pts[i2], undefined, cn ? [cn[fi][at(i0)], cn[fi][at(i1)], cn[fi][at(i2)]] : undefined, uvs ? [uvOf(i0), uvOf(i1), uvOf(i2)] : undefined);
+						tri(pts[i0], pts[i1], pts[i2], undefined, cn ? [cn[fi][at(i0)], cn[fi][at(i1)], cn[fi][at(i2)]] : undefined, uvs ? [uvOf(i0), uvOf(i1), uvOf(i2)] : undefined, ink, own ? [own[i0], own[i1], own[i2]] : undefined);
 					}
 				});
 				continue;
@@ -282,10 +319,79 @@ function build(solids: readonly Shape3[], tokens: readonly Token[], patterns: Ma
 	return { batches, centre, radius, stamp };
 }
 
+// a compiled part's triangles (a sidecar's, 1.8) for the GPU, by the colours that paint them: the geometry is
+// never generated, and a recolour only writes the buffer again
+const compiledBuilt = new WeakMap<CompiledPart, Map<readonly Token[], PartMesh>>();
+
+/** A part read from a compiled sidecar, ready for the GPU: tokens resolved by name through the palette, times each vertex's shade. */
+export function compiledMesh(part: CompiledPart, tokens: readonly Token[], patterns?: Map<string, TexturePattern>): PartMesh {
+	let byTokens = compiledBuilt.get(part);
+	if (!byTokens) compiledBuilt.set(part, (byTokens = new Map()));
+	let stamp = "";
+	for (const pr of part.prims) {
+		const p = pr.texture ? patterns?.get(pr.texture) : undefined;
+		stamp += `${colorOf(tokens, pr.token).join(",")}${p?.canvas ? `@${pr.texture}:${p.rev}` : ""};`;
+	}
+	const have = byTokens.get(tokens);
+	if (have && have.stamp === stamp) return have;
+	const lists = new Map<string, { texture: string | null; pattern?: TexturePattern; count: number; prims: typeof part.prims }>();
+	for (const pr of part.prims) {
+		const pattern = pr.texture && pr.uv ? patterns?.get(pr.texture) : undefined;
+		const texture = pattern?.canvas ? `${pr.texture}@${pattern.rev}` : null;
+		const key = String(texture);
+		let list = lists.get(key);
+		if (!list) lists.set(key, (list = { texture, pattern: texture ? pattern : undefined, count: 0, prims: [] }));
+		list.prims.push(pr);
+		list.count += pr.pos.length / 3;
+	}
+	const batches: Batch[] = [];
+	for (const l of lists.values()) {
+		const data = new Float32Array(l.count * STRIDE);
+		let o = 0;
+		for (const pr of l.prims) {
+			const rgb = colorOf(tokens, pr.token);
+			const c = [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, rgb[3] / 255];
+			const n = pr.pos.length / 3;
+			for (let i = 0; i < n; i++) {
+				data[o] = pr.pos[i * 3];
+				data[o + 1] = pr.pos[i * 3 + 1];
+				data[o + 2] = pr.pos[i * 3 + 2];
+				data[o + 3] = pr.nor[i * 3];
+				data[o + 4] = pr.nor[i * 3 + 1];
+				data[o + 5] = pr.nor[i * 3 + 2];
+				data[o + 6] = c[0];
+				data[o + 7] = c[1];
+				data[o + 8] = c[2];
+				data[o + 9] = c[3];
+				if (l.texture && pr.uv) {
+					data[o + 10] = pr.uv[i * 2];
+					data[o + 11] = pr.uv[i * 2 + 1];
+				}
+				data[o + 12] = pr.shade[i];
+				// (the normal is the sidecar's, as it stands: a face's, or a corner's with its creases already respected)
+				data[o + 13] = 0;
+				o += STRIDE;
+			}
+		}
+		if (l.count) batches.push({ texture: l.texture, pattern: l.pattern, cull: true, data, count: l.count });
+	}
+	const mesh: PartMesh = { batches, centre: part.centre, radius: part.radius, stamp };
+	if (byTokens.size >= 16) byTokens.clear();
+	byTokens.set(tokens, mesh);
+	return mesh;
+}
+
 /** A part as it stands in a frame: its map from rest space (into the world, or straight into the view) and its shapes. */
 export interface PosedPart {
 	F: Xf3;
 	solids: readonly Shape3[];
+	/** its triangles from the document's compiled sidecar (1.8): drawn in place of generating them from `solids` */
+	compiled?: CompiledPart | null;
+}
+
+/** What a posed part draws: its sidecar's triangles when it has them, else its shapes generated. */
+export function meshOfPart(fp: PosedPart, tokens: readonly Token[], patterns?: Map<string, TexturePattern>): PartMesh {
+	return fp.compiled ? compiledMesh(fp.compiled, tokens, patterns) : partMesh(fp.solids, tokens, patterns);
 }
 
 /**
@@ -293,7 +399,7 @@ export interface PosedPart {
  * and its shapes (a morph applied), with nothing projected. What this
  * renderer needs of a frame; the view is laid on by the shader.
  */
-export function poseParts(doc: Doc3, poses: readonly StatePart3[] | undefined, instance?: Xf3): PosedPart[] {
+export function poseParts(doc: Doc3, poses: readonly StatePart3[] | undefined, instance?: Xf3, compiled?: Compiled | null): PosedPart[] {
 	const parts = doc.parts ?? [];
 	const list: readonly StatePart3[] = poses ?? parts.map((p) => ({ part: p.name }));
 	const W = worldTransforms3(doc, poses ?? []);
@@ -303,17 +409,31 @@ export function poseParts(doc: Doc3, poses: readonly StatePart3[] | undefined, i
 		if (!part) continue;
 		const w = W.get(sp.part);
 		const F: Xf3 = instance ? (w ? xf3Mul(instance, w) : instance) : (w ?? IDENT);
-		out.push({ F, solids: shapesOf3Posed(doc, part, sp) });
+		// a sidecar holds the rest pose: a part this pose reshapes (a morph) is generated as ever
+		const index = parts.indexOf(part);
+		const own = compiled && !(sp.morph?.length && !part.like) ? compiled.parts[index] : undefined;
+		out.push(own !== undefined ? { F, solids: shapesOf3Posed(doc, part, sp), compiled: own ?? EMPTY } : { F, solids: shapesOf3Posed(doc, part, sp) });
 	}
 	return out;
 }
 const IDENT: Xf3 = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+/** a part the sidecar says draws nothing */
+const EMPTY: CompiledPart = { prims: [], centre: [0, 0, 0], radius: 0, triangles: 0 };
 
 /** One document's parts in a frame, with the tokens to paint them. */
 export interface SolidLayer {
 	fps: readonly PosedPart[];
 	tokens: readonly Token[];
 	patterns?: Map<string, TexturePattern>;
+	/** 0..1: how far the layer is washed toward the canvas (a mannequin under the model) */
+	dim?: number;
+}
+/** How a frame is lit, past the light itself. */
+export interface GlLook {
+	/** the soft clay light, worked out per pixel, in place of the projector's flat rule */
+	clay?: boolean;
+	/** the canvas's colour (0..1), which a dimmed layer is washed toward */
+	bg?: Vec3;
 }
 
 export interface GlView {
@@ -335,7 +455,7 @@ export function drawSolids(canvas: HTMLCanvasElement, _doc: Doc3, fps: readonly 
 export const glStats = { draws: 0, triangles: 0, buffers: 0 };
 
 /** Several documents' solids in one frame (a scene), one depth buffer. */
-export function drawLayers(canvas: HTMLCanvasElement, layers: readonly SolidLayer[], light: Vec3, ambient: number, view: GlView): boolean {
+export function drawLayers(canvas: HTMLCanvasElement, layers: readonly SolidLayer[], light: Vec3, ambient: number, view: GlView, look: GlLook = {}): boolean {
 	const g = setup(canvas);
 	if (!g) return false;
 	const { gl, attr, uni } = g;
@@ -364,14 +484,19 @@ export function drawLayers(canvas: HTMLCanvasElement, layers: readonly SolidLaye
 	gl.uniform3f(uni.u, view.pan[0], view.pan[1], view.zoom);
 	gl.uniform2f(uni.h, view.W / 2, view.H / 2);
 	gl.uniform1i(uni.s, 0);
+	gl.uniform1f(uni.clay, look.clay ? 1 : 0);
+	gl.uniform3f(uni.K, l[0], l[1], l[2]);
+	const bg = look.bg ?? [1, 1, 1];
+	gl.uniform3f(uni.bgc, bg[0], bg[1], bg[2]);
 	for (const loc of Object.values(attr)) gl.enableVertexAttribArray(loc);
 	let bound: Batch | null = null;
 	let tex: string | null | undefined;
 	let culling: boolean | undefined;
 	let front: number | undefined;
 	for (const layer of layers) {
+		gl.uniform1f(uni.dim, Math.max(0, Math.min(1, layer.dim ?? 0)));
 		for (const fp of layer.fps) {
-			const mesh = partMesh(fp.solids, layer.tokens, layer.patterns);
+			const mesh = meshOfPart(fp, layer.tokens, layer.patterns);
 			if (!mesh.batches.length) continue;
 			const F = fp.F;
 			const mirrored = xf3Det(F) < 0;

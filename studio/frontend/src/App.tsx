@@ -10,6 +10,7 @@ import { shell } from "./shell/shell.ts";
 import { HelpSheet, HelpSearchSheet, KeysSheet } from "./ui/Help.tsx";
 import { helpSheet, helpSearch, keysSheet } from "./state/help.ts";
 import { gizmoKey, gizmoActive, gizmoNote } from "./canvas/gizmo3.ts";
+import { meshKey, meshActive } from "./canvas/meshtool3.ts";
 import { sx } from "./canvas/scene3.ts";
 import { ix3 as ix3model } from "./canvas/model3.ts";
 import { Welcome } from "./screens/Welcome.tsx";
@@ -35,6 +36,10 @@ gizmoNote.subscribe((why) => {
 
 function typing(e: KeyboardEvent): boolean {
 	const t = e.target as HTMLElement | null;
+	// a slider holds no text: only the keys that move it are its own, and ⌘Z after a drag on one still undoes
+	if (t && t.tagName === "INPUT" && (t as HTMLInputElement).type === "range") return /^(Arrow|Home|End|Page)/.test(e.key);
+	// nor does a tick box: Space is its own, and ⌘Z after ticking one still undoes
+	if (t && t.tagName === "INPUT" && (t as HTMLInputElement).type === "checkbox") return e.key === " ";
 	return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
 }
 
@@ -44,6 +49,8 @@ function onKey(e: KeyboardEvent) {
 	const screen = project.screen.value;
 	if (screen === "docs" && e.key === "Escape") return leaveDocs();
 	if (screen === "setup" && e.key === "Escape") return leaveSetup();
+	// a mesh operation following the pointer takes its keys first: the digits, Return, Esc
+	if (screen === "model" && meshKey(e)) return e.preventDefault();
 	// a transform in the model view takes its keys first: G T S, then X Y Z and the digits
 	if ((screen === "model" || screen === "scene") && gizmoKey(e, screen === "model" ? ix3model.cursor : sx.cursor)) return e.preventDefault();
 	const k = keyOf(e);
@@ -72,6 +79,11 @@ function onKey(e: KeyboardEvent) {
  * and ⌫ as a delete): caught on the way down, before anything else.
  */
 function onKeyFirst(e: KeyboardEvent) {
+	if (meshActive() && !typing(e) && meshKey(e)) {
+		e.preventDefault();
+		e.stopPropagation();
+		return;
+	}
 	if (!gizmoActive() || typing(e)) return;
 	if (gizmoKey(e, project.screen.value === "scene" ? sx.cursor : ix3model.cursor)) {
 		e.preventDefault();

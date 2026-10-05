@@ -7,6 +7,7 @@
 import type { MeshShape, Anchor3, Clip3, ClipKey3, Doc3, Part3, Shape3, State3, StatePart3, Target3, Vec3 } from "./types.ts";
 import { lerpMorphs, ease } from "./clips.ts";
 import { triangulate } from "./geometry.ts";
+import { posedMesh } from "./mods.ts";
 import type { Vec2 } from "./types.ts";
 
 // ----------------------------------------------------------------- vectors
@@ -299,7 +300,7 @@ export function shapesOf3Posed(doc: Doc3, part: Part3, sp?: StatePart3): Shape3[
 	if (!sp?.morph?.length || part.like) return base;
 	return base.map((sh, i) => {
 		const m = sp.morph!.find((x) => x.shape === i);
-		return m && sh.kind === "mesh" && m.points.length === sh.points.length ? { ...sh, points: m.points } : sh;
+		return m && sh.kind === "mesh" && m.points.length === sh.points.length ? posedMesh(sh, m.points) : sh;
 	});
 }
 /** A 3D part's rest points by shape index: a mesh's, else null. */

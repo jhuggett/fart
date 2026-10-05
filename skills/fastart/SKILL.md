@@ -202,6 +202,22 @@ third coordinate. Model props once, then project them to the 2D views a
   up). `spec/PROJECT.md` has the rules.
 - **Export** for other engines: `npx fart gltf model.fart` writes a
   `.glb` (a node per part, vertex colours, an animation per clip, y-up).
+- **Import** a model made elsewhere (Blender's own glTF export, no
+  plugin): `npx fart import model.glb [-o model.fart] [--scale n]
+  [--height n] [--merge] [--split-materials] [--no-quads]
+  [--no-shades]`, or `importGltf(bytes, options)` from `@fastart/core`
+  (`gltfBufferUris` lists the `.bin` files a `.gltf` wants in
+  `options.buffers`). A part per mesh node (snake_case names, the
+  node's origin as `pivot`, the nearest mesh node above as `parent`),
+  points in document space at rest, a token per material, one shape per
+  mesh with `colors` + `paint` (1.8) unless `--split-materials`,
+  triangles paired into quads, split vertices welded, `normals:
+  "smooth"` where the source shades smooth, vertex colours as `shades`,
+  animations as clips, morph targets as states. It prints what it left
+  out (textures, cameras, lights; a skin becomes rigid parts) and
+  refuses compressed geometry. A Blender model is in metres: pass
+  `--height` or `--scale` so three decimals keep its detail. In Uranus:
+  File › Import glTF… (⌘I), or the `import_gltf` tool.
 - **Collision in 3D (1.4)**: `collision` holds `ball`, `rod`, convex
   `mesh`, and `box` (`at` centre, `size` full extents, optional `rotate`;
   never in `shapes`). A collision `mesh` must be **convex** (error
@@ -240,6 +256,44 @@ third coordinate. Model props once, then project them to the 2D views a
   outline for an extrude) and generates the mesh; `smooth`, `normals`,
   `texture` apply to it. Prefer a sweep to a baked lathe when the shape
   may change later. A sweep does not morph and never goes in collision.
+- **1.8 additions** (all optional; `{{FASTART}}/examples/helm/generate.mjs`
+  uses every one):
+  - **Paint**: `"colors": ["brass", "lining"]` and `"paint": [1, 0, 2,
+    ...]` on a mesh or a sweep, one whole number per face: 0 is `color`,
+    n is `colors[n-1]`. Count and range are checked (error `paint`).
+    One shape, several tokens; no more splitting a mesh to colour a band.
+  - **Shades**: `"shades": [1, 0.8, ...]` on a mesh, one number per
+    point, multiplying `shade` there and interpolated across faces: soft
+    shadow in a fold (error `shades` on a wrong count).
+  - **Mods**: `"mods": [...]` on a mesh or a sweep, applied in order to
+    the cage after a morph and before `smooth`. `{"op": "mirror",
+    "axis": "x", "merge": 0.001}` (model half, keep the seam's points
+    on 0 so they weld); `{"op": "solidify", "thick": 0.3, "offset": -1,
+    "inner": 2, "rim": 1}` (a wall inward from the cage, an open edge
+    gets a rim; `inner`/`rim` are paint indices); `{"op": "crease",
+    "angle": 40, "value": 0.2}` (every edge sharper than the angle
+    creased: with `smooth` that is a bevel). Model the cage as the
+    outside, wound outward, and let the mods do the rest; `creases`,
+    `paint` and `shades` you write are over the cage. An unknown op is
+    error `mod`. `builtOf(shape)` is the cage with its mods applied.
+  - **Pipe**: `{"kind": "sweep", "op": "pipe", "path": {"points":
+    [[x,y,z], ...], "in", "out"}, "radius": 0.2, "radii": [1, 0.9, 0],
+    "segments": 8, "caps": true, "closed": false}`: a round section (or
+    a closed 2D `profile`) carried along a 3D path without twisting,
+    scaled per path point by `radii` (0 at an end is a point). Plumes,
+    horns, straps, wires. In a script, `pipe(color, path, opts)` returns
+    the mesh. Paint a pipe by face only when its path has no handles
+    (the face count follows the flattening).
+  - `fart bake --smooth` writes the finished mesh of every smooth,
+    modified or swept shape into `bake` (with `paint` and `shades` for
+    it) for a reader that will not generate.
+  - **The sidecar**: `npx fart build art/` writes `name.fart.glb`
+    beside every 3D `name.fart`: a binary glTF with everything
+    generated, far quicker to load than the JSON. It is a build
+    artifact, never edited and never the source; a loader uses it only
+    while its hash matches the `.fart`. Gitignore `*.fart.glb`, run
+    `fart build` as a build step (`fart build --check art/` in CI,
+    `--clean` to remove them).
 - **Look at it**: open the folder in Uranus; a 3D file opens the model
   screen (orbit, the four tools make box/ball/rod/prism, Deform, the
   inspector's normals/smooth/crease fields, Project…).
@@ -373,7 +427,9 @@ scene and draws nothing of its own. `spec/SHART.md` is the contract.
    script can read `globalThis.fastart` (the store, `frameW()` world
    transforms) to assert poses.
 4. Use it in the game (below). Ignore `*.fart~` files: they are the
-   studio's checkpoints (gitignore them).
+   studio's checkpoints (gitignore them). For 3D art, make the compiled
+   sidecars in the game's build, never by hand, and gitignore them too
+   (`*.fart.glb`). A Makefile line: `art: ; npx fart build art/`.
 
 ## Loading in a game
 
@@ -476,3 +532,10 @@ and the note.
   per point (error `curve`); an open path needs `w`. A crease of 0.5 is
   sharpness 5: fully sharp for five levels, which at `smooth: 2` means
   sharp. Use 0.1–0.3 for a fillet you can see at two levels.
+- A `mirror` mod welds only points within `merge` of the plane: put the
+  seam's points at exactly 0 on the axis, and never model the far half
+  (it would be doubled). `paint` counts the cage's faces, before any
+  mod; the mods carry it over.
+- `solidify` moves along point normals, so the cage must be wound
+  outward first: a cage wound inward grows its wall outward and shows
+  its lining on the outside.

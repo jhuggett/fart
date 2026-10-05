@@ -38,6 +38,41 @@ export class WailsShell implements Shell {
 	writeFile(root: string, rel: string, text: string) {
 		return Project.WriteFile(root, rel, text);
 	}
+	async readSidecar(root: string, rel: string) {
+		try {
+			const b64 = await Project.ReadSidecar(root, rel);
+			if (!b64) return null;
+			const bin = atob(b64);
+			const out = new Uint8Array(bin.length);
+			for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+			return out;
+		} catch {
+			return null;
+		}
+	}
+	async writeSidecar(root: string, rel: string, glb: Uint8Array) {
+		// in chunks: a large model is too many arguments for one call
+		let bin = "";
+		for (let i = 0; i < glb.length; i += 0x8000) bin += String.fromCharCode(...glb.subarray(i, i + 0x8000));
+		await Project.WriteSidecar(root, rel, btoa(bin));
+	}
+	async sidecarIgnore(root: string) {
+		try {
+			return await Project.SidecarIgnore(root);
+		} catch {
+			return "none";
+		}
+	}
+	async ignoreSidecars(root: string) {
+		await Project.IgnoreSidecars(root);
+	}
+	async readImage(root: string, rel: string) {
+		try {
+			return await Project.ReadImage(root, rel);
+		} catch {
+			return null;
+		}
+	}
 	async stat(root: string, rel: string) {
 		const t = await Project.Stat(root, rel);
 		return t.found ? Number(t.text) : null;

@@ -22,6 +22,16 @@ import {
 	quatMul,
 	quatToEuler,
 	stringifyDoc as text3,
+	applyMods,
+	posedMesh,
+	builtOf,
+	cageOf,
+	asMesh,
+	worldTransforms3,
+	xf3Mul,
+	type Mod,
+	type MeshShape,
+	type SweepShape,
 	xf3Invert,
 	xf3Apply,
 	xf3ApplyDir,
@@ -51,8 +61,57 @@ import { project, refreshFiles } from "./project.ts";
 import { dirname, joinRel } from "./paths.ts";
 import { clearLocal } from "./local.ts";
 import { loadPatterns, unresolvedOf, type TexturePattern } from "./textures.ts";
+import { work, loadWork, leaveWork, mirrorOn, setMannequin, twinOf, setTwin, type Mannequin } from "./workspace.ts";
+import { cornerShades, nearestOnTris, paintFaces as paintFacesIn, paintIndex, pointNormals, roundHandles, soupOf, soupTris, tidyPaint, tokenOfFace } from "./surfaceops.ts";
+import { afterCheckpoint, sidecarOf, type Compiled } from "./sidecar.ts";
+import {
+	MeshError,
+	bridgeRims,
+	carryPoints,
+	creaseByAngle,
+	deleteFaces,
+	extrudeEdges,
+	extrudeFaces,
+	fillRim,
+	flipFaces,
+	hasEdge,
+	insetFaces,
+	loopCut,
+	mergeCorners,
+	mirrorMap,
+	rimThrough,
+	setCreases,
+	windOutward,
+	withMirrorEdges,
+	withMirrorFaces,
+	withMirrorVerts,
+	type Cage,
+	type OpResult,
+	type V3,
+} from "./meshops.ts";
 
-export type Tool3 = "select" | "rect" | "circle" | "line" | "poly";
+export type Tool3 = "select" | "rect" | "circle" | "line" | "poly" | "pipe";
+/** What a click on the selected mesh chooses: its corners, its edges or its faces. */
+export type Pick3 = "corner" | "edge" | "face";
+/** The mesh operations that keep a number to adjust after they are done. */
+export type OpKind = "extrude" | "inset" | "loopcut" | "merge" | "creaseAngle";
+/** An operation just done, still open to its numbers: changing one runs it again in the same undo step. */
+export interface LiveOp {
+	kind: OpKind;
+	sel: Sel3;
+	params: Record<string, number>;
+	/** what was chosen when it began, in the mesh as it was then */
+	pick: { mode: Pick3; faces: number[]; edges: [number, number][]; verts: number[] };
+	/** the document as it was before */
+	base: string;
+	rev: number;
+	depth: number;
+	/** what it did, or why it could not with these numbers */
+	note: string;
+	failed: boolean;
+	/** an inset's border ring wears this colour (a palette token); absent, its faces' own */
+	border?: string;
+}
 /** A shape of a part. */
 export interface Sel3 {
 	part: number;
@@ -97,6 +156,33 @@ export const md = {
 	deform: signal(false),
 	/** 1.7: a chosen edge of the selected mesh (two corner indices), for its crease */
 	edge: signal<[number, number] | null>(null),
+	/** what a click on the selected mesh chooses */
+	pick: signal<Pick3>("corner"),
+	/** every chosen corner of the selected mesh (`vert` is the last of them) */
+	verts: signal<number[]>([]),
+	/** every chosen edge (`edge` is the last of them) */
+	edges: signal<[number, number][]>([]),
+	/** the chosen faces of the selected mesh, by index */
+	faces: signal<number[]>([]),
+	/** the mesh operation just done, while its numbers can still be changed */
+	op: signal<LiveOp | null>(null),
+	/** the mannequin: another model of the project shown under this one (never saved in the file); `compiled` is its sidecar, drawn in place of generating */
+	mannequin: signal<{ path: string; doc: Doc3; tokens: Token[]; compiled?: Compiled | null } | null>(null),
+	/** 1.8: clicks and drags over the selected mesh's faces paint them with `paintTok` */
+	painting: signal(false),
+	/** the colour faces are painted with: a palette token ("" until one is picked: the last of the palette) */
+	paintTok: signal(""),
+	/** a pipe's path being clicked, in the current part's rest space */
+	pipePts: signal<Vec3[]>([]),
+	/** the chosen point of the selected pipe's path */
+	pipePt: signal<number | null>(null),
+	/** pipe points land on the surface under the pointer, lifted along its normal by `lift` */
+	onSurface: signal(false),
+	lift: signal(0.1),
+	/** a new pipe gets a mirrored twin across x */
+	pipeTwin: signal(false),
+	/** how dark Shade corners makes a wholly hidden corner */
+	shadeStrength: signal(0.6),
 	tokens: signal<Token[]>([]),
 	/** 1.5: the file's textures, resolved and rendered, by name */
 	patterns: signal<Map<string, TexturePattern>>(new Map()),
@@ -326,13 +412,28 @@ export function endGesture() {
 }
 function restore(snap: Snap) {
 	batch(() => {
+		// the selected shape stays selected when the document it goes back to has one of its kind there
+		const was = md.sel.value;
+		const kind = was ? md.doc.value.parts?.[was.part]?.shapes?.[was.shape]?.kind : undefined;
 		md.doc.value = JSON.parse(snap.doc) as Doc3;
 		md.curState.value = Math.min(snap.state, Math.max(0, states().length - 1));
 		md.curClip.value = snap.clip < clips().length ? snap.clip : -1;
-		md.sel.value = null;
+		const keep = was && !md.also.value.length && kind !== undefined && md.doc.value.parts?.[was.part]?.shapes?.[was.shape]?.kind === kind;
+		if (!keep) md.sel.value = null;
+		// its corners, edges and faces are not the same ones any more
+		md.verts.value = [];
+		md.edges.value = [];
+		md.edge.value = null;
+		md.faces.value = [];
 		md.vert.value = null;
 		md.hover.value = null;
 		md.polyPts.value = [];
+		md.pipePts.value = [];
+		// the chosen point of a pipe's path stays chosen while the path still has it
+		const pipe = keep && was ? md.doc.value.parts?.[was.part]?.shapes?.[was.shape] : undefined;
+		const pt = md.pipePt.value;
+		if (pt !== null && !(isPipe(pipe) && pt < (pipe.path?.points.length ?? 0))) md.pipePt.value = null;
+		md.op.value = null;
 	});
 	clampCursors();
 	touch();
@@ -400,11 +501,14 @@ export async function save() {
 	lastFlush = "";
 	await flushNow();
 	checkpoint = docText();
-	await writeDoc(`${rel}~`, text3(md.doc.value));
+	const written = text3(md.doc.value);
+	await writeDoc(`${rel}~`, written);
 	batch(() => {
 		md.dirty.value = false;
 		md.checkpointAt.value = Date.now();
 	});
+	// the compiled sidecar of what was just kept, made off the page's thread (1.8): other screens draw this model from it
+	afterCheckpoint(root(), rel, written);
 }
 export async function revertToCheckpoint() {
 	const rel = md.path.value;
@@ -479,6 +583,12 @@ export async function openModel(rel: string, text: string): Promise<boolean> {
 		md.vert.value = null;
 		md.hover.value = null;
 		md.polyPts.value = [];
+		md.op.value = null;
+		md.mannequin.value = null;
+		md.pick.value = "corner";
+		md.painting.value = false;
+		md.pipePts.value = [];
+		md.pipePt.value = null;
 		md.pending.value = "none";
 		md.tool.value = "select";
 		md.dirty.value = false;
@@ -488,6 +598,8 @@ export async function openModel(rel: string, text: string): Promise<boolean> {
 	});
 	check(d);
 	void reloadPatterns();
+	loadWork(root(), rel);
+	void loadMannequin();
 	lastFlush = docText();
 	// the checkpoint beside it, or one made now
 	const ck = await shell.readFile(root(), `${rel}~`);
@@ -512,8 +624,11 @@ export async function leaveModel() {
 	flushTimer = undefined;
 	await flushNow();
 	await writes.catch(() => {});
+	leaveWork();
 	batch(() => {
 		md.path.value = null;
+		md.mannequin.value = null;
+		md.op.value = null;
 		md.dirty.value = false;
 		md.written.value = 0;
 		md.checkpointAt.value = 0;
@@ -891,6 +1006,21 @@ export function deleteSel() {
 		return;
 	}
 	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (isPipe(sh) && md.pipePt.value !== null) {
+		// the chosen point of the path goes, the pipe stays
+		deletePipePoint(s, md.pipePt.value);
+		return;
+	}
+	if (sh && sh.kind === "mesh" && md.pick.value === "face" && md.faces.value.length) {
+		// the chosen faces go, the shape stays
+		meshAct("delete");
+		return;
+	}
+	if (sh && sh.kind === "mesh" && md.pick.value === "edge" && md.edges.value.length) {
+		// an edge has nothing of its own to delete, and the whole shape is not what was meant
+		project.error.value = "Delete takes faces or a corner: choose the faces beside these edges to delete them (Esc lets go of the edges, and Delete then removes the shape).";
+		return;
+	}
 	if (sh && sh.kind === "mesh" && v !== null && sh.points.length > 4) {
 		// drop a corner: faces lose it, faces left with two points go
 		mutate((d) => {
@@ -948,7 +1078,12 @@ export function mirrorSel() {
 export function paintSel(token: string) {
 	const s = md.sel.value;
 	if (!s) return;
-	mutate((d) => (d.parts![s.part].shapes![s.shape].color = token));
+	mutate((d) => {
+		const sh = d.parts![s.part].shapes![s.shape];
+		sh.color = token;
+		// faces painted the colour the fill now is are simply the fill (1.8): their paint goes
+		if (sh.kind === "mesh" || sh.kind === "sweep") tidyPaint(sh, faceCount(sh));
+	});
 }
 export function setShapeNumber(s: Sel3, key: "shade" | "r" | "w", v: number) {
 	mutate((d) => ((d.parts![s.part].shapes![s.shape] as unknown as Record<string, unknown>)[key] = v), `shape-${key}`);
@@ -962,17 +1097,12 @@ export function setShapeCoord(s: Sel3, key: "at" | "a" | "b", axis: 0 | 1 | 2, v
 	}, `shape-${key}-${axis}`);
 }
 export function setVertexAxis(s: Sel3, vi: number, axis: 0 | 1 | 2, v: number) {
-	const morph = deforming();
-	mutate((d) => {
-		const sh = d.parts![s.part].shapes![s.shape];
-		if (sh.kind !== "mesh") return;
-		const pts = morph ? morphEntry(d, s.part, s.shape) : sh.points;
-		if (!pts) return;
-		const p = [...pts[vi]] as Vec3;
-		p[axis] = v;
-		pts[vi] = p;
-		if (!morph) delete sh.tris;
-	}, `vert-${vi}-${axis}${morph ? "-morph" : ""}`);
+	const sh = selShapePosed();
+	const now = sh && sh.kind === "mesh" ? sh.points[vi] : undefined;
+	if (!now) return;
+	const d: Vec3 = [0, 0, 0];
+	d[axis] = v - now[axis];
+	movePoints(s, [vi], d, `vert-${vi}-${axis}`);
 }
 
 const r3 = (x: number) => Math.round(x * 1000) / 1000 + 0;
@@ -999,22 +1129,75 @@ export function moveSelView(s: Sel3, dView: Vec3, merge = "move") {
 		else if (sh.kind === "rod") {
 			sh.a = add(sh.a);
 			sh.b = add(sh.b);
+		} else if (isPipe(sh) && sh.path) {
+			// a pipe moves by its path (1.8); its twin, when it has one that is not moving with it, goes the mirrored way
+			sh.path.points = sh.path.points.map(add);
+			delete sh.bake;
+			const twin = pipeTwin(s);
+			const other = twin && !selected().some((t) => sameSel(t, twin)) ? doc.parts![twin.part].shapes![twin.shape] : undefined;
+			if (isPipe(other) && other.path) {
+				other.path.points = other.path.points.map((p): Vec3 => round3([p[0] - d[0], p[1] + d[1], p[2] + d[2]]));
+				delete other.bake;
+			}
 		}
 	}, merge);
 }
-/** Move one corner of the selected mesh by a view-space displacement. */
+/** Move a corner of the selected mesh (and the others chosen with it) by a view-space displacement. */
 export function moveVertexView(s: Sel3, vi: number, dView: Vec3, merge = "vertex") {
 	const fp = framePartOf(s.part);
 	if (!fp) return;
 	const d = xf3ApplyDir(xf3Invert(fp.F), dView);
+	const chosen = chosenPoints();
+	movePoints(s, chosen.includes(vi) ? chosen : [vi], d, merge);
+}
+/** Move the chosen corners, edges or faces of the selected mesh by a view-space displacement. */
+export function moveChosenView(s: Sel3, dView: Vec3, merge = "vertex") {
+	const fp = framePartOf(s.part);
+	const chosen = chosenPoints();
+	if (!fp || !chosen.length) return;
+	movePoints(s, chosen, xf3ApplyDir(xf3Invert(fp.F), dView), merge);
+}
+
+/**
+ * Keep a mesh symmetric across x after some of its points moved: each
+ * moved point's mirror takes its place reflected, and a point on the
+ * plane stays on it. `mm` is the mirror map of the base mesh.
+ */
+export function symmetrize(pts: Vec3[], moved: Iterable<number>, mm: readonly number[]) {
+	const set = new Set(moved);
+	for (const i of set) {
+		const j = mm[i];
+		if (j === i) pts[i] = [0, pts[i][1], pts[i][2]];
+		else if (j >= 0 && !(set.has(j) && j < i)) pts[j] = [-pts[i][0] + 0, pts[i][1], pts[i][2]];
+	}
+}
+/** The mirror map of a shape edited in symmetry, null when it is not. */
+export function symmetryOf(s: Sel3): number[] | null {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !sh || sh.kind !== "mesh" || !mirrorOn(part.name, s.shape) || mirrorModOn(sh)) return null;
+	return mirrorMap(sh.points as V3[]);
+}
+
+/** Move points of a mesh by a displacement in its part's rest space: into this state's morph under Deform, mirrored under symmetry. */
+export function movePoints(s: Sel3, idx: readonly number[], d: Vec3, merge = "vertex") {
 	const morph = deforming();
+	const mm = symmetryOf(s);
+	const set = new Set(idx);
 	mutate((doc) => {
 		const sh = doc.parts![s.part].shapes![s.shape];
 		if (sh.kind !== "mesh") return;
 		const pts = morph ? morphEntry(doc, s.part, s.shape) : sh.points;
 		if (!pts) return;
-		const p = pts[vi];
-		pts[vi] = round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
+		for (const i of set) {
+			const p = pts[i];
+			if (!p) continue;
+			const j = mm ? mm[i] : -1;
+			// both of a mirrored pair chosen: one leads, the other follows it
+			if (mm && j >= 0 && j !== i && set.has(j) && j < i) continue;
+			pts[i] = round3([p[0] + (mm && j === i ? 0 : d[0]), p[1] + d[1], p[2] + d[2]]);
+		}
+		if (mm) symmetrize(pts, set, mm);
 		if (!morph) delete sh.tris;
 	}, morph ? `${merge}-morph` : merge);
 }
@@ -1170,8 +1353,13 @@ export function renameToken(i: number, name: string) {
 	const old = t.name;
 	mutate((d) => {
 		d.palette![i].name = name;
-		for (const p of d.parts!) for (const sh of p.shapes ?? []) if (sh.color === old) sh.color = name;
+		for (const p of d.parts!) for (const sh of p.shapes ?? []) {
+			if (sh.color === old) sh.color = name;
+			// the further colours its faces are painted with (1.8)
+			if ((sh.kind === "mesh" || sh.kind === "sweep") && sh.colors) sh.colors = sh.colors.map((c) => (c === old ? name : c));
+		}
 	});
+	if (md.paintTok.value === old) md.paintTok.value = name;
 }
 export function setTokenColor(i: number, rgb: Rgba) {
 	mutate((d) => (d.palette![i].rgb = rgb), `token-${i}`);
@@ -1210,4 +1398,1023 @@ export async function projectViews(views: string[], outline: { color: string; w:
 	}
 	await refreshFiles();
 	return out;
+}
+
+// ------------------------------------------------------------- mesh editing
+
+const sameEdge = (a: readonly [number, number], b: readonly [number, number]) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
+
+// `vert` and `edge` are the last of what is chosen: clearing one lets go of all, setting one alone chooses only it
+md.vert.subscribe((v) => {
+	const l = md.verts.peek();
+	if (v === null) {
+		if (l.length) md.verts.value = [];
+	} else if (!l.includes(v)) md.verts.value = [v];
+});
+md.edge.subscribe((e) => {
+	const l = md.edges.peek();
+	if (!e) {
+		if (l.length) md.edges.value = [];
+	} else if (!l.some((x) => sameEdge(x, e))) md.edges.value = [e];
+});
+// another shape chosen: its corners, edges and faces are not this one's
+let selKey = "";
+md.sel.subscribe((s) => {
+	const k = s ? `${s.part}/${s.shape}` : "";
+	if (k === selKey) return;
+	selKey = k;
+	batch(() => {
+		md.verts.value = [];
+		md.vert.value = null;
+		md.edges.value = [];
+		md.edge.value = null;
+		md.faces.value = [];
+		md.pipePt.value = null;
+		if (!s) md.painting.value = false;
+	});
+});
+
+export function chooseVerts(list: readonly number[]) {
+	const u = [...new Set(list)];
+	batch(() => {
+		md.verts.value = u;
+		md.vert.value = u.length ? u[u.length - 1] : null;
+	});
+}
+export function chooseEdges(list: readonly (readonly [number, number])[]) {
+	const u: [number, number][] = [];
+	for (const e of list) if (!u.some((x) => sameEdge(x, e))) u.push([e[0], e[1]]);
+	batch(() => {
+		md.edges.value = u;
+		md.edge.value = u.length ? u[u.length - 1] : null;
+	});
+}
+export function chooseFaces(list: readonly number[]) {
+	md.faces.value = [...new Set(list)];
+}
+/** What a click on the selected mesh chooses from now on; what was chosen the other way is let go. */
+export function setPick(mode: Pick3) {
+	batch(() => {
+		md.pick.value = mode;
+		if (mode !== "corner") chooseVerts([]);
+		if (mode !== "edge") chooseEdges([]);
+		if (mode !== "face") chooseFaces([]);
+		if (mode !== "face") md.painting.value = false;
+	});
+}
+/** Everything of the selected mesh that the pick mode can choose. */
+export function chooseAll() {
+	const sh = selShape();
+	if (!sh || sh.kind !== "mesh") return;
+	const mode = md.pick.value;
+	if (mode === "corner") chooseVerts(sh.points.map((_, i) => i));
+	else if (mode === "face") chooseFaces(sh.faces.map((_, i) => i));
+	else {
+		const out: [number, number][] = [];
+		for (const f of sh.faces) f.forEach((a, i) => out.push([a, f[(i + 1) % f.length]]));
+		chooseEdges(out);
+	}
+}
+/** The corners of what is chosen on the selected mesh: the chosen corners, the ends of the chosen edges, the corners of the chosen faces. */
+export function chosenPoints(): number[] {
+	const sh = selShape();
+	if (!sh || sh.kind !== "mesh") return [];
+	const mode = md.pick.value;
+	const out = new Set<number>();
+	if (mode === "corner") for (const v of md.verts.value) out.add(v);
+	else if (mode === "edge") for (const e of md.edges.value) e.forEach((v) => out.add(v));
+	else for (const f of md.faces.value) for (const v of sh.faces[f] ?? []) out.add(v);
+	return [...out].filter((v) => v < sh.points.length);
+}
+
+const cageFrom = (sh: Extract<Shape3, { kind: "mesh" }>): Cage => ({ points: sh.points as V3[], faces: sh.faces, creases: sh.creases, uvs: sh.mapping?.uvs });
+
+/** Lay an operation's result into a document: the mesh, its creases and pattern coordinates, and every morph of it carried through. */
+function layCage(d: Doc3, s: Sel3, steps: OpResult[]) {
+	const part = d.parts?.[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !sh || sh.kind !== "mesh") return;
+	// the morphs of this mesh: in states and in keys, on the part and on any part drawn like it
+	const names = new Set([part.name, ...(d.parts ?? []).filter((q) => q.like === part.name).map((q) => q.name)]);
+	const lists: { points: Vec3[] }[] = [];
+	const take = (sp: StatePart3) => {
+		if (names.has(sp.part)) for (const m of sp.morph ?? []) if (m.shape === s.shape) lists.push(m);
+	};
+	for (const st of d.states ?? []) st.parts.forEach(take);
+	for (const c of d.clips ?? []) for (const k of c.keys) (k.parts ?? []).forEach(take);
+	// lists a file may keep beside the cage, one entry per face or per point: they follow the faces and points they belong to
+	const extra = sh as Record<string, unknown>;
+	const whole = (v: unknown, n: number): number[] | null => (Array.isArray(v) && v.length === n && v.every((x) => typeof x === "number") ? (v as number[]) : null);
+	let perFace = whole(extra.paint, sh.faces.length);
+	let perPoint = whole(extra.shades, sh.points.length);
+	let base = sh.points as V3[];
+	for (const r of steps) {
+		for (const m of lists) if (m.points.length === base.length) m.points = carryPoints(base, r.cage.points, r.src, m.points as V3[]);
+		if (perFace) perFace = r.faceFrom.map((f) => (f >= 0 ? perFace![f] : 0));
+		if (perPoint) perPoint = r.src.map(([a, b, t]) => Math.round((perPoint![a] + (perPoint![b] - perPoint![a]) * t) * 1000) / 1000);
+		base = r.cage.points;
+	}
+	if (perFace) extra.paint = perFace;
+	if (perPoint) extra.shades = perPoint;
+	// (faces that went took their colours with them: the list of colours stays minimal)
+	if (perFace) tidyPaint(sh, steps[steps.length - 1].cage.faces.length);
+	const last = steps[steps.length - 1].cage;
+	sh.points = last.points;
+	sh.faces = last.faces;
+	if (last.creases?.length) sh.creases = last.creases;
+	else delete sh.creases;
+	if (last.uvs && sh.mapping?.uvs) sh.mapping = { ...sh.mapping, uvs: last.uvs };
+	delete sh.tris;
+	delete sh.bake;
+}
+
+/**
+ * Run a mesh operation on a shape as one undo step. `fn` gets the cage
+ * and answers with the result (or the results of several steps in a
+ * row). Throws a MeshError, with the reason, when it cannot be done;
+ * with `check`, also when the document that would result is not valid.
+ */
+export function runMeshOp(s: Sel3, fn: (c: Cage) => OpResult | OpResult[], opts: { merge?: string; check?: boolean; amend?: boolean; after?: (d: Doc3, was: { faces: number }) => void } = {}): OpResult {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !sh) throw new MeshError("There is no such shape.");
+	if (sh.kind !== "mesh") throw new MeshError(`Mesh editing works on a mesh, and this is a ${sh.kind}${sh.kind === "sweep" ? ": a sweep is kept as its profile" : ""}.`);
+	const out = fn(cageFrom(sh));
+	const steps = Array.isArray(out) ? out : [out];
+	const was = { faces: sh.faces.length };
+	const lay = (d: Doc3) => {
+		layCage(d, s, steps);
+		opts.after?.(d, was);
+	};
+	if (opts.check) {
+		const copy = JSON.parse(JSON.stringify(md.doc.value)) as Doc3;
+		lay(copy);
+		const r = validate(copy, { refTokens: md.unresolved.value.length ? null : md.shared.value.map((t) => t.name), unresolvedRefs: unresolvedOf(md.patterns.value) });
+		if (r.errors.length) throw new MeshError("Refused, the mesh would not be valid:\n" + r.errors.map((e) => `${e.code} ${e.path}: ${e.message}`).join("\n"));
+	}
+	if (opts.amend) {
+		lay(md.doc.value);
+		touch();
+	} else mutate(lay, opts.merge);
+	return steps[steps.length - 1];
+}
+
+/** The steps of an adjustable operation, on a cage, for what was chosen. */
+function opSteps(c: Cage, kind: OpKind, pick: LiveOp["pick"], p: Record<string, number>, sym: boolean): OpResult[] {
+	const faces = sym ? withMirrorFaces(c, pick.faces) : pick.faces;
+	const edges = sym ? withMirrorEdges(c, pick.edges) : pick.edges;
+	const verts = sym ? withMirrorVerts(c, pick.verts) : pick.verts;
+	switch (kind) {
+		case "extrude":
+			return [pick.mode === "edge" ? extrudeEdges(c, edges, { amount: p.amount }) : extrudeFaces(c, faces, p.amount)];
+		case "inset":
+			return [insetFaces(c, faces, p.amount, p.raise ?? 0)];
+		case "loopcut": {
+			const e = pick.edges[pick.edges.length - 1];
+			if (!e) throw new MeshError("Choose an edge first: the cut runs across the ring of faces it belongs to.");
+			const a = loopCut(c, e[0], e[1], p.at);
+			if (sym) {
+				// the mirrored edge, when the first cut did not pass through it already
+				const m = mirrorMap(c.points);
+				const [ma, mb] = [m[e[0]], m[e[1]]];
+				if (ma >= 0 && mb >= 0 && ma !== mb && !sameEdge([ma, mb], e) && hasEdge(a.cage, ma, mb)) {
+					try {
+						const b = loopCut(a.cage, ma, mb, p.at);
+						return [a, { ...b, edges: [...(a.edges ?? []), ...(b.edges ?? [])] }];
+					} catch {
+						// no ring on the other side: one cut it is
+					}
+				}
+			}
+			return [a];
+		}
+		case "merge":
+			return [mergeCorners(c, p.distance, verts.length > 1 ? verts : undefined)];
+		case "creaseAngle":
+			return [creaseByAngle(c, p.angle, p.value)];
+	}
+}
+
+/** Why the selected shape cannot be mesh-edited just now, null when it can. */
+export function meshRefusal(): string | null {
+	const s = md.sel.value;
+	const part = s ? parts()[s.part] : undefined;
+	const sh = selShape();
+	if (!s || !part || !sh) return "Select a mesh first.";
+	if (sh.kind !== "mesh") return `Mesh editing works on a mesh, and this is a ${sh.kind}.`;
+	if (curClip()) return "A clip is a preview; pick a state to edit.";
+	if (md.also.value.length) return "Mesh editing works on one mesh at a time.";
+	return null;
+}
+/** Is the working symmetry in force for a shape: its note is on, and no Mirror modifier across x already does the mirroring. */
+export const symOn = (s: Sel3) => {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	return !!part && mirrorOn(part.name, s.shape) && !(sh && mirrorModOn(sh));
+};
+
+function takeSelection(r: OpResult) {
+	batch(() => {
+		if (r.faces) {
+			md.pick.value = "face";
+			chooseVerts([]);
+			chooseEdges([]);
+			chooseFaces(r.faces);
+		} else if (r.edges) {
+			md.pick.value = "edge";
+			chooseVerts([]);
+			chooseFaces([]);
+			chooseEdges(r.edges);
+		} else {
+			chooseVerts(r.verts ?? []);
+			chooseEdges([]);
+			chooseFaces([]);
+		}
+	});
+}
+function restoreInPlace(text: string) {
+	const d = md.doc.value as Record<string, unknown>;
+	for (const k of Object.keys(d)) delete d[k];
+	Object.assign(d, JSON.parse(text));
+}
+
+/** The operation just done, while nothing else has changed the document since. */
+export function liveOp(): LiveOp | null {
+	const op = md.op.value;
+	return op && op.rev === md.rev.value && op.depth === undoStack.length && md.path.value !== null ? op : null;
+}
+
+/**
+ * Begin an operation that keeps its numbers open: it is done at once
+ * with those given, and adjustOp runs it again with others, all in one
+ * undo step. Throws a MeshError when it cannot begin.
+ */
+export function startOp(kind: OpKind, params: Record<string, number>, border?: string): LiveOp {
+	const why = meshRefusal();
+	if (why) throw new MeshError(why);
+	const s = md.sel.value!;
+	const pick: LiveOp["pick"] = { mode: md.pick.value, faces: [...md.faces.value], edges: md.edges.value.map((e) => [...e] as [number, number]), verts: [...md.verts.value] };
+	const base = docText();
+	pushUndo();
+	mergeKey = null;
+	let r: OpResult;
+	try {
+		r = runMeshOp(s, (c) => opSteps(c, kind, pick, params, symOn(s)), { amend: true, after: borderPaint(s, kind, border) });
+	} catch (e) {
+		undoStack.pop();
+		touch();
+		throw e;
+	}
+	const op: LiveOp = { kind, sel: s, params: { ...params }, pick, base, rev: md.rev.value, depth: undoStack.length, note: r.note, failed: false, ...(border ? { border } : {}) };
+	takeSelection(r);
+	md.op.value = op;
+	return op;
+}
+/** Run the live operation again with some of its numbers changed. */
+export function adjustOp(patch: Record<string, number>, look?: { border: string | null }) {
+	const was = liveOp();
+	if (!was) return;
+	const params = { ...was.params, ...patch };
+	const border = look ? (look.border ?? undefined) : was.border;
+	restoreInPlace(was.base);
+	let note = was.note;
+	let failed = false;
+	try {
+		const r = runMeshOp(was.sel, (c) => opSteps(c, was.kind, was.pick, params, symOn(was.sel)), { amend: true, after: borderPaint(was.sel, was.kind, border) });
+		note = r.note;
+		takeSelection(r);
+	} catch (e) {
+		// these numbers cannot be done: the mesh shows as it was, and the panel says why
+		touch();
+		note = e instanceof MeshError ? e.message : String(e);
+		failed = true;
+	}
+	const next: LiveOp = { ...was, params, note, failed, rev: md.rev.value };
+	if (border) next.border = border;
+	else delete next.border;
+	md.op.value = next;
+}
+/** An inset's border ring in another colour: the faces the operation added (the ring of quads), painted with a palette token. */
+function borderPaint(s: Sel3, kind: OpKind, border: string | undefined): ((d: Doc3, was: { faces: number }) => void) | undefined {
+	return kind === "inset" && border ? ringPaint(s, border) : undefined;
+}
+/** What paints the faces an operation added to a mesh (an inset's ring of quads) with a palette token, as part of the same step. */
+export function ringPaint(s: Sel3, border: string): (d: Doc3, was: { faces: number }) => void {
+	return (d, was) => {
+		const sh = d.parts?.[s.part]?.shapes?.[s.shape];
+		if (!sh || sh.kind !== "mesh") return;
+		const ring: number[] = [];
+		for (let f = was.faces; f < sh.faces.length; f++) ring.push(f);
+		paintFacesIn(sh, sh.faces.length, ring, border);
+	};
+}
+/** Put the live operation back: the document as it was, and no undo step left behind. */
+export function cancelOp() {
+	const was = liveOp();
+	if (!was) return;
+	restoreInPlace(was.base);
+	undoStack.pop();
+	batch(() => {
+		md.pick.value = was.pick.mode;
+		chooseFaces(was.pick.faces);
+		chooseEdges(was.pick.edges);
+		chooseVerts(was.pick.verts);
+		md.op.value = null;
+	});
+	touch();
+}
+
+export type MeshAct = "delete" | "flip" | "bridge" | "fill" | "wind" | "rim";
+/** A mesh operation with nothing to adjust, on what is chosen. Answers with what it did; says why in the error line when it cannot. */
+export function meshAct(act: MeshAct): string | null {
+	try {
+		const why = meshRefusal();
+		if (why) throw new MeshError(why);
+		const s = md.sel.value!;
+		const sh = selShape() as Extract<Shape3, { kind: "mesh" }>;
+		const sym = symOn(s);
+		const cage = cageFrom(sh);
+		const faces = sym ? withMirrorFaces(cage, md.faces.value) : md.faces.value;
+		const edges = sym ? withMirrorEdges(cage, md.edges.value) : md.edges.value;
+		if (act === "rim") {
+			// the whole rim through each chosen edge (or corner)
+			const out: [number, number][] = [];
+			const seeds: (readonly [number, number] | number)[] = md.pick.value === "corner" ? md.verts.value : edges;
+			for (const e of seeds) {
+				const loop = typeof e === "number" ? rimThrough(cage, e) : rimThrough(cage, e[0], e[1]);
+				if (!loop) throw new MeshError("That is not on a rim: a rim is a loop of open edges, around a hole in the mesh.");
+				loop.forEach((v, i) => out.push([v, loop[(i + 1) % loop.length]]));
+			}
+			if (!out.length) throw new MeshError("Choose an open edge first; the whole rim it is on is then chosen.");
+			batch(() => {
+				md.pick.value = "edge";
+				chooseVerts([]);
+				chooseFaces([]);
+				chooseEdges(out);
+			});
+			return `Chose a rim of ${out.length} edges`;
+		}
+		const r = runMeshOp(s, (c) => {
+			if (act === "delete") return deleteFaces(c, faces);
+			if (act === "flip") return flipFaces(c, faces);
+			if (act === "wind") return windOutward(c);
+			// the rims the chosen edges are on, each once
+			const loops: number[][] = [];
+			for (const e of edges) {
+				const loop = rimThrough(c, e[0], e[1]);
+				if (!loop) throw new MeshError(`Edge ${e[0]}–${e[1]} is not on a rim: a rim is a loop of open edges, around a hole in the mesh.`);
+				if (!loops.some((l) => l.includes(loop[0]) && l.length === loop.length)) loops.push(loop);
+			}
+			if (act === "fill") {
+				if (!loops.length) throw new MeshError("Choose an edge of the rim to fill.");
+				const steps: OpResult[] = [];
+				let cur = c;
+				for (const loop of loops) {
+					const step = fillRim(cur, [loop[0], loop[1]]);
+					steps.push({ ...step, faces: [...(steps[steps.length - 1]?.faces ?? []), ...(step.faces ?? [])] });
+					cur = step.cage;
+				}
+				return steps;
+			}
+			// bridge: two rims, or under symmetry two and their two mirrors
+			if (loops.length !== 2 && !(sym && loops.length === 4)) throw new MeshError(loops.length < 2 ? "Choose an edge on each of two rims to bridge them." : "Choose edges on just two rims to bridge.");
+			if (loops.length === 2) return bridgeRims(c, [loops[0][0], loops[0][1]], [loops[1][0], loops[1][1]]);
+			// pair each rim with the nearest that is not its mirror
+			const m = mirrorMap(c.points);
+			const isMirror = (a: number[], b: number[]) => a.every((v) => b.includes(m[v]));
+			const first = loops[0];
+			const partner = loops.slice(1).find((l) => !isMirror(first, l))!;
+			const rest = loops.filter((l) => l !== first && l !== partner);
+			const a = bridgeRims(c, [first[0], first[1]], [partner[0], partner[1]]);
+			const b = bridgeRims(a.cage, [rest[0][0], rest[0][1]], [rest[1][0], rest[1][1]]);
+			return [a, { ...b, faces: [...(a.faces ?? []), ...(b.faces ?? [])] }];
+		});
+		md.op.value = null;
+		if (act === "delete") chooseFaces([]);
+		else if (act !== "wind") takeSelection(r);
+		return r.note;
+	} catch (e) {
+		project.error.value = e instanceof MeshError ? e.message : String(e);
+		return null;
+	}
+}
+
+/** The crease of every chosen edge of the selected mesh (and their mirrors under symmetry), 0 removing it. */
+export function setCreaseSel(s: Sel3, value: number) {
+	try {
+		runMeshOp(s, (c) => setCreases(c, symOn(s) ? withMirrorEdges(c, md.edges.value) : md.edges.value, Math.max(0, Math.min(1, value))), { merge: "crease-sel" });
+	} catch (e) {
+		project.error.value = e instanceof MeshError ? e.message : String(e);
+	}
+}
+
+// ------------------------------------------------------------- paint (1.8)
+
+type Surface = MeshShape | SweepShape;
+const isSurface = (sh: Shape3 | undefined): sh is Surface => !!sh && (sh.kind === "mesh" || sh.kind === "sweep");
+/** How many faces a shape's cage has: a mesh's own, a sweep's of the mesh it generates. */
+export function faceCount(sh: Surface): number {
+	return sh.kind === "mesh" ? sh.faces.length : cageOf(sh).faces.length;
+}
+/** Does the shape mirror itself across x in the file (a Mirror modifier)? The working symmetry then stands down. */
+export function mirrorModOn(sh: Shape3): boolean {
+	return isSurface(sh) && (sh.mods ?? []).some((m) => m.op === "mirror" && (m.axis ?? "x") === "x");
+}
+/** The colour faces are painted with: the one picked, else the last of the palette. */
+export function paintToken(): string {
+	const t = md.paintTok.value;
+	return t && md.tokens.value.some((k) => k.name === t) ? t : curTokName();
+}
+function validNow(copy: Doc3): string | null {
+	const r = validate(copy, { refTokens: md.unresolved.value.length ? null : md.shared.value.map((t) => t.name), unresolvedRefs: unresolvedOf(md.patterns.value) });
+	return r.errors.length ? r.errors.map((e) => `${e.code} ${e.path}: ${e.message}`).join("\n") : null;
+}
+/**
+ * Change one mesh or sweep as one undo step, after trying the change on
+ * a copy: a change the validator would refuse is not made, and the
+ * reason is thrown as a MeshError.
+ */
+function changeSurface(s: Sel3, fn: (sh: Surface, d: Doc3) => void, merge?: string): void {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!isSurface(sh)) throw new MeshError(sh ? `This works on a mesh or a sweep, and this is a ${sh.kind}.` : "There is no such shape.");
+	const copy = JSON.parse(JSON.stringify(md.doc.value)) as Doc3;
+	fn(copy.parts![s.part].shapes![s.shape] as Surface, copy);
+	const why = validNow(copy);
+	if (why) throw new MeshError("Refused, the shape would not be valid:\n" + why);
+	mutate((d) => {
+		const live = d.parts![s.part].shapes![s.shape] as Surface;
+		fn(live, d);
+		delete live.bake;
+	}, merge);
+}
+const say = (e: unknown) => {
+	project.error.value = e instanceof MeshError ? e.message : String(e);
+};
+
+/**
+ * Paint faces of a mesh or a sweep with a palette token: `colors` and
+ * `paint` are written and kept minimal. Under the working symmetry the
+ * mirrored faces are painted too. Returns what it did; throws a
+ * MeshError when it cannot.
+ */
+export function paintFacesOf(s: Sel3, faces: readonly number[], token: string, opts: { merge?: string; mirror?: boolean } = {}): string {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!isSurface(sh)) throw new MeshError(sh ? `Faces are painted on a mesh or a sweep, and this is a ${sh.kind}.` : "There is no such shape.");
+	if (!md.tokens.value.some((t) => t.name === token)) throw new MeshError(`There is no colour named ${token}; the colours are ${md.tokens.value.map((t) => t.name).join(", ") || "(none)"}.`);
+	const n = faceCount(sh);
+	const bad = faces.find((f) => !Number.isInteger(f) || f < 0 || f >= n);
+	if (bad !== undefined) throw new MeshError(`There is no face ${bad}: the shape has ${n} faces (0 to ${n - 1}).`);
+	if (!faces.length) throw new MeshError("Choose the faces to paint first.");
+	const sym = (opts.mirror ?? symOn(s)) && sh.kind === "mesh";
+	const list = sym ? withMirrorFaces(cageFrom(sh as MeshShape), faces) : [...faces];
+	changeSurface(s, (m) => void paintFacesIn(m, n, list, token), opts.merge);
+	return `Painted ${list.length} face${list.length === 1 ? "" : "s"} ${token}`;
+}
+/** The chosen faces of the selected mesh, painted with the current colour. */
+export function paintChosen(token = paintToken()): string | null {
+	const s = md.sel.value;
+	try {
+		if (!s) throw new MeshError("Select a mesh first.");
+		const note = paintFacesOf(s, md.faces.value, token);
+		md.paintTok.value = token;
+		md.op.value = null;
+		return note;
+	} catch (e) {
+		say(e);
+		return null;
+	}
+}
+/** Paint by brush on and off: while on, a click or a drag over the selected mesh's faces paints them. */
+export function setPainting(on: boolean) {
+	batch(() => {
+		md.painting.value = on;
+		if (on) {
+			setPick("face");
+			chooseFaces([]);
+			if (!md.paintTok.value) md.paintTok.value = paintToken();
+		}
+	});
+}
+/** One face under the brush: a stroke is one undo step. Quiet when the face wears the colour already. */
+export function brushFace(s: Sel3, face: number) {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!isSurface(sh) || tokenOfFace(sh, face) === paintToken()) return;
+	try {
+		paintFacesOf(s, [face], paintToken(), { merge: "paint-stroke" });
+	} catch (e) {
+		say(e);
+	}
+}
+/** The colour a face of the selected shape wears. */
+export function faceToken(sh: Shape3, face: number): string | undefined {
+	return isSurface(sh) ? tokenOfFace(sh, face) : sh.color;
+}
+
+// ------------------------------------------------------------- modifiers (1.8)
+
+export type ModOp = "mirror" | "solidify" | "crease";
+const MOD_DEFAULTS: Record<ModOp, Mod> = {
+	mirror: { op: "mirror", axis: "x" },
+	solidify: { op: "solidify", thick: 0.3 },
+	crease: { op: "crease", angle: 30 },
+};
+/** The modifiers of a shape, in the order they are applied. */
+export function modsOf(sh: Shape3 | undefined): Mod[] {
+	return isSurface(sh) ? (sh.mods ?? []) : [];
+}
+function writeMods(sh: Surface, mods: Mod[]) {
+	if (mods.length) sh.mods = mods;
+	else delete sh.mods;
+	tidyPaint(sh, faceCount(sh));
+}
+/** Replace a shape's whole list of modifiers (an empty list clears it): one undo step, refused when it would not be valid. */
+export function setMods(s: Sel3, mods: Mod[], merge?: string): void {
+	changeSurface(s, (sh) => writeMods(sh, JSON.parse(JSON.stringify(mods)) as Mod[]), merge);
+}
+/** The same, with palette tokens the modifiers name by index added to the shape's colours first (in order, after the ones it has). */
+export function setModsWithColors(s: Sel3, mods: Mod[], tokens: readonly string[]): void {
+	changeSurface(s, (sh) => {
+		if (tokens.length) sh.colors = [...(sh.colors ?? []), ...tokens.filter((t) => !(sh.colors ?? []).includes(t))];
+		writeMods(sh, JSON.parse(JSON.stringify(mods)) as Mod[]);
+	});
+}
+export function addMod(s: Sel3, op: ModOp): boolean {
+	try {
+		setMods(s, [...modsOf(parts()[s.part]?.shapes?.[s.shape]), { ...MOD_DEFAULTS[op] }]);
+		return true;
+	} catch (e) {
+		say(e);
+		return false;
+	}
+}
+export function removeMod(s: Sel3, i: number) {
+	try {
+		setMods(s, modsOf(parts()[s.part]?.shapes?.[s.shape]).filter((_, k) => k !== i));
+	} catch (e) {
+		say(e);
+	}
+}
+/** Move a modifier one place earlier or later: the order is the order of work. */
+export function moveMod(s: Sel3, i: number, later: boolean) {
+	const list = [...modsOf(parts()[s.part]?.shapes?.[s.shape])];
+	const j = later ? i + 1 : i - 1;
+	if (i < 0 || j < 0 || i >= list.length || j >= list.length) return;
+	[list[i], list[j]] = [list[j], list[i]];
+	try {
+		setMods(s, list);
+	} catch (e) {
+		say(e);
+	}
+}
+/** One field of a modifier; undefined takes it away (the format's default then stands). A colour is a palette token, written as a paint index. */
+export function setModField(s: Sel3, i: number, key: string, v: string | number | undefined) {
+	try {
+		changeSurface(
+			s,
+			(sh) => {
+				const mods = (sh.mods ?? []).map((m) => ({ ...m }));
+				const m = mods[i];
+				if (!m) return;
+				if (v === undefined || v === "") delete m[key];
+				else if ((key === "inner" || key === "rim") && typeof v === "string") m[key] = paintIndex(sh, v);
+				else m[key] = v;
+				writeMods(sh, mods);
+			},
+			`mod-${i}-${key}`,
+		);
+	} catch (e) {
+		say(e);
+	}
+}
+/** The palette token a modifier's inner or rim index names; undefined when it has none (the faces keep their source's paint). */
+export function modToken(sh: Shape3, m: Mod, key: "inner" | "rim"): string | undefined {
+	const p = m[key];
+	if (typeof p !== "number" || !isSurface(sh)) return undefined;
+	return p === 0 ? sh.color : sh.colors?.[p - 1];
+}
+
+/**
+ * Bake a shape's modifiers into plain geometry, through the one at
+ * `index` (the ones before it are applied on the way: the order is the
+ * order of work). Paint, shades, creases and pattern coordinates ride
+ * through as the format says, every morph of the mesh is carried, and a
+ * sweep becomes the mesh it made. One undo step. Returns what it did.
+ */
+export function applyMod(s: Sel3, index: number): string {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!isSurface(sh)) throw new MeshError(sh ? `Only a mesh or a sweep has modifiers, and this is a ${sh.kind}.` : "There is no such shape.");
+	const mods = sh.mods ?? [];
+	if (!mods[index]) throw new MeshError(mods.length ? `There is no modifier ${index}: this shape has ${mods.length} (0 to ${mods.length - 1}).` : "This shape has no modifiers to apply.");
+	const part = parts()[s.part];
+	const names = new Set([part.name, ...parts().filter((q) => q.like === part.name).map((q) => q.name)]);
+	const count = index + 1;
+	const was = sh.kind;
+	changeSurface(s, (live, d) => {
+		const upto = (live.mods ?? []).slice(0, count);
+		const rest = (live.mods ?? []).slice(count);
+		const cage = { ...(live.kind === "mesh" ? live : cageOf(live)), mods: upto } as MeshShape;
+		delete cage.bake;
+		const out = JSON.parse(JSON.stringify(applyMods(cage))) as MeshShape;
+		// every morph of the cage, through the same modifiers (what they decide, they decide on the rest cage)
+		if (live.kind === "mesh") {
+			const take = (sp: StatePart3) => {
+				if (!names.has(sp.part)) return;
+				for (const m of sp.morph ?? []) if (m.shape === s.shape && m.points.length === live.points.length) m.points = JSON.parse(JSON.stringify(applyMods(posedMesh(cage, m.points)).points)) as Vec3[];
+			};
+			for (const st of d.states ?? []) st.parts.forEach(take);
+			for (const c of d.clips ?? []) for (const k of c.keys) (k.parts ?? []).forEach(take);
+		}
+		const next = live as unknown as Record<string, unknown>;
+		if (live.kind === "sweep") {
+			// the sweep is the mesh it made from here on: its generator's fields go
+			for (const k of ["op", "axis", "profile", "segments", "from", "to", "path", "radius", "radii", "caps", "closed"]) delete next[k];
+			next.kind = "mesh";
+		}
+		next.points = out.points;
+		next.faces = out.faces;
+		for (const k of ["paint", "shades", "creases"] as const) {
+			if (out[k]) next[k] = out[k];
+			else delete next[k];
+		}
+		if (out.mapping?.uvs && live.mapping) live.mapping = { ...live.mapping, uvs: out.mapping.uvs };
+		delete next.tris;
+		if (rest.length) next.mods = rest;
+		else delete next.mods;
+		tidyPaint(live, out.faces.length);
+	});
+	batch(() => {
+		chooseVerts([]);
+		chooseEdges([]);
+		chooseFaces([]);
+		md.pipePt.value = null;
+		md.op.value = null;
+	});
+	const what = mods.slice(0, count).map((m) => m.op).join(", ");
+	return `Applied ${what}${was === "sweep" ? "; the sweep is a mesh now" : ""}`;
+}
+
+// ------------------------------------------------------------- shades (1.8)
+
+/** The model's own geometry as one soup of triangles in a part's rest space, as the current state poses it: what casts the shade. */
+function occluders(partIndex: number): { tris: number[]; lo: Vec3; hi: Vec3 } {
+	const d = md.doc.value;
+	const poses = curState()?.parts ?? [];
+	const W = worldTransforms3(d, poses);
+	const home = parts()[partIndex];
+	const inv = xf3Invert(W.get(home.name) ?? ([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] as Parameters<typeof xf3Invert>[0]));
+	const tris: number[] = [];
+	const lo: Vec3 = [Infinity, Infinity, Infinity];
+	const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+	for (const part of parts()) {
+		const sp = poses.find((x) => x.part === part.name);
+		// a part the state leaves out casts nothing
+		if (poses.length && !sp) continue;
+		const w = W.get(part.name);
+		const F = w ? xf3Mul(inv, w) : inv;
+		for (const sh of shapesOf3Posed(d, part, sp)) {
+			// the cage with its modifiers, before smoothing: both halves, with their thickness
+			const m = builtOf(sh);
+			const pts = m.points.map((p) => xf3Apply(F, p));
+			for (const p of pts) for (let k = 0; k < 3; k++) {
+				if (p[k] < lo[k]) lo[k] = p[k];
+				if (p[k] > hi[k]) hi[k] = p[k];
+			}
+			soupTris(pts, m.faces, tris);
+		}
+	}
+	return { tris, lo, hi };
+}
+
+/**
+ * Shade a mesh's corners: each gets a number for how much of the sky it
+ * sees past the model's own geometry (see `cornerShades`), written as
+ * `shades`. One undo step. Returns what it did.
+ */
+export function shadeCorners(s: Sel3, opts: { strength?: number; reach?: number } = {}): string {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !sh) throw new MeshError("There is no such shape.");
+	if (sh.kind !== "mesh") throw new MeshError(`Only a mesh has corners to shade, and this is a ${sh.kind}${sh.kind === "sweep" ? ": apply a modifier to it, or shade the meshes around it" : ""}.`);
+	const strength = Math.max(0, Math.min(1, opts.strength ?? md.shadeStrength.value));
+	const occ = occluders(s.part);
+	const diag = Math.hypot(occ.hi[0] - occ.lo[0], occ.hi[1] - occ.lo[1], occ.hi[2] - occ.lo[2]);
+	const reach = opts.reach && opts.reach > 0 ? opts.reach : Math.max(0.01, diag * 0.35);
+	// the corners where the modifiers leave them (a mirror welds the seam, a wall may grow outward), with the normals of the built faces
+	const posed = shapesOf3Posed(md.doc.value, part, curState()?.parts.find((x) => x.part === part.name))[s.shape];
+	const built = builtOf(posed ?? sh);
+	const n = sh.points.length;
+	const normals = pointNormals(built.points as V3[], built.faces).slice(0, n);
+	const shades = cornerShades(built.points.slice(0, n) as V3[], normals as V3[], soupOf(new Float64Array(occ.tris)), { strength, reach });
+	const dark = shades.filter((x) => x < 0.995).length;
+	mutate((d) => {
+		const m = d.parts![s.part].shapes![s.shape];
+		if (m.kind !== "mesh") return;
+		if (dark) m.shades = shades;
+		else delete m.shades;
+		delete m.bake;
+	});
+	md.op.value = null;
+	const least = Math.min(...shades);
+	return dark ? `Shaded ${dark} of ${n} corners, the darkest ${least}` : "No corner is hidden from the sky: nothing to shade";
+}
+/** Take a mesh's shades away. */
+export function clearShades(s: Sel3): string {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!sh || sh.kind !== "mesh") throw new MeshError("Only a mesh has shades.");
+	if (!sh.shades) return "It has no shades";
+	mutate((d) => {
+		const m = d.parts![s.part].shapes![s.shape] as MeshShape;
+		delete m.shades;
+		delete m.bake;
+	});
+	return "Cleared the shades";
+}
+/** The two as the inspector's buttons run them: the reason goes to the error line. */
+export function shadeAct(act: "shade" | "clear"): string | null {
+	const s = md.sel.value;
+	try {
+		if (!s) throw new MeshError("Select a mesh first.");
+		return act === "shade" ? shadeCorners(s) : clearShades(s);
+	} catch (e) {
+		say(e);
+		return null;
+	}
+}
+
+// ------------------------------------------------------------- pipes (1.8)
+
+export const isPipe = (sh: Shape3 | undefined): sh is SweepShape => !!sh && sh.kind === "sweep" && sh.op === "pipe";
+const mirrorX = (p: Vec3): Vec3 => [-p[0] + 0, p[1], p[2]];
+
+export interface PipeOptions {
+	radius?: number;
+	radii?: number[];
+	segments?: number;
+	caps?: boolean;
+	closed?: boolean;
+	/** round the path through its points (handles written as the format keeps them) */
+	round?: boolean;
+	color?: string;
+	/** a mirrored twin across x beside it, the two kept alike while they are edited */
+	twin?: boolean;
+}
+function pipeShape(points: Vec3[], o: PipeOptions): SweepShape {
+	const sh: SweepShape = { kind: "sweep", color: o.color ?? curTokName(), op: "pipe", segments: Math.max(3, Math.round(o.segments ?? 8)), path: { points: points.map(round3) }, radius: r3(o.radius ?? 0.3) };
+	if (o.radii) sh.radii = o.radii.map(r3);
+	if (o.caps === false) sh.caps = false;
+	if (o.closed) sh.closed = true;
+	if (o.round && points.length >= 3) Object.assign(sh.path!, roundHandles(sh.path!.points as V3[], !!o.closed));
+	return sh;
+}
+/**
+ * A pipe along points of a part's rest space, added to that part and
+ * selected; with `twin`, a second one mirrored across x. One undo step.
+ * Throws a MeshError when the pipe would not be valid.
+ */
+export function addPipe(partIndex: number, points: Vec3[], o: PipeOptions = {}): Sel3 {
+	const p = parts()[partIndex];
+	if (!p) throw new MeshError("There is no such part.");
+	if (p.like) throw new MeshError(`${p.name} is drawn like ${p.like} and has no shapes of its own; add the pipe to ${p.like}.`);
+	if (points.length < 2) throw new MeshError("A pipe needs two points or more.");
+	if (o.closed && points.length < 3) throw new MeshError("A closed pipe needs three points or more.");
+	if (o.radii && o.radii.length !== points.length) throw new MeshError(`radii must have one number per point: ${points.length}, not ${o.radii.length}.`);
+	const one = pipeShape(points, o);
+	const two = o.twin ? pipeShape(points.map(mirrorX), o) : null;
+	const copy = JSON.parse(JSON.stringify(md.doc.value)) as Doc3;
+	(copy.parts![partIndex].shapes ??= []).push(one, ...(two ? [two] : []));
+	const why = validNow(copy);
+	if (why) throw new MeshError("Refused, the pipe would not be valid:\n" + why);
+	const at = p.shapes?.length ?? 0;
+	mutate((d) => (d.parts![partIndex].shapes ??= []).push(JSON.parse(JSON.stringify(one)), ...(two ? [JSON.parse(JSON.stringify(two))] : [])));
+	if (two) setTwin(p.name, at, at + 1);
+	const sel = { part: partIndex, shape: at };
+	batch(() => {
+		md.curPart.value = partIndex;
+		md.sel.value = sel;
+		md.pipePt.value = null;
+	});
+	return sel;
+}
+/**
+ * Land points on a shape's drawn surface: each goes to the nearest
+ * point of it and is lifted `offset` along the surface's normal there.
+ * The points are in `partIndex`'s rest space, and so is what comes
+ * back; the shape may belong to another part (as the current state
+ * poses the two).
+ */
+export function landOnSurface(partIndex: number, points: readonly Vec3[], on: Sel3, offset: number): Vec3[] {
+	const home = parts()[partIndex];
+	const part = parts()[on.part];
+	const sh = part?.shapes?.[on.shape];
+	if (!home || !part || !sh) throw new MeshError("There is no such shape to land on.");
+	const poses = curState()?.parts ?? [];
+	const W = worldTransforms3(md.doc.value, poses);
+	const ident = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] as Parameters<typeof xf3Invert>[0];
+	const F = xf3Mul(xf3Invert(W.get(home.name) ?? ident), W.get(part.name) ?? ident);
+	const m = sh.kind === "mesh" || sh.kind === "sweep" ? asMesh(sh) : cageOf(sh);
+	const tris = soupTris(m.points.map((p) => xf3Apply(F, p)) as V3[], m.faces);
+	if (!tris.length) throw new MeshError("That shape has no surface to land on.");
+	return points.map((p) => {
+		const hit = nearestOnTris(tris, p as V3)!;
+		return round3([hit.at[0] + hit.n[0] * offset, hit.at[1] + hit.n[1] * offset, hit.at[2] + hit.n[2] * offset]);
+	});
+}
+
+/** The twin of a pipe, when the notes pair it with one that is still its mirror in kind and count. */
+export function pipeTwin(s: Sel3): Sel3 | null {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !isPipe(sh)) return null;
+	const j = twinOf(part.name, s.shape);
+	const other = j === null ? undefined : part.shapes?.[j];
+	if (j === null || !isPipe(other) || other.path?.points.length !== sh.path?.points.length) return null;
+	return { part: s.part, shape: j };
+}
+/** Change a pipe (and its twin, mirrored) as one undo step. */
+function changePipe(s: Sel3, fn: (sh: SweepShape, flip: boolean) => void, merge?: string) {
+	const twin = pipeTwin(s);
+	try {
+		const copy = JSON.parse(JSON.stringify(md.doc.value)) as Doc3;
+		const run = (d: Doc3) => {
+			const a = d.parts![s.part].shapes![s.shape];
+			if (isPipe(a)) {
+				fn(a, false);
+				delete a.bake;
+			}
+			const b = twin ? d.parts![twin.part].shapes![twin.shape] : undefined;
+			if (isPipe(b)) {
+				fn(b, true);
+				delete b.bake;
+			}
+		};
+		run(copy);
+		const why = validNow(copy);
+		if (why) throw new MeshError("Refused, the pipe would not be valid:\n" + why);
+		mutate(run, merge);
+	} catch (e) {
+		say(e);
+	}
+}
+/** The handles follow the points while a path is rounded: the studio writes them, it does not edit them one by one. */
+function reround(sh: SweepShape) {
+	const path = sh.path;
+	if (!path || !(path.in || path.out)) return;
+	if (path.points.length < 3) {
+		delete path.in;
+		delete path.out;
+	} else Object.assign(path, roundHandles(path.points as V3[], !!sh.closed));
+}
+/** Put a point of a pipe's path somewhere in its part's rest space. */
+export function setPipePoint(s: Sel3, i: number, to: Vec3, merge = "pipe-point") {
+	changePipe(
+		s,
+		(sh, flip) => {
+			const pts = sh.path?.points;
+			if (!pts || !pts[i]) return;
+			pts[i] = round3(flip ? mirrorX(to) : to);
+			reround(sh);
+		},
+		merge,
+	);
+}
+/** Move a point of the selected pipe's path by a view-space displacement. */
+export function movePipePointView(s: Sel3, i: number, dView: Vec3, merge = "pipe-point") {
+	const fp = framePartOf(s.part);
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	const p = isPipe(sh) ? sh.path?.points[i] : undefined;
+	if (!fp || !p) return;
+	const d = xf3ApplyDir(xf3Invert(fp.F), dView);
+	setPipePoint(s, i, [p[0] + d[0], p[1] + d[1], p[2] + d[2]], merge);
+}
+export function setPipeField(s: Sel3, key: "radius" | "segments" | "caps" | "closed", v: number | boolean) {
+	changePipe(
+		s,
+		(sh) => {
+			if (key === "radius") sh.radius = Math.max(0.001, r3(v as number));
+			else if (key === "segments") sh.segments = Math.max(3, Math.round(v as number));
+			else if (key === "caps") {
+				if (v) delete sh.caps;
+				else sh.caps = false;
+			} else {
+				if (v) sh.closed = true;
+				else delete sh.closed;
+				reround(sh);
+			}
+			// the faces are other faces now: paint that no longer fits goes
+			if (sh.paint && sh.paint.length !== cageOf({ ...sh, bake: undefined } as SweepShape).faces.length) {
+				delete sh.paint;
+				tidyPaint(sh, 0);
+			}
+		},
+		`pipe-${key}`,
+	);
+}
+/** The radius at one point of the path, as a factor of the pipe's radius; every point at 1 leaves `radii` out. */
+export function setPipeRadiusAt(s: Sel3, i: number, k: number) {
+	changePipe(
+		s,
+		(sh) => {
+			const n = sh.path?.points.length ?? 0;
+			const radii = sh.radii && sh.radii.length === n ? [...sh.radii] : new Array<number>(n).fill(1);
+			if (i < 0 || i >= n) return;
+			radii[i] = Math.max(0, r3(k));
+			if (radii.every((x) => x === 1)) delete sh.radii;
+			else sh.radii = radii;
+		},
+		`pipe-radius-${i}`,
+	);
+}
+/** Round a pipe's path through its points, or make it straight runs again. */
+export function setPipeRound(s: Sel3, on: boolean) {
+	changePipe(s, (sh) => {
+		const path = sh.path;
+		if (!path) return;
+		if (on && path.points.length >= 3) Object.assign(path, roundHandles(path.points as V3[], !!sh.closed));
+		else {
+			delete path.in;
+			delete path.out;
+		}
+	});
+}
+/** Take a point out of a pipe's path (two must remain; three on a closed one). */
+export function deletePipePoint(s: Sel3, i: number) {
+	const sh = parts()[s.part]?.shapes?.[s.shape];
+	if (!isPipe(sh)) return;
+	const n = sh.path?.points.length ?? 0;
+	if (n <= (sh.closed ? 3 : 2)) {
+		project.error.value = sh.closed ? "A closed pipe keeps three points; open it first, or delete the pipe." : "A pipe keeps two points; delete the pipe itself to be rid of it.";
+		return;
+	}
+	changePipe(s, (p) => {
+		p.path!.points.splice(i, 1);
+		if (p.radii) {
+			p.radii.splice(i, 1);
+			if (p.radii.every((x) => x === 1)) delete p.radii;
+		}
+		reround(p);
+		delete p.paint;
+		tidyPaint(p, 0);
+	});
+	md.pipePt.value = null;
+}
+/** Pair the selected pipe with a mirrored twin across x (made now, beside it), or let the pair go: each is then its own shape. */
+export function setPipeSymmetry(s: Sel3, on: boolean) {
+	const part = parts()[s.part];
+	const sh = part?.shapes?.[s.shape];
+	if (!part || !isPipe(sh)) return;
+	if (!on) {
+		setTwin(part.name, s.shape, null);
+		return;
+	}
+	if (pipeTwin(s)) return;
+	const copy = JSON.parse(JSON.stringify(sh)) as SweepShape;
+	delete copy.bake;
+	copy.path!.points = copy.path!.points.map(mirrorX);
+	for (const k of ["in", "out"] as const) if (copy.path![k]) copy.path![k] = copy.path![k]!.map(mirrorX);
+	const at = part.shapes!.length;
+	mutate((d) => d.parts![s.part].shapes!.push(copy));
+	setTwin(part.name, s.shape, at);
+}
+
+// ------------------------------------------------------------- the mannequin
+
+/** Read the mannequin the notes name; nothing when they name none. */
+export async function loadMannequin() {
+	const m = work.value.mannequin;
+	const rel = md.path.value;
+	if (!m || !rel) {
+		md.mannequin.value = null;
+		return;
+	}
+	const text = await shell.readFile(root(), m.path);
+	const parsed = text === null ? null : parseDoc(text).doc;
+	if (md.path.value !== rel || work.value.mannequin?.path !== m.path) return;
+	if (!parsed || parsed.space !== "3d") {
+		md.mannequin.value = null;
+		project.error.value = text === null ? `The mannequin ${m.path} is not there any more.` : `${m.path} is not a 3D model, so it cannot be a mannequin.`;
+		return;
+	}
+	const d = parsed as unknown as Doc3;
+	delete d.resolved;
+	const dir = dirname(m.path);
+	const resolved = await resolvePalettes(d as unknown as Parameters<typeof resolvePalettes>[0], (ref) => shell.readFile(root(), joinRel(dir, ref)));
+	if (md.path.value !== rel || work.value.mannequin?.path !== m.path) return;
+	// it is shown, never edited: drawn from its compiled sidecar (1.8), built first where that is missing or stale
+	const compiled = await sidecarOf(root(), m.path, text!);
+	if (md.path.value !== rel || work.value.mannequin?.path !== m.path) return;
+	md.mannequin.value = { path: m.path, doc: d, tokens: resolved.tokens, compiled };
+	md.rev.value++;
+}
+/** Show another model of the project under this one (null for none), in one of its states. */
+export function chooseMannequin(m: Mannequin | null) {
+	setMannequin(m);
+	void loadMannequin();
+}
+/** The poses the mannequin stands in: the state the notes name, else its first. */
+export function mannequinPoses(): StatePart3[] | undefined {
+	const m = md.mannequin.value;
+	if (!m) return undefined;
+	const want = work.value.mannequin?.state;
+	const st = (m.doc.states ?? []).find((x) => x.name === want) ?? m.doc.states?.[0];
+	return st?.parts;
 }

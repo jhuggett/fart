@@ -20,5 +20,9 @@ folder.
     wails3 task package             # bin/Uranus.app (macOS) / bin/Uranus (elsewhere)
     ./bin/Uranus --serve some/dir   # no window: the LAN server only
 
+    npm test -w @fastart/studio     # the mesh operations, as geometry (frontend/test)
+    node test/mesh.mjs [shots dir]  # mesh editing in the served studio, headless (make check-mesh)
+    node test/surface.mjs [shots dir]  # format 1.8: paint, modifiers, shades, pipes, sidecars (make check-surface)
+
 Needs Go, Node (the repo root's `npm install` covers the frontend), and
 the Wails CLI: `go install github.com/wailsapp/wails/v3/cmd/wails3@latest`.

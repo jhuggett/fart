@@ -263,7 +263,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 7;
+export const FORMAT_MINOR = 8;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -286,18 +286,67 @@ export interface SmoothFields {
 	bake?: MeshBake;
 }
 
+/** Since 1.8: more than one colour on a shape. `paint` has one entry per face: 0 is the shape's `color`, n is `colors[n - 1]`. */
+export interface PaintFields {
+	/** Further palette tokens the faces may wear. */
+	colors?: string[];
+	/** One whole number per face of the cage (for a sweep, of the mesh it generates). */
+	paint?: number[];
+}
+
+/** Since 1.8: the cage reflected through the plane at 0 on `axis` and joined; points within `merge` of the plane weld and are pinned to it. */
+export interface MirrorMod {
+	op: "mirror";
+	axis: "x" | "y" | "z";
+	/** Absent means 0.001. */
+	merge?: number;
+	[extra: string]: unknown;
+}
+/** Since 1.8: a surface given thickness along its point normals; a boundary gets a rim of quads. */
+export interface SolidifyMod {
+	op: "solidify";
+	thick: number;
+	/** -1 (the default): the cage is the outside and the wall grows inward; 1: the cage is the inside; between, in proportion. */
+	offset?: number;
+	/** A paint index for the inner faces; absent, each wears its source face's. */
+	inner?: number;
+	/** A paint index for the rim; absent, each quad wears the paint of the face its edge belongs to. */
+	rim?: number;
+	[extra: string]: unknown;
+}
+/** Since 1.8: every edge whose faces meet at more than `angle` degrees takes crease `value`, unless it already has one. */
+export interface CreaseMod {
+	op: "crease";
+	/** Degrees, absent means 30. */
+	angle?: number;
+	/** 0–1, absent means 1. */
+	value?: number;
+	[extra: string]: unknown;
+}
+export type Mod = MirrorMod | SolidifyMod | CreaseMod;
+
 export interface MeshBake {
 	points: Vec3[];
 	faces: number[][];
 	tris?: number[];
 	of?: string;
+	/** 1.8: the paint of the bake's own faces, and the shade of its own points. */
+	paint?: number[];
+	shades?: number[];
+	/** The cage's explicit pattern coordinates on the surface, one list per face of it; `uvOf` hashes the cage's own. */
+	uvs?: Vec2[][];
+	uvOf?: string;
 	[extra: string]: unknown;
 }
 
-export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields {
+export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields, PaintFields {
 	kind: "mesh";
 	color?: string;
 	shade?: number;
+	/** Since 1.8: one number per point, multiplying `shade` there; interpolated across faces and through subdivision. */
+	shades?: number[];
+	/** Since 1.8: modifiers applied to the cage in order, after a morph and before `smooth`. */
+	mods?: Mod[];
 	points: Vec3[];
 	/** Index loops into points, wound so (p1-p0)x(p2-p0) points outward. */
 	faces: number[][];
@@ -312,16 +361,31 @@ export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields
  * steps; `extrude` runs the closed profile from `from` to `to`. The bake
  * is the mesh it makes; readers that know the kind make it themselves.
  */
-export interface SweepShape extends CollisionFields, TextureFields3, SmoothFields {
+export interface SweepShape extends CollisionFields, TextureFields3, SmoothFields, PaintFields {
 	kind: "sweep";
 	color?: string;
 	shade?: number;
-	op: "lathe" | "extrude";
-	axis: "x" | "y" | "z";
-	profile: { points: Vec2[]; in?: Vec2[]; out?: Vec2[]; closed?: boolean; [extra: string]: unknown };
+	/** `pipe` since 1.8: a section carried along a 3D `path`. */
+	op: "lathe" | "extrude" | "pipe";
+	/** A lathe's and an extrude's; a pipe has none. */
+	axis?: "x" | "y" | "z";
+	/** A lathe's and an extrude's profile; for a pipe, an optional closed section in place of the circle. */
+	profile?: { points: Vec2[]; in?: Vec2[]; out?: Vec2[]; closed?: boolean; [extra: string]: unknown };
 	segments?: number;
 	from?: number;
 	to?: number;
+	/** 1.8, a pipe's spine: a path body with three coordinates. */
+	path?: { points: Vec3[]; in?: Vec3[]; out?: Vec3[]; [extra: string]: unknown };
+	/** 1.8: the section's scale (a round pipe's radius); absent means 1. */
+	radius?: number;
+	/** 1.8: one factor per path point, multiplying `radius` there, linear between. */
+	radii?: number[];
+	/** 1.8: close the ends of an open pipe; absent means true. */
+	caps?: boolean;
+	/** 1.8: the path joins its last point to its first. */
+	closed?: boolean;
+	/** 1.8: modifiers on the generated mesh. */
+	mods?: Mod[];
 	[extra: string]: unknown;
 }
 

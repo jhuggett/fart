@@ -28,7 +28,11 @@
     "dup.texture": "two textures share a name (1.5)",
     "morph": "a morph on a like part, naming a shape the part lacks or one without points, or with a point count that differs from the base (1.6)",
     "crease": "a crease outside 0\u20131, on a point the mesh lacks, or on a pair that is not an edge (1.7)",
-    "curve": "a path's in/out with a count that differs from its points, an open path without w, a closed one with fewer than three points (1.7)"
+    "curve": "a path's in/out with a count that differs from its points, an open path without w, a closed one with fewer than three points (1.7)",
+    "paint": "paint with a count that differs from the faces, an index past the last of colors, or paint without colors (1.8)",
+    "shades": "shades with a count that differs from the points, or on a sweep (1.8)",
+    "mod": "a modifier whose op this version does not have (1.8)",
+    "pipe": "a pipe's radii with a count that differs from its path's points, or a closed pipe with fewer than three path points (1.8)"
   },
   "warnings": {
     "unknown": "an unknown field, preserved but meaningless to this version",
@@ -626,6 +630,101 @@
       "valid": false,
       "space": "3d",
       "code": "schema"
+    },
+    {
+      "file": "valid/paint.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.8: a cube painted in three tokens with a shade per point, smoothed once; an extruded prism with painted caps"
+    },
+    {
+      "file": "valid/mods.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.8: half a hood mirrored, solidified with a painted lining and rim, creased by angle and smoothed twice; a morph widens it"
+    },
+    {
+      "file": "valid/pipe.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.8: a square elbow painted by face, a curved plume tapering to an apex, a closed ring carrying a triangular section"
+    },
+    {
+      "file": "invalid/paint-count.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "paint",
+      "note": "three paint entries for six faces"
+    },
+    {
+      "file": "invalid/paint-range.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "paint",
+      "note": "paint 2 with one colour"
+    },
+    {
+      "file": "invalid/paint-no-colors.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "paint",
+      "note": "paint without colors"
+    },
+    {
+      "file": "invalid/paint-token.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "ref.token",
+      "note": "colors names a token nothing supplies"
+    },
+    {
+      "file": "invalid/shades-count.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "shades",
+      "note": "three shades for eight points"
+    },
+    {
+      "file": "invalid/mod-unknown.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "mod",
+      "note": "an op the format does not have"
+    },
+    {
+      "file": "invalid/mod-paint-range.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "paint",
+      "note": "a solidify rim painted past the last colour"
+    },
+    {
+      "file": "invalid/mod-axis.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "schema",
+      "note": "a mirror about no axis"
+    },
+    {
+      "file": "invalid/pipe-radii.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "pipe",
+      "note": "two radii for three path points"
+    },
+    {
+      "file": "invalid/pipe-closed-two.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "pipe",
+      "note": "a closed pipe of two points"
+    },
+    {
+      "file": "invalid/pipe-no-path.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "schema",
+      "note": "a pipe without a path"
     }
   ],
   "shart_codes": {

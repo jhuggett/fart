@@ -3,12 +3,13 @@
 // node outlined, a drag moving a node along the canvas (or the view
 // plane), a drag on nothing orbiting a 3D scene.
 
-import { docBounds, drawList, projectFrame, shapeDistance, shapesOfPosed, viewXf3, xfApply, xfInvert, xfScale, xf3Apply, xf3ApplyDir, xf3Invert, dist, type Doc, type Doc3, type Placed, type StatePart, type StatePart3, type Vec2, type Vec3, type Xf, type Xf3, type FramePart, xf3Scale } from "@fastart/core";
+import { docBounds, drawList, projectFrame, shapeDistance, shapesOfPosed, viewXf3, xfApply, xfInvert, xfScale, xf3Apply, xf3ApplyDir, xf3Invert, dist, type Doc, type Doc3, type Placed, type StatePart, type StatePart3, type Vec2, type Vec3, type Xf, type Xf3, type FramePart, xf3Scale, xf3Mul } from "@fastart/core";
 import { view } from "./view.ts";
 import { drawDoc, fillShape, tracePoly } from "./draw.ts";
 import { drawGrid, patternsOf } from "./render.ts";
 import { canvasColors } from "../state/theme.ts";
-import { partMesh, poseParts, type PosedPart, type SolidLayer } from "./gl3.ts";
+import { meshOfPart, poseParts, type PosedPart, type SolidLayer } from "./gl3.ts";
+import { compiledBounds, compiledHit, type CompiledIn } from "../state/sidecarRead.ts";
 import { sc, flattened, is3d, docPathOf, nudgeNode, orbit, endGesture, selectedNodes, selectNodes } from "../state/scene.ts";
 import { gizmoDown, gizmoMove, gizmoUp, gizmoActive, gizmoHover, drawGizmo } from "./gizmo3.ts";
 import { nodeOrigin } from "./sceneGizmo.ts";
@@ -49,7 +50,9 @@ function posed(): Map<string, PosedPart[]> {
 	const key = `${sc.rev.value}|${sc.time.value}|${placed.length}`;
 	if (poseCache && poseCache.key === key) return poseCache.parts;
 	const out = new Map<string, PosedPart[]>();
-	for (const p of placed) out.set(p.path, poseParts(p.doc as Doc3, p.poses as StatePart3[] | undefined, p.xf as Xf3));
+	// a placed model is drawn from its compiled sidecar where the scene has it (1.8): nothing is generated
+	const compiled = sc.compiled.value;
+	for (const p of placed) out.set(p.path, poseParts(p.doc as Doc3, p.poses as StatePart3[] | undefined, p.xf as Xf3, compiled.get(docPathOf(p))));
 	poseCache = { key, parts: out };
 	return out;
 }
@@ -82,7 +85,7 @@ function reach(): { path: string; at: Vec2; r: number }[] {
 	const all = posed();
 	for (const p of placed) {
 		for (const fp of all.get(p.path) ?? []) {
-			const m = partMesh(fp.solids, p.tokens, sc.patterns.value.get(docPathOf(p)));
+			const m = meshOfPart(fp, p.tokens, sc.patterns.value.get(docPathOf(p)));
 			if (!m.radius) continue;
 			const c = xf3Apply(V, xf3Apply(fp.F, m.centre));
 			list.push({ path: p.path, at: [c[0], c[1]], r: m.radius * xf3Scale(fp.F) });
@@ -91,6 +94,19 @@ function reach(): { path: string; at: Vec2; r: number }[] {
 	reachCache = { key, list };
 	return list;
 }
+
+/**
+ * An instance's compiled parts under the view, when every part of it is
+ * drawn from its sidecar: what picking and outlines read, so that
+ * neither generates the model either. Null when any part is generated.
+ */
+function compiledIn(p: Placed): CompiledIn[] | null {
+	const fps = posed().get(p.path);
+	if (!fps?.length || fps.some((fp) => !fp.compiled)) return null;
+	const V = viewXf3(sc.turn.value);
+	return fps.filter((fp) => fp.compiled!.triangles > 0).map((fp) => ({ part: fp.compiled!, F: xf3Mul(V, fp.F) }));
+}
+let boundsCache: { key: string; of: Map<string, Vec2[] | null> } | null = null;
 
 /** What the WebGL layer draws for a 3D scene. */
 export function sceneLayers(): SolidLayer[] {
@@ -102,6 +118,16 @@ export function sceneLayers(): SolidLayer[] {
 /** The canvas-space outline of an instance: its bounds through its map (2D), or its projected shapes' bounds (3D). */
 function outlineOf(p: Placed): Vec2[] | null {
 	if (is3d()) {
+		const comp = compiledIn(p);
+		if (comp) {
+			const key = `${sc.rev.value}|${sc.time.value}|${sc.turn.value.join(",")}`;
+			if (!boundsCache || boundsCache.key !== key) boundsCache = { key, of: new Map() };
+			if (!boundsCache.of.has(p.path)) {
+				const b = compiledBounds(comp);
+				boundsCache.of.set(p.path, b ? [b.lo, [b.hi[0], b.lo[1]], b.hi, [b.lo[0], b.hi[1]]] : null);
+			}
+			return boundsCache.of.get(p.path) ?? null;
+		}
 		const fps = projectedOf(p);
 		let lo: Vec2 = [Infinity, Infinity];
 		let hi: Vec2 = [-Infinity, -Infinity];
@@ -132,6 +158,12 @@ export function pick(wm: Vec2): string | null {
 		for (const p of placed) {
 			// only what the pointer could be over is projected: the rest of a big scene is never touched
 			if (!near.has(p.path)) continue;
+			const comp = compiledIn(p);
+			if (comp) {
+				const depth = compiledHit(comp, wm);
+				if (depth !== null && (!best || depth < best.depth)) best = { depth, path: p.path };
+				continue;
+			}
 			for (const fp of projectedOf(p)) for (const f of fp.shapes) {
 				if (f.outline || shapeDistance(f.shape, wm) > tol) continue;
 				if (!best || f.depth < best.depth) best = { depth: f.depth, path: p.path };
