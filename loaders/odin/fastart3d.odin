@@ -23,6 +23,14 @@ import "core:math/linalg"
 
 V3 :: [3]f32
 
+// 1.9: a mesh that gives at its joints. `joints` names parts (of the document; of the host it is drawn on, with
+// `host`); `weights` has, for each point, pairs of [index into joints, weight], one to four of them.
+Skin3 :: struct {
+	host:    bool,
+	joints:  [dynamic]string,
+	weights: [dynamic][dynamic]f32,
+}
+
 Shape3 :: struct {
 	kind:   string, // "mesh" | "ball" | "rod"; in collision (1.4) also "box"
 	color:  string,
@@ -55,6 +63,7 @@ Shape3 :: struct {
 	colors:   [dynamic]string, // 1.8: further tokens the faces may wear
 	paint:    [dynamic]int, // 1.8: one per face (a sweep's: of the mesh it generates): 0 is `color`, n is colors[n - 1]
 	shades:   [dynamic]f32, // 1.8, mesh: one per point, multiplying `shade` there
+	skin:     Skin3, // 1.9, mesh: the parts its points follow, and by how much
 	mods:     [dynamic]Mod, // 1.8: applied to the cage in order, after a morph and before `smooth`
 	path:     Path3, // 1.8, sweep (pipe): the spine
 	radius:   Maybe(f32), // 1.8, pipe: the section's scale; 1 when absent
@@ -348,6 +357,9 @@ destroy_3d :: proc(doc: ^Doc3) {
 			delete(s.colors)
 			delete(s.paint)
 			delete(s.shades)
+			delete(s.skin.joints)
+			for &w in s.skin.weights do delete(w)
+			delete(s.skin.weights)
 			delete(s.mods)
 			delete(s.radii)
 			delete(s.path.points)

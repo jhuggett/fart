@@ -33,6 +33,8 @@ export interface GltfImportOptions {
 	quadAngle?: number;
 	/** the same across an edge the source shades smooth, where the fold does not show; default 15 */
 	smoothQuadAngle?: number;
+	/** keep a skin's weights as `skin` (1.9), default true; false flattens it to rigid parts, for readers older than 1.9 */
+	skins?: boolean;
 	/** bake `tris` into every mesh the way an editor does on save, default true */
 	tris?: boolean;
 	/** the document's name; absent, the scene's */
@@ -213,6 +215,8 @@ interface Soup {
 	nor: number[];
 	/** a shade per vertex, 1 where a primitive carried no colours */
 	lum: number[];
+	/** 1.9: what each vertex follows, as [joint's node, weight, ...]; absent on a mesh with no skin (or one flattened) */
+	skin?: number[][];
 	hasNormals: boolean;
 	hasColors: boolean;
 	/** each morph target's positions (not deltas), vertex for vertex */
@@ -246,6 +250,9 @@ interface BuildOptions {
 	shades: boolean;
 	split: boolean;
 	token: (material: number) => string;
+	/** 1.9: a joint node's part, and the part the job's faces are given to */
+	joint: (node: number) => string | undefined;
+	owner: string;
 	warn: (w: string) => void;
 	label: string;
 }
@@ -290,6 +297,7 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 	const tpoints: Vec3[][] = soup.targets.map(() => []);
 	const lumSum: number[] = [];
 	const lumN: number[] = [];
+	const skinAt: (number[] | null)[] = [];
 	const cells = new Map<string, number[]>();
 	const welded = new Map<number, number>();
 	const weld = (v: number): number => {
@@ -318,6 +326,7 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 			tp.forEach((q, t) => tpoints[t].push(q));
 			lumSum.push(0);
 			lumN.push(0);
+			skinAt.push(soup.skin?.[v] ?? null);
 			const key = `${cx},${cy},${cz}`;
 			const cell = cells.get(key);
 			if (cell) cell.push(found);
@@ -474,6 +483,20 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 		}
 	}
 
+	// 1.9: a skin, where any point follows something other than the part its face was given to
+	const skinOf = (i: number): [string, number][] => {
+		const by = new Map<string, number>();
+		const e = skinAt[i] ?? [];
+		for (let k = 0; k + 1 < e.length; k += 2) {
+			const name = o.joint(e[k]);
+			if (name !== undefined && e[k + 1] > 0) by.set(name, (by.get(name) ?? 0) + e[k + 1]);
+		}
+		const all = [...by].sort((a, b) => b[1] - a[1]).slice(0, 4);
+		const total = all.reduce((t, [, w]) => t + w, 0);
+		return total > 0 ? all.map(([n, w]) => [n, w / total]) : [[o.owner, 1]];
+	};
+	const useSkin = !!soup.skin && skinAt.some((_, i) => skinOf(i).some(([n, w]) => n !== o.owner && w > 0.002));
+
 	const shades = o.shades && soup.hasColors ? lumSum.map((s, i) => Math.round((lumN[i] ? s / lumN[i] : 1) * 1000) / 1000) : null;
 	const useShades = shades !== null && shades.some((s) => Math.abs(s - 1) > 0.002);
 
@@ -500,6 +523,8 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 		const pts: Vec3[] = [];
 		const tps: Vec3[][] = soup.targets.map(() => []);
 		const shd: number[] = [];
+		const joints: string[] = [];
+		const weights: number[][] = [];
 		const at = (i: number): number => {
 			let j = remap.get(i);
 			if (j === undefined) {
@@ -508,6 +533,18 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 				pts.push(points[i]);
 				tps.forEach((t, k) => t.push(tpoints[k][i]));
 				if (useShades) shd.push(shades![i]);
+				if (useSkin) {
+					const entry: number[] = [];
+					for (const [name, w] of skinOf(i)) {
+						const r = Math.round(w * 1000) / 1000;
+						if (r <= 0) continue;
+						if (!joints.includes(name)) joints.push(name);
+						entry.push(joints.indexOf(name), r);
+					}
+					// (rounded, they still add up to 1)
+					entry[1] = Math.round((entry[1] + 1 - entry.reduce((t, w, k) => (k % 2 ? t + w : t), 0)) * 1000) / 1000;
+					weights.push(entry);
+				}
 			}
 			return j;
 		};
@@ -532,6 +569,7 @@ function buildOne(job: Job, o: BuildOptions): Built[] {
 		shape.faces = fs;
 		if (order.length > 1) shape.paint = chunk.map((f) => order.indexOf(faceMat[f]));
 		if (useShades) shape.shades = shd;
+		if (useSkin) shape.skin = { joints, weights };
 		built.push({ shape, targets: tps, soup, quads: chunk.filter((f) => faces[f].length === 4).length });
 	}
 	return built;
@@ -739,6 +777,7 @@ export function importGltf(source: Source, options: GltfImportOptions = {}): Glt
 	// geometry: a soup per mesh node, its triangles handed to the parts that own them
 	const jobs: Job[] = [];
 	const skinsWarned = new Set<number>();
+	const keepSkins = options.skins !== false && options.merge !== true;
 	const texturesWarned = new Set<number>();
 	const usedMaterials = new Set<number>();
 	for (const ni of order) {
@@ -760,7 +799,7 @@ export function importGltf(source: Source, options: GltfImportOptions = {}): Glt
 				const inv: Xf3 = m ? [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10], m[12], m[13], m[14]] : XF3_ID;
 				return xf3Mul(Y_UP, xf3Mul(world[j]!, inv));
 			});
-			if (!skinsWarned.has(node.skin)) {
+			if (!keepSkins && !skinsWarned.has(node.skin)) {
 				skinsWarned.add(node.skin);
 				warn(`${label} is skinned: smooth skinning is flattened to rigid parts, each face bound to the joint that holds most of it`);
 			}
@@ -771,6 +810,7 @@ export function importGltf(source: Source, options: GltfImportOptions = {}): Glt
 		const Dinv = xf3Invert(D);
 		const turnNormal = (M: Xf3, nx: number, ny: number, nz: number): Vec3 => unit([M[0] * nx + M[3] * ny + M[6] * nz, M[1] * nx + M[4] * ny + M[7] * nz, M[2] * nx + M[5] * ny + M[8] * nz]);
 		const soup: Soup = { pos: [], nor: [], lum: [], hasNormals: false, hasColors: false, targets: [], targetNames: [], node: ni };
+		if (skinned && keepSkins) soup.skin = [];
 		const targetCount = Math.max(0, ...(mesh.primitives ?? []).map((p: J) => (Array.isArray(p?.targets) ? p.targets.length : 0)));
 		for (let t = 0; t < targetCount; t++) {
 			soup.targets.push([]);
@@ -830,7 +870,16 @@ export function importGltf(source: Source, options: GltfImportOptions = {}): Glt
 						Minv = xf3Invert(M);
 					}
 					lead.push(best);
-				}
+					if (soup.skin) {
+						const entry: number[] = [];
+						for (let k = 0; k < 4; k++) {
+							const w = WT.data[v * WT.n + k] ?? 0;
+							const j = skin.joints[JN.data[v * JN.n + k] ?? 0];
+							if (w > 0 && typeof j === "number" && world[j]) entry.push(j, w);
+						}
+						soup.skin.push(entry);
+					}
+				} else if (soup.skin) soup.skin.push([]);
 				const q = xf3Apply(M, p);
 				soup.pos.push(q[0], q[1], q[2]);
 				if (N) {
@@ -981,6 +1030,8 @@ export function importGltf(source: Source, options: GltfImportOptions = {}): Glt
 			shades: options.shades !== false,
 			split: options.splitMaterials === true,
 			token: (m) => tokenOf.get(m)!,
+			joint: (n) => nameOf.get(n),
+			owner: part.name,
 			warn,
 			label: `mesh ${mesh?.name ? `"${mesh.name}"` : nodes[job.soup.node].mesh}`,
 		});

@@ -490,7 +490,7 @@ test("the sidecar: everything generated, a primitive per shape and token, the to
 	const glb = buildSidecar(doc, source);
 	const { gltf, floats } = openGlb(glb);
 	// what it says of itself
-	assert.deepEqual(gltf.asset.extras.fart, { format: "1.8", generator: SIDECAR_GENERATOR, of: sourceHash(source) });
+	assert.deepEqual(gltf.asset.extras.fart, { format: "1.9", generator: SIDECAR_GENERATOR, of: sourceHash(source) });
 	assert.match(gltf.asset.extras.fart.of, /^[0-9a-f]{16}$/);
 	assert.deepEqual(sidecarInfo(glb), gltf.asset.extras.fart);
 	assert.equal(glbJson(new Uint8Array([1, 2, 3])), null);

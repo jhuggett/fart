@@ -760,6 +760,35 @@
                 },
                 "description": "Since 1.8: one number per point, multiplying shade there. The validator checks the count (error shades)."
               },
+              "skin": {
+                "type": "object",
+                "required": ["joints", "weights"],
+                "properties": {
+                  "host": {
+                    "type": "boolean",
+                    "description": "The joints are parts of the host: the document this one is drawn on."
+                  },
+                  "joints": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "The parts the points follow."
+                  },
+                  "weights": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "description": "One entry per point: pairs of [index into joints, weight], one to four pairs adding up to 1."
+                  }
+                },
+                "description": "Since 1.9: the mesh gives at its joints: each point placed by several parts' world maps, weighted. The validator checks the joints, the count and the entries (error skin)."
+              },
               "bake": {
                 "type": "object",
                 "required": [

@@ -527,7 +527,7 @@ test("morph targets are states named for them; animated weights are morphs on th
 	m.points.forEach((p, i) => assert.deepEqual(keys[1].parts![0].morph![0].points[i], p[1] < 0 ? [p[0], p[1] - 0.5, p[2]] : p));
 });
 
-test("a skin is flattened: each face rides the joint that holds most of it, a part per joint", () => {
+test("a skin is kept (1.9), or flattened when asked: each face rides the joint that holds most of it, a part per joint", () => {
 	const b = builder();
 	// a bar of two cubes end to end along y, the lower on joint 0, the upper on joint 1
 	const lo = cubeData(2, [0, 1, 0]);
@@ -548,7 +548,16 @@ test("a skin is flattened: each face rides the joint that holds most of it, a pa
 	];
 	b.json.scenes = [{ nodes: [0, 1] }];
 	b.json.animations = [{ name: "bend", samplers: [{ input: b.acc([0, 1], "SCALAR"), output: b.acc([0, 0, 0, 1, 0, 0, Math.SQRT1_2, Math.SQRT1_2], "VEC4") }], channels: [{ sampler: 0, target: { node: 2, path: "rotation" } }] }];
-	const { doc, warnings } = importGltf(b.gltf());
+	// 1.9: kept, the weights are the shapes' skins: each face with the joint that holds most of it, its points following both
+	const kept = importGltf(b.gltf());
+	ok(kept.doc);
+	assert.deepEqual(kept.warnings, []);
+	const lower = mesh(kept.doc, "bone");
+	assert.deepEqual(lower.skin!.joints, ["bone", "bone_001"]);
+	assert.equal(lower.skin!.weights.length, lower.points.length);
+	assert.deepEqual(lower.skin!.weights[0], [0, 0.9, 1, 0.1]);
+	assert.deepEqual(mesh(kept.doc, "bone_001").skin!.weights[0], [0, 0.8, 1, 0.2]);
+	const { doc, warnings } = importGltf(b.gltf(), { skins: false });
 	ok(doc);
 	assert.deepEqual(doc.parts!.map((p) => [p.name, p.parent, p.pivot]), [["bone", undefined, [0, 0, 0]], ["bone_001", "bone", [0, -2, 0]]]);
 	assert.deepEqual(sorted(mesh(doc, "bone").points), sorted(lo.pos.reduce<Vec3[]>((a, _, i) => (i % 3 ? a : [...a, [lo.pos[i], -lo.pos[i + 1], -lo.pos[i + 2]] as Vec3]), []).filter((p, i, all) => all.findIndex((q) => q.join() === p.join()) === i)));

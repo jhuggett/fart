@@ -725,6 +725,53 @@
       "space": "3d",
       "code": "schema",
       "note": "a pipe without a path"
+    },
+    {
+      "file": "valid/skin.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.9: a block skinned to two parts, its middle shared between them, and a state that bends it"
+    },
+    {
+      "file": "invalid/skin-joint.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "skin",
+      "note": "a joint names a part the document does not have"
+    },
+    {
+      "file": "invalid/skin-count.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "skin",
+      "note": "three entries for eight points"
+    },
+    {
+      "file": "invalid/skin-sum.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "skin",
+      "note": "a point's weights add up to 0.7"
+    },
+    {
+      "file": "invalid/skin-entry.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "skin",
+      "note": "a joint twice in one entry"
+    },
+    {
+      "file": "invalid/skin-smooth.fart",
+      "valid": false,
+      "space": "3d",
+      "code": "skin",
+      "note": "a skin on a mesh with smooth levels"
+    },
+    {
+      "file": "valid/skin-host.fart",
+      "valid": true,
+      "space": "3d",
+      "note": "1.9: a sleeve whose skin is on a host: its joints are another document's parts"
     }
   ],
   "shart_codes": {

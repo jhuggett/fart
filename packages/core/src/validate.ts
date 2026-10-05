@@ -40,6 +40,7 @@ export type ErrorCode =
 	| "crease"
 	| "paint"
 	| "shades"
+	| "skin"
 	| "mod"
 	| "pipe";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
@@ -300,6 +301,44 @@ function checkPaint(ctx: Ctx, sh: Obj, path: string, faces: number): number {
 		if (faces >= 0 && sh.paint.length !== faces) ctx.err("paint", `${path}/paint`, `paint has one entry per face: ${sh.paint.length} for ${faces} faces`);
 	}
 	return nc;
+}
+
+/** 1.9: a skin over `n` points (unknown when negative): joints, and per point one to four [joint, weight] pairs adding up to 1. Whether the joints are parts is checked with the document. */
+function checkSkin(ctx: Ctx, sh: Record<string, unknown>, path: string, n: number): void {
+	if (!("skin" in sh)) return;
+	const skin = sh.skin;
+	if (!ctx.object(skin, `${path}/skin`)) return;
+	if (Array.isArray(sh.mods) && sh.mods.length) ctx.err("skin", `${path}/skin`, "a mesh with mods has no skin: weights are not carried through a modifier");
+	if (typeof sh.smooth === "number" && sh.smooth > 0) ctx.err("skin", `${path}/skin`, "a mesh with smooth levels has no skin: weights are not carried through subdivision");
+	if ("host" in skin && typeof skin.host !== "boolean") ctx.err("schema", `${path}/skin/host`, "host is true or false");
+	let nj = -1;
+	if (ctx.array(skin.joints, `${path}/skin/joints`)) {
+		nj = skin.joints.length;
+		if (nj === 0) ctx.err("skin", `${path}/skin/joints`, "a skin has at least one joint");
+		skin.joints.forEach((j, i) => {
+			if (typeof j !== "string" || j === "") ctx.err("schema", `${path}/skin/joints/${i}`, "a joint is a part's name");
+		});
+	}
+	if (!ctx.array(skin.weights, `${path}/skin/weights`)) return;
+	if (n >= 0 && skin.weights.length !== n) ctx.err("skin", `${path}/skin/weights`, `weights are one entry per point: ${skin.weights.length} for ${n} points`);
+	skin.weights.forEach((entry, i) => {
+		const at = `${path}/skin/weights/${i}`;
+		if (!Array.isArray(entry) || entry.length < 2 || entry.length > 8 || entry.length % 2 !== 0 || entry.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
+			ctx.err("skin", at, "an entry is one to four pairs of [joint, weight]");
+			return;
+		}
+		const seen = new Set<number>();
+		let sum = 0;
+		for (let k = 0; k < entry.length; k += 2) {
+			const [j, w] = [entry[k] as number, entry[k + 1] as number];
+			if (!Number.isInteger(j) || j < 0 || (nj >= 0 && j >= nj)) ctx.err("skin", at, `${j} is not a joint of the skin`);
+			else if (seen.has(j)) ctx.err("skin", at, `joint ${j} twice in one entry`);
+			seen.add(j);
+			if (!(w > 0)) ctx.err("skin", at, "a weight is above 0");
+			sum += w;
+		}
+		if (Math.abs(sum - 1) > 0.01) ctx.err("skin", at, `a point's weights add up to 1: these add up to ${Math.round(sum * 1000) / 1000}`);
+	});
 }
 
 /** 1.8: the modifiers on a cage, in order; `nc` is how many colours a paint index may reach. */
@@ -599,6 +638,7 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 				}
 				checkMods(ctx, sh, path, nc);
 				checkSmoothFields(ctx, sh, path, n, meshOk ? edges : null, nc);
+				checkSkin(ctx, sh, path, n);
 			}
 			break;
 		}
@@ -633,7 +673,7 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
 	if (drawn) checkTextureFields(ctx, sh, path, 3, kind === "mesh" && Array.isArray(sh.faces) ? sh.faces.length : -1);
-	ctx.unknown(sh, drawn ? (kind === "sweep" ? [...SWEEP_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, "shades", ...TEXTURE_FIELDS]) : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
+	ctx.unknown(sh, drawn ? (kind === "sweep" ? [...SWEEP_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, "shades", "skin", ...TEXTURE_FIELDS]) : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
 	return kind;
 }
 
@@ -959,6 +999,19 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 			if (!src) ctx.err("ref.part", `/parts/${i}/like`, `no part named "${p.like}"`);
 			else if (p.like === p.name) ctx.err("like", `/parts/${i}/like`, "a part cannot be like itself");
 			else if (isName(src.like)) ctx.err("like", `/parts/${i}/like`, `"${p.like}" is itself like another part; like does not chain`);
+		});
+	}
+
+	// skins (1.9): every joint is a part
+	if (Array.isArray(doc.parts)) {
+		doc.parts.forEach((p, i) => {
+			if (!isObj(p) || !Array.isArray(p.shapes)) return;
+			p.shapes.forEach((sh, si) => {
+				if (!isObj(sh) || !isObj(sh.skin) || !Array.isArray(sh.skin.joints) || sh.skin.host === true) return; // (a host's joints are the host's to have)
+				sh.skin.joints.forEach((j, ji) => {
+					if (typeof j === "string" && j !== "" && !partSet.has(j)) ctx.err("skin", `/parts/${i}/shapes/${si}/skin/joints/${ji}`, `no part named "${j}"`);
+				});
+			});
 		});
 	}
 

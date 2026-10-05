@@ -942,6 +942,86 @@ with `--check` writes nothing and exits 1 when any is missing or stale;
 unchanged: one primitive per shape with colours resolved, for engines
 that want a model and not a cache.
 
+## Skins (1.9)
+
+A part is rigid: its shapes turn with it, whole. A `skin` lets a mesh
+give at a joint instead. Each of its points follows several parts at
+once, by weights, so a sleeve's top stays on the chest while its cuff
+goes with the arm:
+
+```json
+{"kind": "mesh", "color": "cloth", "points": [...4 points...], "faces": [...],
+ "skin": {"joints": ["upper_arm", "torso"],
+          "weights": [[1, 1], [0, 0.5, 1, 0.5], [0, 1], [0, 1]]}}
+```
+
+- `joints` names parts of the document: the bones. Any part may be one,
+  whatever its place in the tree, the shape's own part or not.
+- `weights` has one entry per point, in the order of `points`. An entry
+  is pairs, `[joint, weight, joint, weight, ...]`: an index into
+  `joints` and how much of that part's motion the point takes. One to
+  four pairs, each weight above 0, no joint twice. The weights of a
+  point add up to 1; a reader divides by their sum, so rounding does no
+  harm.
+- A skinned point is placed by its joints, not by its own part:
+
+      p' = Σ weight · W(joint) · p
+
+  with `W` each joint's world map under the pose, exactly as a rigid
+  shape of that part would use it. A document's rest is every part at
+  identity, so there is nothing to bind: the points are where they are
+  at rest, and a point wholly on one joint moves as a rigid shape of
+  that part does. A normal takes the same sum of the maps' linear parts.
+  This is linear blend skinning, and has its faults (a joint turned far
+  thins): give the bend more points, or share it between more parts.
+- A morph moves the points first, and the skin places what it leaves.
+- A `like` part draws its source's skinned shapes through its own side
+  of the body. For each joint: if the part is `like` that joint, the
+  point follows the part itself; else if an ancestor of the part is
+  `like` that joint, the nearest such (the twin: `upper_arm_l` for
+  `upper_arm_r`, under `fore_arm_l`); else if a part below it is `like`
+  that joint, that one (`fingers_l` for `fingers_r`, on `hand_l`).
+  Otherwise the point follows the joint itself.
+- **Sides.** A part drawn mirrored (a `mirror` on it or above it flips
+  its world map) holds what is on the other side of x = 0. Wherever the
+  shape's part and a joint differ in that (one's world map is flipped
+  and the other's is not), the point is reflected across x = 0 before
+  that joint's map is applied. So a mirrored sleeve holds to the
+  unmirrored chest, and a point of the chest's left side may follow a
+  mirrored `upper_arm_l` by naming it. So one sleeve serves both arms: each follows its own arm,
+  and both hold to the one chest, either side of its middle.
+- **A skin on a host.** Some documents are drawn on another: clothes
+  on a body, in the body's own rest space. Their meshes should give
+  where the body gives, and the bones are the body's, not theirs.
+  `"host": true` on a skin says so: its `joints` name parts of the
+  **host**, the document this one is drawn on, and are not looked for
+  in this one.
+
+  ```json
+  "skin": {"host": true, "joints": ["upper_arm_r", "torso"], "weights": [...]}
+  ```
+
+  A runtime that draws such a document on a host places each point by
+  the host's parts under the host's pose, and says which host part the
+  shape is drawn on; that part stands where the shape's own part
+  stands in the rule for `like` above, so one sleeve drawn on
+  `upper_arm_l` follows the left arm. A joint the host lacks is at
+  rest. Drawn with no host (in an editor, alone), a host skin is rigid:
+  the shape is drawn with its own part.
+- A skin is on a drawn `mesh` only, and for now on one with no `mods`
+  and no `smooth` levels: a cage's weights are not yet carried through
+  a modifier or subdivision. A collision shape has none.
+- Error `skin`: a joint that names no part (unless the skin is on a
+  host), an entry count that differs
+  from `points`, an entry that is not one to four pairs, an index past
+  the last joint, a joint twice in one entry, a weight that is not above
+  0, weights that do not add up to 1 (within 0.01), or a skin beside
+  `mods` or `smooth` levels.
+- A reader that predates 1.9 ignores `skin` and draws the shape rigid,
+  with its part.
+- Projection (`PROJECT.md`) places a skinned mesh's points by the same
+  sum before it flattens them.
+
 ## Color at runtime
 
 Tokens are the recolor surface: a file's palette is its set of colour
@@ -1046,6 +1126,7 @@ the same from any tool:
 | `shades`    | `shades` with a count that differs from the points, or on a sweep (1.8) |
 | `mod`       | a modifier whose `op` this version does not have (1.8)          |
 | `pipe`      | a pipe's `radii` with a count that differs from its path's points, or a closed pipe with fewer than three path points (1.8) |
+| `skin`      | a skin naming a joint the document lacks, with an entry count that differs from the points, a malformed entry, weights that do not add up to 1, or beside `mods` or `smooth` levels (1.9) |
 
 Warnings (`unknown`, `reserved`, `unresolved`) never fail a file. A loader
 inside a game may be as lenient as it likes past `json` and `version`;
@@ -1105,6 +1186,9 @@ the corpus only requires it to load every valid file and refuse those two.
   painted shape in its one colour and a shape with mods as its cage,
   ignores `shades`, and refuses a pipe at the schema stage (a lenient
   loader draws nothing for it, or its bake).
+- 1.9 added `skin` on meshes: joints and per-point weights, a mesh that
+  gives at its joints (error `skin`). A file without it is a 1.8 file; a
+  1.8 reader draws a skinned shape rigid, with its part.
 
 ## Reserved for later
 

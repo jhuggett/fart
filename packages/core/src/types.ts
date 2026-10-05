@@ -263,7 +263,7 @@ export interface Doc {
 /** The format major this library speaks. */
 export const FORMAT_VERSION = 1;
 /** The minor: what this library knows past the major. */
-export const FORMAT_MINOR = 8;
+export const FORMAT_MINOR = 9;
 
 // ------------------------------------------------------------------ 1.3: 3D
 // A 3D document is the same words with a third coordinate: x-right,
@@ -339,6 +339,14 @@ export interface MeshBake {
 	[extra: string]: unknown;
 }
 
+/** Since 1.9: the parts a mesh's points follow, and for each point pairs of [index into `joints`, weight] (one to four pairs, adding up to 1). */
+export interface Skin {
+	/** The joints are parts of the host, the document this one is drawn on; alone, the shape is rigid. */
+	host?: boolean;
+	joints: string[];
+	weights: number[][];
+}
+
 export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields, PaintFields {
 	kind: "mesh";
 	color?: string;
@@ -347,6 +355,8 @@ export interface MeshShape extends CollisionFields, TextureFields3, SmoothFields
 	shades?: number[];
 	/** Since 1.8: modifiers applied to the cage in order, after a morph and before `smooth`. */
 	mods?: Mod[];
+	/** Since 1.9: the mesh gives at its joints: each point placed by several parts' world maps, weighted. */
+	skin?: Skin;
 	points: Vec3[];
 	/** Index loops into points, wound so (p1-p0)x(p2-p0) points outward. */
 	faces: number[][];

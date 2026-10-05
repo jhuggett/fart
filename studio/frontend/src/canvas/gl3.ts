@@ -10,7 +10,7 @@
 // scene is one buffer drawn two thousand times. The light is worked out
 // in the shader, from the same rule the projector uses.
 
-import { asMesh, builtOf, cornerNormals, smoothNormals, colorOf, triangulateFace, meshUVs, shapesOf3Posed, worldTransforms3, v3cross, v3dot, v3norm, v3sub, xf3Det, xf3Mul, type Doc3, type Shape3, type StatePart3, type Token, type Vec2, type Vec3, type Xf3 } from "@fastart/core";
+import { asMesh, builtOf, cornerNormals, smoothNormals, colorOf, triangulateFace, meshUVs, shapesOf3Skinned, sourceOf3, worldTransforms3, v3cross, v3dot, v3norm, v3sub, xf3Det, xf3Mul, type Doc3, type Shape3, type StatePart3, type Token, type Vec2, type Vec3, type Xf3 } from "@fastart/core";
 import type { TexturePattern } from "../state/textures.ts";
 import type { Compiled, CompiledPart } from "../state/sidecarRead.ts";
 
@@ -411,8 +411,11 @@ export function poseParts(doc: Doc3, poses: readonly StatePart3[] | undefined, i
 		const F: Xf3 = instance ? (w ? xf3Mul(instance, w) : instance) : (w ?? IDENT);
 		// a sidecar holds the rest pose: a part this pose reshapes (a morph) is generated as ever
 		const index = parts.indexOf(part);
-		const own = compiled && !(sp.morph?.length && !part.like) ? compiled.parts[index] : undefined;
-		out.push(own !== undefined ? { F, solids: shapesOf3Posed(doc, part, sp), compiled: own ?? EMPTY } : { F, solids: shapesOf3Posed(doc, part, sp) });
+		// (and a part with a skin (1.9) is placed point by point, by its joints)
+		const skinned = sourceOf3(doc, part).shapes?.some((sh) => sh.kind === "mesh" && sh.skin) ?? false;
+		const own = compiled && !(sp.morph?.length && !part.like) && !skinned ? compiled.parts[index] : undefined;
+		const solids = shapesOf3Skinned(doc, part, sp, W);
+		out.push(own !== undefined ? { F, solids, compiled: own ?? EMPTY } : { F, solids });
 	}
 	return out;
 }
