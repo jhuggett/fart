@@ -1,52 +1,31 @@
-// Themes: one token set, several palettes. The stylesheet defines every
-// colour as a variable on :root and overrides them per [data-theme]; the
-// canvas reads the same variables, so the grid, selection and handles
-// follow the panels. The choice persists per device (localStorage), and
-// "system" follows the OS between the default dark and light themes.
+// Appearance: light and dark, one token set each (tokens.css). The
+// stylesheet defines every colour as a variable and overrides it per
+// [data-theme]; the canvas reads the same variables, so the grid,
+// selection and handles follow the panels. "system" follows the OS, and
+// is the default; a choice persists per device.
 
 import { signal } from "@preact/signals";
 
-export interface ThemeInfo {
-	id: string;
-	name: string;
-	blurb: string;
-	light?: boolean;
-	/** background, panel, accent: the swatch trio in the picker */
-	trio: [string, string, string];
-}
-
-export const THEMES: ThemeInfo[] = [
-	{ id: "graphite", name: "Graphite", blurb: "neutral dark, amber where it counts", trio: ["#131315", "#1c1c1f", "#f5c451"] },
-	{ id: "midnight", name: "Midnight", blurb: "blue-black, ice accents", trio: ["#0d1117", "#161b22", "#6fb8ff"] },
-	{ id: "moss", name: "Moss", blurb: "deep green, lime accents", trio: ["#10150f", "#182018", "#d7e26a"] },
-	{ id: "plum", name: "Plum", blurb: "dark violet, rose accents", trio: ["#16111c", "#1f1826", "#f28cc4"] },
-	{ id: "paper", name: "Paper", blurb: "warm light, terracotta accents", light: true, trio: ["#f4f1ea", "#eae6dc", "#c9531f"] },
-	{ id: "contrast", name: "High contrast", blurb: "black, white, yellow, thicker lines", trio: ["#000000", "#0a0a0a", "#ffe600"] },
-];
-
+export type Appearance = "light" | "dark";
 export const SYSTEM = "system";
 const KEY = "fastart.theme";
 
 export const theme = {
-	/** what the user picked: a theme id, or "system" */
+	/** what the user picked: "light", "dark", or "system" */
 	choice: signal<string>(SYSTEM),
-	/** the theme actually on the page */
-	applied: signal<string>("graphite"),
+	/** the appearance actually on the page */
+	applied: signal<Appearance>("dark"),
 	/** bumps whenever the palette changes, so canvases redraw */
 	rev: signal(0),
 };
 
 const lightQuery = () => window.matchMedia("(prefers-color-scheme: light)");
 
-function systemPick(): string {
-	return lightQuery().matches ? "paper" : "graphite";
-}
-
 function apply() {
-	const id = theme.choice.value === SYSTEM ? systemPick() : theme.choice.value;
-	const known = THEMES.some((t) => t.id === id) ? id : "graphite";
-	document.documentElement.dataset.theme = known;
-	theme.applied.value = known;
+	const c = theme.choice.value;
+	const id: Appearance = c === "light" || c === "dark" ? c : lightQuery().matches ? "light" : "dark";
+	document.documentElement.dataset.theme = id;
+	theme.applied.value = id;
 	colorCache = null;
 	theme.rev.value++;
 }
@@ -61,10 +40,16 @@ export function setTheme(id: string) {
 	apply();
 }
 
+/** The sun/moon button: the other appearance, pinned. */
+export function toggleAppearance() {
+	setTheme(theme.applied.value === "light" ? "dark" : "light");
+}
+
 export function initTheme() {
 	try {
 		const saved = localStorage.getItem(KEY);
-		if (saved) theme.choice.value = saved;
+		// the themes of old (graphite, paper, …) fall back to the system's
+		if (saved === "light" || saved === "dark") theme.choice.value = saved;
 	} catch {
 		// see above
 	}
@@ -75,7 +60,7 @@ export function initTheme() {
 }
 
 export function isLight(): boolean {
-	return THEMES.find((t) => t.id === theme.applied.value)?.light ?? false;
+	return theme.applied.value === "light";
 }
 
 /** What the canvas paints with: the stylesheet's tokens, read once per theme. */
@@ -91,6 +76,10 @@ export interface CanvasColors {
 	text2: string;
 	text3: string;
 	marquee: string;
+	/** the world's axes, for gizmos: always drawn with their letter */
+	axisX: string;
+	axisY: string;
+	axisZ: string;
 	/** outline weight, in pixels: 1 normally, more for high contrast */
 	line: number;
 }
@@ -102,17 +91,20 @@ export function canvasColors(): CanvasColors {
 	const cs = getComputedStyle(document.documentElement);
 	const v = (name: string) => cs.getPropertyValue(name).trim();
 	colorCache = {
-		bg: v("--bg"),
-		grid: v("--grid"),
-		gridStrong: v("--grid-strong"),
+		bg: v("--bg-canvas"),
+		grid: v("--canvas-grid"),
+		gridStrong: v("--canvas-grid-major"),
 		accent: v("--accent"),
 		accentSoft: v("--accent-line"),
 		hover: v("--canvas-hover"),
-		handleFill: v("--raised"),
-		ok: v("--ok"),
-		text2: v("--text-2"),
-		text3: v("--text-3"),
+		handleFill: v("--bg-raised"),
+		ok: v("--pivot"),
+		text2: v("--text-secondary"),
+		text3: v("--canvas-origin"),
 		marquee: v("--accent-dim"),
+		axisX: v("--axis-x"),
+		axisY: v("--axis-y"),
+		axisZ: v("--axis-z"),
 		line: parseFloat(v("--line")) || 1,
 	};
 	return colorCache;

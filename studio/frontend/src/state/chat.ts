@@ -2,7 +2,8 @@
 // tool it works through. The shell runs Claude Code; this keeps what was
 // said and answers the tools (state/tools.ts).
 
-import { signal, batch } from "@preact/signals";
+import { effect, signal, batch } from "@preact/signals";
+import { sidebar, showInspectorTab } from "./sidebar.ts";
 import { shell, type ChatEvent, type ChatInfo } from "../shell/shell.ts";
 import { project } from "./project.ts";
 
@@ -182,10 +183,20 @@ export async function newChat() {
 	});
 }
 
+/** Ask is a tab of the inspector: ⌘J shows it, and again puts the inspector back. */
 export function toggleChat() {
-	chat.open.value = !chat.open.value;
-	if (chat.open.value) wireChat();
+	const showing = sidebar.inspector.value && sidebar.tab.value === "ask";
+	if (showing) sidebar.tab.value = "inspector";
+	else showInspectorTab("ask");
 }
+
+// the panel is open whenever its tab is the one showing
+effect(() => {
+	const on = sidebar.inspector.value && sidebar.tab.value === "ask";
+	if (chat.open.peek() === on) return;
+	chat.open.value = on;
+	if (on) wireChat();
+});
 
 export function toggleDock() {
 	chat.dock.value = chat.dock.value === "right" ? "bottom" : "right";

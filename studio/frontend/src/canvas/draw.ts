@@ -232,10 +232,11 @@ export function renderPNG(doc: Doc, tokens: readonly Token[], pose: string | rea
  * (all-parts overlays lit-and-out, item-and-prop at once). A rig with no
  * art yet lists the parts it wants; a palette shows its swatches.
  */
-export function drawThumb(canvas: HTMLCanvasElement, doc: Doc, tokens: readonly Token[]) {
-	const dpr = window.devicePixelRatio || 1;
-	const w = canvas.clientWidth;
-	const h = canvas.clientHeight;
+export function drawThumb(canvas: HTMLCanvasElement, doc: Doc, tokens: readonly Token[], size?: number) {
+	// with a size the canvas is off screen: a square of that many pixels
+	const dpr = size ? 1 : window.devicePixelRatio || 1;
+	const w = size ?? canvas.clientWidth;
+	const h = size ?? canvas.clientHeight;
 	if (!w || !h) return;
 	if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
 		canvas.width = Math.round(w * dpr);

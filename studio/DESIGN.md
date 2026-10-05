@@ -5,68 +5,91 @@ where a user of any other art tool expects it. Distilled from Figma and
 Penpot (vector editing), Rive and Spine (2D rigging and animation),
 Aseprite and Godot (game art), and the keyboard habits they share.
 
+## The look
+
+The design system is the contract for look and layout: `frontend/src/tokens.css`
+holds every colour (Light and Dark), type style, space, radius and shadow;
+`frontend/src/ur.css` and `ui/ur.tsx` are the components built from them
+(`Ur` in the system's own words). Nothing picks a hex, a size or a font
+stack of its own. Chrome is neutral and the artwork is the only loud
+thing on screen: the accent shows on the selection, the active tool and
+the unsaved dot. Sentence case everywhere; group headers are never
+upper-cased or letter-spaced; names show exactly as stored. Icons are
+Lucide (`scripts/icons.mjs` writes `ui/icons.ts`). Appearance follows the
+OS, with the sun/moon button and Settings to pin it.
+
 ## The layout
 
-The app opens on a **launcher**, a small window the way Xcode opens:
-the mark and two ways in on the left (Create New Project, which makes a
-folder with `assets/` inside; Open Existing Project), the recent
-projects on the right. A project is a folder; opening one grows the
-window into the **workspace**, an IDE split view with no top bar:
+The app opens on a **launcher**, a small fixed window the way Xcode
+opens (800 × 460, centred): the mark, the version and three ways in on
+the left (Create new project…, Open existing project…, Clone git
+repository…), the recent projects on the right (↑ ↓ Return, ⌫ forgets).
+A project is a folder; opening one grows the window into the
+**workspace**: one window, three columns, three headers, and no toolbar
+across them.
 
-    ┌──────────┬───────────────────────────────────┬───────────────┐
-    │ Assets + │ ▤ ? [project ⑂branch › asset ▾ › state ▾]  Save ◐ ▥ │
-    │  effects ├───────────────────────────────────┤ inspector     │
-    │  ships   │                                   │ (what is      │
-    │  ...     │            canvas                 │  selected, or │
-    │          │                                   │  the asset,   │
-    │ ‹ fighter│         hint line                 │  or the       │
-    │  layers  │       [ V R O L P | C # ]         │  project)     │
-    │  states  ├───────────────────────────────────┤               │
-    │  clips   │ timeline (when a clip is chosen)  │               │
-    └──────────┴───────────────────────────────────┴───────────────┘
+    ┌─ navigator header ──┬─ content header ─────────────────────────┬─ inspector header ──┐
+    │ ●●●  ▣ ◫ ⌕ ⎇    ◧   │ [▣ art ⇕]   [ art · main  ● Edited ]  ☀  │ ≡ ◉ ↺ ✉         ◨   │
+    │                     ├──────────────────────────────────────────┤                     │
+    │                     │ ‹ › art › ships › ● fighter › idle  tools │                     │
+    ├─────────────────────┼──────────────────────────────────────────┼─────────────────────┤
+    │ assets / outline /  │ the asset browser, or the canvas          │ sections            │
+    │ search / git        │                                          │                     │
+    │ filter         +    ├──────────────────────────────────────────┤                     │
+    │                     │ status: state · hint · zoom          XYZ │                     │
+    └─────────────────────┴──────────────────────────────────────────┴─────────────────────┘
 
-- **Left is the sidebar, a stack two deep.** At its root the project's
-  assets as a tree of folders, with an Add menu (asset, 3D asset,
-  palette, scene, 3D scene) and a refresh. Choosing an asset pushes its
-  insides: the parts as a tree (children under parents) with eye and
-  lock, then the states and the clips, the way Rive and Spine list
-  animations; a scene pushes its nodes. The Add menu there adds a layer,
-  a state, a clip. `‹` pops back to the assets; the asset stays on the
-  canvas, lit in the tree.
-- **The top of the canvas is the project bar**, Xcode's toolbar: the
-  sidebar toggle, the docs, then the scheme bar. Its segments are the
-  project (the folder's name; click for the shelf), the branch (shown
-  only in a repository; click to switch), the asset (click for a quick
-  switcher over every asset), the state (or the clip previewing; click
-  to switch). At the far end: issues, Save, Ask, the theme, a more menu
-  (serve, setup, close the project), the inspector toggle.
-- **The tools float at the bottom centre of the canvas**, with the hint
-  line above them and the zoom in the corner. Nothing else sits on the
-  canvas.
-- **With no asset open the canvas is the shelf**: every asset as a live
-  thumbnail; click one to open it.
-- **Right is properties**: the inspector shows the selection. A shape
-  gets its numbers and its fill; a part gets its pivot, parent, anchors
-  and IK chains; a pose gets offset, turn and size; nothing selected
-  gets the document: name, colours, shared palettes, collision; nothing
-  open gets the project. A part counts as selected when it was chosen
-  on purpose (a row in the sidebar, a shape hit, a grip grabbed); a
-  click on empty canvas lets go of everything and the inspector returns
-  to the document.
-- **Bottom is time**: only the timeline, and only when a clip is chosen.
-- **Ask is a drawer, not a mode.** ⌘J slides Claude in on the right; it
-  works through the same commands a hand does (one undo step per change,
-  the canvas as its eyes) and never through the file system while a
-  file is open.
+- **The window has no title bar.** On a Mac the traffic lights sit
+  inline, in the navigator's header (in the content header when the
+  navigator is hidden); the header leaves them room and takes it back in
+  full screen, where they hide. Every header drags the window.
+- **Left is the navigator**, four tabs in its header: the project's
+  **assets** as a tree (a filter and a New asset menu pinned to the
+  bottom), the open asset's **outline** (parts as a tree, then states,
+  then clips, each group with a +; a scene's nodes), **search** (assets,
+  parts, states, clips and colours by name) and **source control**
+  (branches, what is uncommitted, Review & commit…).
+- **The content header** holds the project picker (the project over its
+  branch: recent projects, reveal, serve, close, the branches, New
+  branch…), the **activity view** dead centre (Saved, Edited, busy with
+  progress, or what failed; its popover lists what happened and offers
+  Save and Revert), and the appearance button.
+- **The path bar** sits under it: back and forward through the folders
+  and assets visited, the breadcrumb project › folders › asset › state
+  with every segment a menu of its siblings, and on the right what the
+  content needs: the kind filter and New asset… in the browser; the
+  tools, the modes and a clip's transport in an editor.
+- **Nothing floats over the canvas.** Tools live in the path bar, the
+  hint and the zoom in the **status bar** under the content (with the
+  X Y Z key in a 3D view).
+- **With no asset open the content is the asset browser**: tiles with
+  live thumbnails. A click picks one (the inspector shows it, and renames
+  it), a double click or Return opens it.
+- **Right is the inspector**, four tabs: the **selection** (a shape, a
+  part and its pose, or the document; in the browser the picked asset
+  and the project), the **view** (camera, overlays, zoom; tile size and
+  sort in the browser), **history** (the checkpoint, undo, the activity
+  log) and **Ask**. A part counts as selected when it was chosen on
+  purpose (a row in the outline, a shape hit, a grip grabbed); a click on
+  empty canvas lets go of everything and the inspector returns to the
+  document.
+- **Bottom is time**: the timeline, only when a clip is chosen.
+- **Anything that needs input before it can happen is a sheet**, dropped
+  from the top of the window: Return is the primary button (named with
+  its verb, disabled until the fields are valid), Escape cancels.
+- **The platform draws what it can**: a right click is the platform's
+  own context menu, a file or a folder is chosen in the platform's own
+  dialog. Dropdowns from a button are the one in-window menu.
 - **The file on disk is the document.** Edits land in it at once, whole
   and atomic; ⌘S keeps a checkpoint (`name.fart~`) to revert to by
-  choice, never by surprise. What a watcher sees is what the canvas shows.
+  choice, never by surprise. Leaving an asset that has changed since its
+  checkpoint asks once: Don't save · Cancel · Save.
 - **Every view is a state.** There is no separate drawing mode: shapes
   are edited inside whichever state is on the canvas, through its pose,
   and the part is placed and turned by its own grips. A new state copies
   the current one. A clip is a *preview*: nothing edits there.
 - **The canvas is the tool**: hover tells you what a click would do, the
-  hint line at the bottom-left says what mode you are in.
+  status bar says what mode you are in.
 
 ## The words
 
@@ -106,7 +129,7 @@ words gain a coordinate, not a vocabulary:
 | box, ball, rod, prism | `mesh`, `ball`, `rod` | what the four drawing tools make: R drags a box, O a ball, L a rod, P clicks a prism's profile; each as deep as the **depth** field, along the view axis |
 | corner     | `points[i]`     | a mesh's vertex; drags along the view plane                  |
 | view       | (not saved)     | a turn laid on the model: front, back, left, right, top, bottom, or free after an orbit |
-| orbit      |                 | drag on nothing, or Alt-drag anywhere                        |
+| orbit      |                 | a turntable about what is chosen: middle-drag, two fingers on a trackpad, or Alt-drag anywhere; `Cmd` held tumbles freely |
 | turn       | `rotate` `[x,y,z]` | a pose's turn about x, then y, then z; the lever turns about the view axis |
 | morph      | `morph` on a state entry | a mesh's corners as this state has them (1.6); **Deform** (D) sends corner drags there instead of the base |
 | smooth     | `smooth`, `normals`, `creases` | the cage drawn subdivided (1.7), lit by averaged normals; an edge's crease keeps it sharp |
@@ -143,7 +166,7 @@ Figma's letters, because everyone's hands already know them.
 | `C`                     | the collision lens                            |
 | `Space` drag, `H`       | pan (hand)                                    |
 | wheel, `Cmd` wheel      | pan, zoom about the cursor                    |
-| `Cmd =` `Cmd -` `Cmd 0` | zoom in, out, 100%                            |
+| `Cmd =` `Cmd -` `Shift 0` | zoom in, out, 100%                          |
 | `Shift 1` `Shift 2`     | zoom to fit, zoom to selection                |
 | `Cmd '`                 | snap to grid on and off                       |
 | arrows, `Shift` arrows  | nudge 1 unit, 10 units                        |
@@ -156,23 +179,61 @@ Figma's letters, because everyone's hands already know them.
 | `Alt` on a rect corner  | break it into a free quad                     |
 | `Cmd Z` `Cmd Shift Z`   | undo, redo                                    |
 | `Cmd S`                 | save (the checkpoint)                         |
-| `Cmd N` `Cmd W`         | new asset, close the asset (the shelf)        |
-| `Cmd Shift N` `Cmd Shift O` | new project, open project                 |
-| `Cmd B` `Cmd Alt 0`     | the sidebar, the inspector                    |
+| `Cmd N` `Cmd W`         | new asset, close the asset (the browser)      |
+| `Cmd Shift N` `Cmd O` `Cmd Alt C` | new project, open project, clone a repository |
+| `Cmd Shift 1` `Cmd ,`   | the welcome window, settings                  |
+| `Cmd 0` `Cmd Alt 0`     | the navigator, the inspector                  |
+| `Cmd 1`–`Cmd 4`         | the navigator's tabs: assets, outline, search, source control |
+| `Cmd [` `Cmd ]`         | back, forward                                 |
+| `Cmd J`                 | Ask                                           |
 | `Cmd Shift P` `Cmd Shift S` | switch asset, switch state               |
 | `Cmd K`                 | every command, by name                        |
 | `Enter` on a row        | rename inline                                 |
 | `Space` with a clip     | play / pause                                  |
-| `?`                     | the docs                                      |
+| `?`                     | help for what is on screen and what is chosen (the inspector's ? tab) |
+| `Cmd /` `Cmd Shift /`   | this screen's keyboard shortcuts, search help |
 
-Digits `1`–`5` still pick tools, for the hands that learned the classic.
+Digits `1`–`5` still pick tools in the 2D editor, for the hands that learned the classic.
+
+A 3D view (the model screen, a 3D scene) navigates the way 3D tools do,
+Blender's hands first:
+
+| key or gesture              | does                                          |
+|-----------------------------|-----------------------------------------------|
+| middle drag                 | orbit: a turntable about what is chosen; the horizon never rolls |
+| `Shift` middle drag, `Space` drag | pan                                     |
+| mouse wheel                 | zoom at the cursor                            |
+| two fingers, `Shift` two fingers, pinch | orbit, pan, zoom                  |
+| `Alt` drag                  | orbit, for a mouse with no middle button      |
+| drag on nothing             | a marquee: every shape it touches is chosen; `Shift` adds, `Shift`-click adds or takes out one. Chosen shapes move, turn, size, duplicate and go together |
+| `Cmd` while orbiting        | tumble freely instead                         |
+| `1` `3` `7` `9`             | front, right, top, the other side             |
+| `4` `6`, `8` `2`, `5`       | turn left and right, tilt up and down (15° a step), fit everything. Every digit is the view's in 3D; no digit picks a tool there, the tools are on their letters |
+| `F` or `.`                  | frame what is chosen (everything, when nothing is) |
+| the X Y Z in the status bar | look along that axis; again for the other side |
+| the arrows on what is chosen | move it along that axis of the world, whatever the view |
+| the rings on a picked part  | turn it about that axis                       |
+| `G` `T` `S`                 | move, turn, size what is chosen, by pointer (the studio's words: R is the box tool) |
+| then `X` `Y` `Z`            | hold that axis (again lets go)                |
+| then digits                 | the amount: units, degrees, a factor          |
+| `Shift` while transforming  | snap: whole units, 15°, tenths                |
+| `Return` or a click, `Esc` or a right click | keep it, put it back (one undo step either way) |
+
+With **Deform** on, every one of these reshapes the mesh in this state
+only (its morph), never the base; a ball or a rod has no morph and is
+refused with a word why. A **scene**'s nodes take the same handles, keys
+and marquee (a 2D scene in its plane: X and Y arrows, one ring); several
+nodes move as one and each turns and sizes about its own origin; a node
+inside another chosen one rides it. A 3D scene orbits about the chosen
+nodes.
 
 ## The rules
 
 - **Everything is reachable three ways**: the menu bar, the command
   palette (`Cmd K`), and a key. The registry in `state/commands.ts` is the
   one list; the others read it.
-- **Rename inline**, never in a dialog. Double-click or `Enter` on a row.
+- **Rename inline** in the outline: double-click or `Enter` on a row. A
+  file is renamed in the inspector's field, or in a sheet.
   New things get a name and are already being renamed.
 - **Numbers are fields.** Anything with a value shows the value and takes
   a typed one. Sliders only where the range is the point (colour channels).
@@ -181,9 +242,11 @@ Digits `1`–`5` still pick tools, for the hands that learned the classic.
 - **Hover foretells.** What a click would pick is outlined before the click.
 - **Snap, with a way out.** Grid snap is a toggle; geometry snap (to other
   shapes' points) is on, with `Cmd` held to defeat it for one gesture.
-- **Right-click is the short list**: the four things you do most to that
-  thing. The long list is `Cmd K`.
+- **Right-click is the short list**, drawn by the platform: the four
+  things you do most to that thing, and its delete (never a red ×). The
+  long list is `Cmd K`.
 - **Modes are visible.** A state, a clip preview, the collision lens:
-  the hint line names which, the toolbar dims what does not apply.
-- **No settings screen.** Theme, sidebar, inspector, snap are toggles where they
-  act. If a preference needs a screen, it is probably a bad preference.
+  the status bar names which, the path bar dims what does not apply.
+- **Settings stay small.** Appearance, the welcome window and the setup
+  checklist share one page (`Cmd ,`); everything else is a toggle where
+  it acts.

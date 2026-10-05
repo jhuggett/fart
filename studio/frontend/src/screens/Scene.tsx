@@ -5,129 +5,208 @@
 
 import { useEffect, useState } from "preact/hooks";
 import { VIEWS, type SceneNode } from "@fastart/core";
-import { I } from "../ui/Icons.tsx";
-import { Num, Text } from "../ui/Field.tsx";
 import { InlineName } from "../ui/Rename.tsx";
 import { SceneCanvas } from "../canvas/SceneCanvas.tsx";
 import { project, paletteFiles } from "../state/project.ts";
-import { Tools } from "../ui/Tools.tsx";
-import type { MenuItem } from "../state/menu.ts";
-import { openContextMenu } from "../state/menu.ts";
+import { ToolBar, Transport, gridMode } from "../ui/Tools.tsx";
+import { gizmoStatus } from "../canvas/gizmo3.ts";
+import { selectedNodes } from "../state/scene.ts";
+import { Button, Checkbox, GroupHeader, Icon, InspectorSection, NumberField, Property, SegmentedControl, Select, SidebarRow, TextField, type IconName } from "../ui/ur.tsx";
+import { menuAt, openMenuBelow, type MenuItem } from "../state/menu.ts";
+import { sidebar } from "../state/sidebar.ts";
 import { run } from "../state/commands.ts";
 import { basename, dirname, stripExt } from "../state/paths.ts";
-import { sc, scene, is3d, nodeAt, parentPath, setNode, renameNode, addNode, deleteNode, duplicateNode, moveNode, setSceneName, addPaletteRef, removePaletteRef, placeable, refDoc, anchorsOfDoc, setView, setTurn } from "../state/scene.ts";
+import { shell } from "../shell/shell.ts";
+import { sc, scene, is3d, nodeAt, parentPath, setNode, renameNode, addNode, deleteNode, duplicateNode, moveNode, setSceneName, addPaletteRef, removePaletteRef, placeable, refDoc, anchorsOfDoc, setView, setTurn, endGesture } from "../state/scene.ts";
 
 const DEG = 180 / Math.PI;
-const VIEW_NAMES = ["front", "back", "left", "right", "top", "bottom"];
 
-function Hdr(props: { title: string; hint?: string; tail?: string }) {
+/** The status bar's line. */
+export function sceneStatus(): string {
+	const moving = gizmoStatus();
+	if (moving) return moving;
+	const many = selectedNodes().length;
+	if (many > 1) return `${many} nodes · Drag them to move them · G T S move, turn and size by key · ⌫ deletes them`;
+	const orbit = is3d() ? ` · ${sc.viewName.value || "free"} · middle-drag orbits` : "";
+	return sc.sel.value ? `${sc.sel.value} · Arrows move along an axis, rings turn · G T S move, turn and size by key${orbit}` : `Click an instance to choose its node · + places a file of the project${orbit}`;
+}
+
+/** The path bar's right side: the scene's clock, which every clip reads. */
+export function SceneTools() {
+	void sc.rev.value;
 	return (
-		<div class="hdr" title={props.hint}>
-			{props.title}
-			{props.tail && <span class="hint">{props.tail}</span>}
-		</div>
+		<>
+			<ToolBar tools={[]} current="" modes={[gridMode()]} />
+			<span class="ur-pathbar-sep" />
+			<Transport name="the scene's clips" playing={sc.playing.value} onPlay={() => run("clip.play")} onRewind={() => (sc.time.value = 0)} readout={`${sc.time.value.toFixed(2)}s`} progress={0} />
+		</>
 	);
 }
 
-export function SceneTools() {
+const CAMERAS = Object.keys(VIEWS).filter((v) => v !== "side");
+
+/** The View tab's own section: the camera laid on a 3D scene. */
+export function SceneView() {
 	void sc.rev.value;
-	const vn = sc.viewName.value;
-	const hint = sc.sel.value
-		? `node "${sc.sel.value}" · drag it to move it · its fields on the right${is3d() ? " · drag on nothing to orbit" : ""}`
-		: `a scene · click an instance to choose its node · + places a file of the project${is3d() ? " · drag on nothing to orbit" : ""}`;
+	if (!is3d()) return null;
 	return (
-		<Tools hint={hint}>
-			<button class="tool" title="play the clips  (Space)" onClick={() => (sc.playing.value = !sc.playing.value)}>
-				{sc.playing.value ? <I.pause /> : <I.play />}
-			</button>
-			<span class="sub time" title="the scene's clock: every clip reads it">
-				{sc.time.value.toFixed(2)}s
-			</span>
-			<button class="btn small ghost" title="back to the start" onClick={() => (sc.time.value = 0)}>
-				0
-			</button>
-			{is3d() && (
-				<>
-					<span class="sep" />
-					<select class="num" title="the view: a turn laid on the scene. Drag on nothing to orbit" value={vn} onChange={(e) => setView((e.target as HTMLSelectElement).value)}>
-						{vn === "" && <option value="">free</option>}
-						{VIEW_NAMES.map((v) => (
-							<option value={v}>{v}</option>
-						))}
-					</select>
-				</>
-			)}
-		</Tools>
+		<InspectorSection title="Camera" hint="a turn laid on the scene before it is drawn">
+			<div class="insp-wrap">
+				<SegmentedControl options={CAMERAS.slice(0, 3)} value={sc.viewName.value} onChange={setView} label="Camera" />
+				<SegmentedControl options={CAMERAS.slice(3)} value={sc.viewName.value} onChange={setView} label="Camera" />
+			</div>
+			<Property label="Angle" layout="trio">
+				{([0, 1, 2] as const).map((ax) => (
+					<NumberField
+						axis={(["x", "y", "z"] as const)[ax]}
+						value={Math.round(sc.turn.value[ax] * DEG * 100) / 100}
+						step={15}
+						suffix="°"
+						stepper={false}
+						onChange={(v) => {
+							const t = [...sc.turn.value] as [number, number, number];
+							t[ax] = v / DEG;
+							setTurn(t);
+						}}
+					/>
+				))}
+			</Property>
+		</InspectorSection>
 	);
 }
 
 function NodeRow({ node, path, depth }: { node: SceneNode; path: string; depth: number }) {
 	const [ren, setRen] = useState(false);
-	const cur = sc.sel.value;
-	const kind = node.ref ? (node.ref.endsWith(".shart") ? "scene" : stripExt(basename(node.ref))) : "group";
+	const [open, setOpen] = useState(true);
+	const kids = node.children ?? [];
+	const placed = !!node.ref?.endsWith(".shart");
+	const icon: IconName = !node.ref ? "group" : placed ? "layout-template" : is3d() ? "box" : "image";
+	const stem = node.ref ? stripExt(basename(node.ref)) : "";
+	const what = !node.ref ? "A group" : `${placed ? "Places the scene" : "An instance of"} ${node.ref}`;
 	return (
 		<>
-			<div
-				class={`layer ${path === cur ? "active" : ""}`}
-				style={{ paddingLeft: `${6 + depth * 14}px` }}
+			<SidebarRow
+				label={
+					ren ? (
+						<InlineName
+							value={node.name}
+							onCommit={(n) => {
+								renameNode(path, n);
+								setRen(false);
+							}}
+							onCancel={() => setRen(false)}
+						/>
+					) : (
+						node.name
+					)
+				}
+				icon={icon}
+				depth={depth}
+				expandable={kids.length > 0}
+				open={open}
+				onToggle={() => setOpen(!open)}
+				selected={path === sc.sel.value}
+				inactive={sidebar.focus.value !== "nav"}
+				title={`${what}${node.clip ? ` · plays ${node.clip}` : ""}${node.attach ? ` · hangs from ${node.attach.to}` : ""}`}
+				chip={node.clip ?? (stem && stem !== node.name ? stem : undefined)}
+				link={node.attach?.to}
 				onClick={() => (sc.sel.value = path)}
-				onDblClick={() => setRen(true)}
+				onDoubleClick={() => setRen(true)}
+				onDelete={() => deleteNode(path)}
 				onContextMenu={(e) => {
-					e.preventDefault();
 					sc.sel.value = path;
-					openContextMenu(e.clientX, e.clientY, [
-						{ label: "Rename", keys: "Enter", run: () => setRen(true) },
-						{ label: "Add instance under", run: () => run("scene.addInstance") },
+					menuAt(e, [
+						{ label: "Rename", keys: "↩", run: () => setRen(true) },
+						{ label: "Add instance under…", run: () => run("scene.addInstance") },
 						{ label: "Add group under", run: () => run("scene.addGroup") },
 						{ label: "Duplicate", run: () => duplicateNode(path), sep: true },
 						{ label: "Raise (paints later)", run: () => moveNode(path, true) },
 						{ label: "Lower (paints earlier)", run: () => moveNode(path, false) },
-						{ label: "Delete", danger: true, sep: true, run: () => deleteNode(path) },
+						{ label: "Delete", keys: "⌫", danger: true, sep: true, run: () => deleteNode(path) },
 					]);
 				}}
-			>
-				<span class="glyph">{node.children?.length ? "▾" : "·"}</span>
-				{ren ? (
-					<InlineName
-						value={node.name}
-						onCommit={(n) => {
-							renameNode(path, n);
-							setRen(false);
-						}}
-						onCancel={() => setRen(false)}
-					/>
-				) : (
-					<span class="name">{node.name}</span>
-				)}
-				<span class="chip" title={node.ref ?? "a group"}>
-					{kind}
-				</span>
-				{node.clip && <span class="chip">{node.clip}</span>}
-				{node.attach && <span class="chip" title={`hangs from ${node.attach.to}`}>⚓</span>}
-			</div>
-			{(node.children ?? []).map((c) => (
-				<NodeRow key={c.name} node={c} path={`${path}/${c.name}`} depth={depth + 1} />
-			))}
+			/>
+			{open && kids.map((c) => <NodeRow key={c.name} node={c} path={`${path}/${c.name}`} depth={depth + 1} />)}
 		</>
 	);
 }
 
 export function SceneSidebar() {
 	void sc.rev.value;
-	const s = scene();
+	const nodes = scene().nodes ?? [];
 	return (
 		<>
-			<Hdr title="Nodes" hint="the scene's tree: instances of files, placed scenes, groups; children ride their parents. List order is paint order in 2D." />
-			{(s.nodes ?? []).map((n) => (
+			<GroupHeader
+				title="The scene's tree: instances of files, placed scenes, groups; children ride their parents. List order is paint order in 2D."
+				addLabel="Add a node"
+				addItems={[
+					{ label: "Instance…", icon: is3d() ? "box" : "image", run: () => run("scene.addInstance") },
+					{ label: "Group", icon: "group", run: () => run("scene.addGroup") },
+				]}
+			>
+				Nodes
+			</GroupHeader>
+			{nodes.map((n) => (
 				<NodeRow key={n.name} node={n} path={n.name} depth={0} />
 			))}
-			<button class="add-row" onClick={() => run("scene.addInstance")}>
-				<I.plus size={11} /> instance
-			</button>
-			<button class="add-row" onClick={() => run("scene.addGroup")}>
-				<I.plus size={11} /> group
-			</button>
+			{nodes.length === 0 && <div class="nav-empty">Nothing placed yet · + places a file of the project</div>}
 		</>
+	);
+}
+
+/** The node's name: typed freely, taken when the field is left or Return is pressed. */
+function NodeName({ path, name }: { path: string; name: string }) {
+	const [v, setV] = useState(name);
+	useEffect(() => setV(name), [name, path]);
+	const commit = () => {
+		const t = v.trim();
+		if (t && t !== name) renameNode(path, t);
+		// a name the scene refused (taken, or with a slash in it) falls back
+		if (nodeAt(path)) setV(name);
+	};
+	return <TextField value={v} mono onChange={setV} onSubmit={commit} onBlur={commit} />;
+}
+
+/** The scene's own palettes: a list, + adds a palette file, ⌫ takes the chosen one off. */
+function Palettes({ pals, rel }: { pals: string[]; rel: string }) {
+	const refs = scene().palette_refs ?? [];
+	const [sel, setSel] = useState<number | null>(null);
+	const add = (): MenuItem[] => (pals.length ? pals.map((p) => ({ label: stripExt(basename(p)), icon: "palette" as const, run: () => addPaletteRef(relOf(rel, p)) })) : [{ label: "No palette files in the project", disabled: true }]);
+	const remove = (i: number) => {
+		removePaletteRef(i);
+		setSel(null);
+	};
+	return (
+		<InspectorSection
+			title="Palettes"
+			hint="palettes laid over every instance, in order; later ones win"
+			tail={refs.length ? String(refs.length) : undefined}
+			actions={
+				<button type="button" title="Add a palette" aria-label="Add a palette" onClick={(e) => openMenuBelow(e.currentTarget as HTMLElement, add(), { align: "right" })}>
+					<Icon name="plus" size={14} />
+				</button>
+			}
+		>
+			<div class="ur-tree scene-list" role="tree">
+				{refs.map((r, i) => (
+					<SidebarRow
+						key={`${i}:${r}`}
+						label={stripExt(basename(r))}
+						title={r}
+						icon="palette"
+						selected={sel === i}
+						inactive={sidebar.focus.value !== "insp"}
+						onClick={() => setSel(i)}
+						onDelete={() => remove(i)}
+						onContextMenu={(e) => {
+							setSel(i);
+							menuAt(e, [{ label: "Remove from the scene", keys: "⌫", danger: true, run: () => remove(i) }]);
+						}}
+					/>
+				))}
+			</div>
+			<div class="insp-hint flush">{refs.length ? "Later palettes win · ⌫ removes the chosen one" : "No palettes laid over the scene · + adds one"}</div>
+		</InspectorSection>
 	);
 }
 
@@ -144,183 +223,126 @@ export function SceneInspector() {
 	const rel = sc.path.value ?? "";
 	const at = (n?.at ?? (d3 ? [0, 0, 0] : [0, 0])) as number[];
 	const rot = d3 ? ((Array.isArray(n?.rotate) ? n!.rotate : [0, 0, 0]) as number[]) : [typeof n?.rotate === "number" ? n.rotate : 0];
+	const deg = (r: number) => Math.round(r * DEG * 1000) / 1000;
+	const posStep = d3 ? 0.1 : 1;
 	return (
-		<div class="panel right inspector">
+		<div class="inspector">
 			{n && path && (
 				<>
-					<Hdr title="Node" hint="a placed thing, or a group" tail={n.ref ? (n.ref.endsWith(".shart") ? "scene" : "instance") : "group"} />
-					<Text label="name" value={n.name} onChange={(v) => renameNode(path, v)} />
-					<div class="line" title="the file this node places; a scene places the whole of another scene">
-						<span class="k">file</span>
-						<select class="num" value={n.ref ?? ""} onChange={(e) => setNode(path, { ref: (e.target as HTMLSelectElement).value, state: undefined, clip: undefined, attach: undefined })}>
-							<option value="">none (a group)</option>
-							{n.ref && !options.some((o) => o.rel === n.ref) && <option value={n.ref}>{n.ref}</option>}
-							{options.map((o) => (
-								<option value={o.rel}>{o.label}</option>
-							))}
-						</select>
-					</div>
-					<div class="fields" title="where the file's origin lands, in the parent's frame">
-						<Num label="x" value={at[0]} onChange={(v) => setNode(path, { at: d3 ? [v, at[1], at[2] ?? 0] : [v, at[1]] }, "at-x")} />
-						<Num label="y" value={at[1]} onChange={(v) => setNode(path, { at: d3 ? [at[0], v, at[2] ?? 0] : [at[0], v] }, "at-y")} />
-						{d3 && <Num label="z" value={at[2] ?? 0} onChange={(v) => setNode(path, { at: [at[0], at[1], v] }, "at-z")} />}
-					</div>
-					<div class="fields">
-						{d3 ? (
-							([0, 1, 2] as const).map((ax) => (
-								<Num
-									label={`turn ${"xyz"[ax]}°`}
-									value={rot[ax] * DEG}
-									step={5}
-									onChange={(v) => {
-										const r = [...rot] as [number, number, number];
-										r[ax] = v / DEG;
-										setNode(path, { rotate: r }, `rot-${ax}`);
-									}}
+					<InspectorSection title="Node" hint="a placed thing, or a group" tail={n.ref ? (n.ref.endsWith(".shart") ? "scene" : "instance") : "group"}>
+						<Property label="Name">
+							<NodeName path={path} name={n.name} />
+						</Property>
+						<Property label="File" title="the file this node places; a scene places the whole of another scene">
+							<Select
+								value={n.ref ?? ""}
+								onChange={(v) => setNode(path, { ref: v, state: undefined, clip: undefined, attach: undefined })}
+								options={[{ value: "", label: "None (a group)" }, ...(n.ref && !options.some((o) => o.rel === n.ref) ? [{ value: n.ref, label: n.ref }] : []), ...options.map((o) => ({ value: o.rel, label: o.label }))]}
+							/>
+						</Property>
+						{n.ref && (
+							<Property label="Palette" title="a palette laid over this instance's colours">
+								<Select
+									value={n.palette ?? ""}
+									onChange={(v) => setNode(path, { palette: v })}
+									options={[{ value: "", label: "None" }, ...(n.palette && !pals.some((p) => relOf(rel, p) === n.palette) ? [{ value: n.palette, label: n.palette }] : []), ...pals.map((p) => ({ value: relOf(rel, p), label: stripExt(basename(p)) }))]}
 								/>
-							))
-						) : (
-							<Num label="turn°" value={rot[0] * DEG} step={5} onChange={(v) => setNode(path, { rotate: v / DEG }, "rot")} />
+							</Property>
 						)}
-						<Num label="size" value={n.scale ?? 1} min={0} step={0.05} onChange={(v) => setNode(path, { scale: v }, "scale")} />
-						<label class="field" title="flipped across x">
-							<span class="k">mirror</span>
-							<input type="checkbox" checked={!!n.mirror} onChange={(e) => setNode(path, { mirror: (e.target as HTMLInputElement).checked })} />
-						</label>
-					</div>
+						<div class="insp-actions">
+							<Button onClick={() => duplicateNode(path)}>Duplicate</Button>
+							<Button title="Paints later (2D)" onClick={() => moveNode(path, true)}>
+								Raise
+							</Button>
+							<Button title="Paints earlier (2D)" onClick={() => moveNode(path, false)}>
+								Lower
+							</Button>
+							<Button variant="danger" onClick={() => deleteNode(path)}>
+								Delete
+							</Button>
+						</div>
+					</InspectorSection>
+					<InspectorSection title="Transform" hint="where the file's origin lands, in the parent's frame">
+						<Property label="Position" layout={d3 ? "trio" : "pair"} title="where the file's origin lands, in the parent's frame">
+							<NumberField axis="x" value={at[0]} step={posStep} stepper={false} onDone={endGesture} onChange={(v) => setNode(path, { at: d3 ? [v, at[1], at[2] ?? 0] : [v, at[1]] }, "at-x")} />
+							<NumberField axis="y" value={at[1]} step={posStep} stepper={false} onDone={endGesture} onChange={(v) => setNode(path, { at: d3 ? [at[0], v, at[2] ?? 0] : [at[0], v] }, "at-y")} />
+							{d3 && <NumberField axis="z" value={at[2] ?? 0} step={posStep} stepper={false} onDone={endGesture} onChange={(v) => setNode(path, { at: [at[0], at[1], v] }, "at-z")} />}
+						</Property>
+						{d3 ? (
+							<Property label="Turn" layout="trio">
+								{([0, 1, 2] as const).map((ax) => (
+									<NumberField
+										axis={(["x", "y", "z"] as const)[ax]}
+										value={deg(rot[ax])}
+										step={5}
+										suffix="°"
+										stepper={false}
+										onDone={endGesture}
+										onChange={(v) => {
+											const r = [...rot] as [number, number, number];
+											r[ax] = v / DEG;
+											setNode(path, { rotate: r }, `rot-${ax}`);
+										}}
+									/>
+								))}
+							</Property>
+						) : (
+							<Property label="Turn">
+								<NumberField value={deg(rot[0])} step={5} suffix="°" label="Turn" onDone={endGesture} onChange={(v) => setNode(path, { rotate: v / DEG }, "rot")} />
+							</Property>
+						)}
+						<Property label="Scale">
+							<NumberField value={n.scale ?? 1} min={0} step={0.05} label="Scale" onDone={endGesture} onChange={(v) => setNode(path, { scale: v }, "scale")} />
+						</Property>
+						<Property label="">
+							<Checkbox checked={!!n.mirror} label="Mirror" title="flipped across x" onChange={(v) => setNode(path, { mirror: v })} />
+						</Property>
+					</InspectorSection>
 					{doc && (
-						<>
-							<div class="line" title="what the instance shows: a state, or a clip at a time">
-								<span class="k">shows</span>
-								<select
-									class="num"
+						<InspectorSection title="Shows" hint="what the instance shows: a state, or a clip at a time">
+							<Property label="State or clip" title="what the instance shows: a state, or a clip at a time">
+								<Select
 									value={n.clip ? `clip:${n.clip}` : n.state ? `state:${n.state}` : ""}
-									onChange={(e) => {
-										const v = (e.target as HTMLSelectElement).value;
+									onChange={(v) => {
 										if (v.startsWith("clip:")) setNode(path, { clip: v.slice(5), state: undefined });
 										else if (v.startsWith("state:")) setNode(path, { state: v.slice(6), clip: undefined, t: undefined });
 										else setNode(path, { state: undefined, clip: undefined, t: undefined });
 									}}
-								>
-									<option value="">first state</option>
-									{(doc.states ?? []).map((s) => (
-										<option value={`state:${s.name}`}>state {s.name}</option>
-									))}
-									{(doc.clips ?? []).map((c) => (
-										<option value={`clip:${c.name}`}>clip {c.name}</option>
-									))}
-								</select>
-							</div>
+									options={[{ value: "", label: "First state" }, ...(doc.states ?? []).map((s) => ({ value: `state:${s.name}`, label: `State ${s.name}` })), ...(doc.clips ?? []).map((c) => ({ value: `clip:${c.name}`, label: `Clip ${c.name}` }))]}
+								/>
+							</Property>
 							{n.clip && (
-								<div class="fields">
-									<Num label="t" value={n.t ?? 0} min={0} step={0.05} onChange={(v) => setNode(path, { t: v }, "t")} title="where the clip starts, seconds" />
-								</div>
+								<Property label="Starts at" title="where the clip starts, seconds">
+									<NumberField value={n.t ?? 0} min={0} step={0.05} suffix="s" label="Starts at" onDone={endGesture} onChange={(v) => setNode(path, { t: v }, "t")} />
+								</Property>
 							)}
-						</>
-					)}
-					{n.ref && (
-						<div class="line" title="a palette laid over this instance's colours">
-							<span class="k">palette</span>
-							<select class="num" value={n.palette ?? ""} onChange={(e) => setNode(path, { palette: (e.target as HTMLSelectElement).value })}>
-								<option value="">none</option>
-								{n.palette && !pals.some((p) => relOf(rel, p) === n.palette) && <option value={n.palette}>{n.palette}</option>}
-								{pals.map((p) => (
-									<option value={relOf(rel, p)}>{stripExt(basename(p))}</option>
-								))}
-							</select>
-						</div>
+						</InspectorSection>
 					)}
 					{parent?.ref && parentDoc && n.ref && !n.ref.endsWith(".shart") && (
-						<div class="line" title="hang this node from a socket of the parent's art: positions matched, directions too">
-							<span class="k">hangs from</span>
-							<select class="num" value={n.attach?.to ?? ""} onChange={(e) => setNode(path, { attach: (e.target as HTMLSelectElement).value ? { to: (e.target as HTMLSelectElement).value, ...(n.attach?.by ? { by: n.attach.by } : {}) } : undefined })}>
-								<option value="">the parent's origin</option>
-								{anchorsOfDoc(parentDoc).map((a) => (
-									<option value={a}>{a}</option>
-								))}
-							</select>
+						<InspectorSection title="Attachment" hint="hang this node from a socket of the parent's art: positions matched, directions too">
+							<Property label="Hangs from" title="hang this node from a socket of the parent's art: positions matched, directions too">
+								<Select
+									value={n.attach?.to ?? ""}
+									onChange={(v) => setNode(path, { attach: v ? { to: v, ...(n.attach?.by ? { by: n.attach.by } : {}) } : undefined })}
+									options={[{ value: "", label: "The parent's origin" }, ...anchorsOfDoc(parentDoc).map((a) => ({ value: a, label: a }))]}
+								/>
+							</Property>
 							{n.attach && (
-								<select class="num" value={n.attach.by ?? ""} title="by this art's own anchor; none: its origin" onChange={(e) => setNode(path, { attach: { to: n.attach!.to, ...((e.target as HTMLSelectElement).value ? { by: (e.target as HTMLSelectElement).value } : {}) } })}>
-									<option value="">by its origin</option>
-									{anchorsOfDoc(doc).map((a) => (
-										<option value={a}>by {a}</option>
-									))}
-								</select>
+								<Property label="By" title="by this art's own anchor; none: its origin">
+									<Select value={n.attach.by ?? ""} onChange={(v) => setNode(path, { attach: { to: n.attach!.to, ...(v ? { by: v } : {}) } })} options={[{ value: "", label: "Its origin" }, ...anchorsOfDoc(doc).map((a) => ({ value: a, label: a }))]} />
+								</Property>
 							)}
-						</div>
+						</InspectorSection>
 					)}
-					<div class="line" style="margin-top:8px;gap:6px">
-						<button class="btn small ghost" onClick={() => duplicateNode(path)}>
-							duplicate
-						</button>
-						<button class="btn small ghost" title="paints later (2D)" onClick={() => moveNode(path, true)}>
-							raise
-						</button>
-						<button class="btn small ghost" title="paints earlier (2D)" onClick={() => moveNode(path, false)}>
-							lower
-						</button>
-						<button class="btn small ghost" style="color:var(--danger)" onClick={() => deleteNode(path)}>
-							delete
-						</button>
-					</div>
 				</>
 			)}
-			{d3 && (
-				<>
-					<Hdr title="View" hint="a turn laid on the scene before it is drawn" />
-					<div class="fields">
-						{([0, 1, 2] as const).map((ax) => (
-							<Num
-								label={`${"xyz"[ax]}°`}
-								value={sc.turn.value[ax] * DEG}
-								step={15}
-								onChange={(v) => {
-									const t = [...sc.turn.value] as [number, number, number];
-									t[ax] = v / DEG;
-									setTurn(t);
-								}}
-							/>
-						))}
-					</div>
-					<div class="line" style="gap:4px;flex-wrap:wrap">
-						{Object.keys(VIEWS)
-							.filter((v) => v !== "side")
-							.map((v) => (
-								<button class={`btn small ${sc.viewName.value === v ? "active" : "ghost"}`} onClick={() => setView(v)}>
-									{v}
-								</button>
-							))}
-					</div>
-				</>
-			)}
-			<Hdr title="Scene" hint="the file itself" />
-			<Text label="name" value={scene().name ?? ""} onChange={setSceneName} />
-			<div class="line" title="palettes laid over every instance, in order; later ones win">
-				<span class="k">palettes</span>
-			</div>
-			{(scene().palette_refs ?? []).map((r, i) => (
-				<div class="row">
-					<span class="name">{r}</span>
-					<span class="tail">
-						<button class="btn x" onClick={() => removePaletteRef(i)}>
-							×
-						</button>
-					</span>
-				</div>
-			))}
-			<select
-				class="num"
-				value=""
-				onChange={(e) => {
-					const v = (e.target as HTMLSelectElement).value;
-					if (v) addPaletteRef(v);
-				}}
-			>
-				<option value="">+ palette…</option>
-				{pals.map((p) => (
-					<option value={relOf(rel, p)}>{stripExt(basename(p))}</option>
-				))}
-			</select>
+			<InspectorSection title="Scene" hint="the file itself">
+				<Property label="Name">
+					<TextField value={scene().name ?? ""} onChange={setSceneName} onBlur={endGesture} />
+				</Property>
+			</InspectorSection>
+			<Palettes pals={pals} rel={rel} />
+			{!n && <div class="insp-hint">Click an instance to choose its node</div>}
 		</div>
 	);
 }
@@ -352,13 +374,6 @@ export function SceneCanvasView() {
 }
 
 /** The sidebar's Add menu for a scene. */
-export function sceneAdd(): MenuItem[] {
-	return [
-		{ label: "Instance…", run: () => run("scene.addInstance") },
-		{ label: "Group", run: () => run("scene.addGroup") },
-	];
-}
-
 /** + instance: pick a file of the project, place it under the chosen node. */
 export async function askInstance() {
 	const options = placeable();
@@ -366,16 +381,32 @@ export async function askInstance() {
 		project.error.value = "nothing to place: the project has no files of this scene's space";
 		return;
 	}
-	const { ask } = await import("../state/prompt.ts");
-	const answer = await ask(`Place which file? (${options.map((o) => o.label).join(", ")})`, options[0].label);
-	if (!answer) return;
-	const pick = options.find((o) => o.label === answer.trim() || o.rel === answer.trim() || stripExt(basename(o.label)) === answer.trim());
-	if (!pick) {
-		project.error.value = `no file "${answer}" to place`;
+	const place = (rel: string, label: string) => {
+		const parent = sc.sel.value && nodeAt(sc.sel.value) && !nodeAt(sc.sel.value)!.ref?.endsWith(".shart") ? sc.sel.value : null;
+		addNode(parent, { ref: rel }, stripExt(basename(label)));
+	};
+	const root = project.root.value;
+	if (shell.kind !== "wails" || root === null) {
+		// the served studio has no file dialog: the files, as a menu
+		const { openContextMenu } = await import("../state/menu.ts");
+		openContextMenu(window.innerWidth / 2 - 100, 120, options.map((o) => ({ label: o.label, run: () => place(o.rel, o.label) })));
 		return;
 	}
-	const parent = sc.sel.value && nodeAt(sc.sel.value) && !nodeAt(sc.sel.value)!.ref?.endsWith(".shart") ? sc.sel.value : null;
-	addNode(parent, { ref: pick.rel }, stripExt(basename(pick.label)));
+	// the platform's own open dialog, in the scene's folder
+	let file: string | null;
+	try {
+		file = await shell.pickFile(root, dirname(sc.path.value ?? ""), "Place a file in the scene", "Place", ["fart", "shart"]);
+	} catch (e) {
+		project.error.value = String(e).replace(/^Error: /, "");
+		return;
+	}
+	if (!file) return;
+	const pick = options.find((o) => o.label === file);
+	if (!pick) {
+		project.error.value = `${basename(file)} cannot be placed here: it is not of this scene's space, or it is the scene itself`;
+		return;
+	}
+	place(pick.rel, pick.label);
 }
 export function addGroupNow() {
 	const parent = sc.sel.value && nodeAt(sc.sel.value) && !nodeAt(sc.sel.value)!.ref?.endsWith(".shart") ? sc.sel.value : null;

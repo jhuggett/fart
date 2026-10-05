@@ -4,12 +4,12 @@
 
 import { useState } from "preact/hooks";
 import type { Texture, TextureMap } from "@fastart/core";
-import { I } from "./Icons.tsx";
-import { Num } from "./Field.tsx";
 import { InlineName } from "./Rename.tsx";
 import { project, openDoc, paletteFiles } from "../state/project.ts";
 import { dirname, joinRel, stripExt, basename } from "../state/paths.ts";
-import { openContextMenu } from "../state/menu.ts";
+import { menuAt } from "../state/menu.ts";
+import { endGesture } from "../state/editor.ts";
+import { Button, Icon, InspectorSection, NumberField, Property, SegmentedControl, Select, TextField } from "./ur.tsx";
 
 export interface TexturesApi {
 	textures: Texture[];
@@ -29,8 +29,8 @@ export interface TexturesApi {
 function drawingRefs(rel: string): { ref: string; label: string }[] {
 	const dir = dirname(rel);
 	const out: { ref: string; label: string }[] = [];
-	for (const [file, t] of project.thumbs.value) {
-		if (file === rel || t.space3d || !t.doc.parts) continue;
+	for (const file of project.files.value) {
+		if (file === rel || project.kinds.value[file] !== "2D") continue;
 		out.push({ ref: relTo(dir, file), label: stripExt(file) });
 	}
 	return out.sort((a, b) => a.label.localeCompare(b.label));
@@ -43,102 +43,121 @@ function relTo(fromDir: string, file: string): string {
 	return [...a.slice(i).map(() => ".."), ...b.slice(i)].join("/");
 }
 
+/** ⌫ on a focused heading takes the thing out; Return renames it. */
+const headKeys = (rename: (() => void) | null, remove: (() => void) | null) => (e: KeyboardEvent) => {
+	if (e.target !== e.currentTarget) return;
+	if (e.key === "Enter" && rename) rename();
+	else if ((e.key === "Backspace" || e.key === "Delete") && remove) remove();
+	else return;
+	e.preventDefault();
+	e.stopPropagation();
+};
+
 export function TexturesPanel({ api }: { api: TexturesApi }) {
 	const [renaming, setRenaming] = useState<number | null>(null);
 	const [newMap, setNewMap] = useState<number | null>(null);
 	const refs = drawingRefs(api.rel);
 	const pals = paletteFiles().map((f) => ({ ref: relTo(dirname(api.rel), f), label: stripExt(basename(f)) }));
+	const add = () => {
+		const i = api.add(api.freshName("texture", api.textures.map((t) => t.name)), refs[0].ref);
+		setRenaming(i);
+	};
 	return (
-		<>
-			<div class="hdr" title="textures: each a set of maps, every map a drawing of the project tiled over a cell. The colour map is what is painted; the rest are the game's.">
-				Textures
-			</div>
-			{api.textures.map((t, i) => (
-				<div class="tex" key={t.name}>
-					<div
-						class="row"
-						onDblClick={() => setRenaming(i)}
-						onContextMenu={(e) => {
-							e.preventDefault();
-							openContextMenu(e.clientX, e.clientY, [
-								{ label: "Rename", run: () => setRenaming(i) },
-								{ label: "Add map…", run: () => setNewMap(i) },
-								{ label: "Delete texture", danger: true, sep: true, run: () => api.remove(i) },
-							]);
-						}}
-					>
-						{renaming === i ? (
-							<InlineName value={t.name} onCommit={(n) => (api.rename(i, n), setRenaming(null))} onCancel={() => setRenaming(null)} />
-						) : (
-							<span class="name">{t.name}</span>
-						)}
-						<span class="tail">
-							<button class="btn x" title="delete texture" onClick={() => api.remove(i)}>
-								×
-							</button>
-						</span>
-					</div>
-					<div class="fields">
-						<Num label="cell w" value={t.cell[0]} min={0.01} onChange={(v) => api.cell(i, 0, v)} />
-						<Num label="h" value={t.cell[1]} min={0.01} onChange={(v) => api.cell(i, 1, v)} />
-					</div>
-					{Object.entries(t.maps).map(([name, m]) => (
-						<div class="map" key={name} title={`the ${name} map: a drawing of the project, tiled`}>
-							<div class="line">
-								<span class="k">{name}</span>
-								<select class="num" value={m.ref} onChange={(e) => api.map(i, name, { ref: (e.target as HTMLSelectElement).value })} title="the drawing">
-									{!refs.some((r) => r.ref === m.ref) && <option value={m.ref}>{m.ref}</option>}
-									{refs.map((r) => (
-										<option value={r.ref}>{r.label}</option>
-									))}
-								</select>
-								<button class="btn small ghost" title="open the drawing" onClick={() => void openDoc(joinRel(dirname(api.rel), m.ref))}>
-									open
-								</button>
-								{Object.keys(t.maps).length > 1 && (
-									<button class="btn x" title="delete map" onClick={() => api.removeMap(i, name)}>
-										×
-									</button>
-								)}
-							</div>
-							<div class="line">
-								<span class="k">palette</span>
-								<select class="num" value={m.palette ?? ""} onChange={(e) => api.map(i, name, { palette: (e.target as HTMLSelectElement).value })} title="a palette laid over the drawing's colours: the same drawing as another map">
-									<option value="">the drawing's own</option>
-									{m.palette && !pals.some((p) => p.ref === m.palette) && <option value={m.palette}>{m.palette}</option>}
-									{pals.map((p) => (
-										<option value={p.ref}>{p.label}</option>
-									))}
-								</select>
-								<span class="k">state</span>
-								<input class="num text" value={m.state ?? ""} placeholder="first" onInput={(e) => api.map(i, name, { state: (e.target as HTMLInputElement).value })} onKeyDown={(e) => e.stopPropagation()} title="which of the drawing's states; empty for its first" />
-								<select class="num" value={m.mode ?? "paint"} onChange={(e) => api.map(i, name, { mode: (e.target as HTMLSelectElement).value as TextureMap["mode"] })} title="paint: its colours over the token; mask: the token times its value">
-									<option value="paint">paint</option>
-									<option value="mask">mask</option>
-								</select>
-							</div>
+		<InspectorSection
+			title="Textures"
+			hint="Textures: each a set of maps, every map a drawing of the project tiled over a cell. The colour map is what is painted; the rest are the game's."
+			actions={
+				<button type="button" disabled={!refs.length} aria-label="New texture" title={refs.length ? "A texture: a drawing of the project, tiled" : "Draw a 2D file in the project first; a texture's maps are drawings"} onClick={add}>
+					<Icon name="plus" size={14} />
+				</button>
+			}
+		>
+			{api.textures.length === 0 && <div class="insp-hint flush">{refs.length ? "No textures yet" : "Draw a 2D file in the project first; a texture's maps are drawings"}</div>}
+			{api.textures.map((t, i) => {
+				const several = Object.keys(t.maps).length > 1;
+				return (
+					<div class="ed-block" key={t.name}>
+						<div
+							class="ed-item"
+							tabIndex={0}
+							title="Double-click to rename · right-click for more"
+							onDblClick={() => setRenaming(i)}
+							onKeyDown={headKeys(() => setRenaming(i), () => api.remove(i))}
+							onContextMenu={(e) =>
+								menuAt(e, [
+									{ label: "Rename", keys: "Enter", run: () => setRenaming(i) },
+									{ label: "Add map…", run: () => setNewMap(i) },
+									{ label: "Delete texture", danger: true, sep: true, run: () => api.remove(i) },
+								])
+							}
+						>
+							<Icon name="brick-wall" size={14} />
+							{renaming === i ? <InlineName value={t.name} onCommit={(n) => (api.rename(i, n), setRenaming(null))} onCancel={() => setRenaming(null)} /> : <span class="ed-item-name">{t.name}</span>}
 						</div>
-					))}
-					{newMap === i ? (
-						<InlineName value="" onCommit={(n) => (api.addMap(i, n), setNewMap(null))} onCancel={() => setNewMap(null)} />
-					) : (
-						<button class="add-row" onClick={() => setNewMap(i)} title="another map of this texture: height, glow, rough, whatever the game reads">
-							<I.plus size={11} /> map
-						</button>
-					)}
-				</div>
-			))}
-			<button
-				class="add-row"
-				disabled={!refs.length}
-				title={refs.length ? "a texture: a drawing of the project, tiled" : "draw a 2D file in the project first; a texture's maps are drawings"}
-				onClick={() => {
-					const i = api.add(api.freshName("texture", api.textures.map((t) => t.name)), refs[0].ref);
-					setRenaming(i);
-				}}
-			>
-				<I.plus size={11} /> texture
-			</button>
-		</>
+						<Property label="Cell" layout="pair" title="The size of one tile of the pattern">
+							<NumberField axis="x" label="Cell width" value={t.cell[0]} min={0.01} step={0.1} stepper={false} onChange={(v) => api.cell(i, 0, v)} onDone={endGesture} />
+							<NumberField axis="y" label="Cell height" value={t.cell[1]} min={0.01} step={0.1} stepper={false} onChange={(v) => api.cell(i, 1, v)} onDone={endGesture} />
+						</Property>
+						{Object.entries(t.maps).map(([name, m]) => (
+							<div class="ed-map" key={name}>
+								<div
+									class="ed-sub"
+									tabIndex={several ? 0 : undefined}
+									title={`The ${name} map: a drawing of the project, tiled`}
+									onKeyDown={headKeys(null, several ? () => api.removeMap(i, name) : null)}
+									onContextMenu={(e) => menuAt(e, [{ label: "Delete map", danger: true, disabled: !several, run: () => api.removeMap(i, name) }])}
+								>
+									{name}
+								</div>
+								<Property label="Drawing">
+									<Select
+										value={m.ref}
+										title="The drawing"
+										options={[...(refs.some((r) => r.ref === m.ref) ? [] : [{ value: m.ref, label: m.ref }]), ...refs.map((r) => ({ value: r.ref, label: r.label }))]}
+										onChange={(v) => api.map(i, name, { ref: v })}
+									/>
+									<Button title="Open the drawing" onClick={() => void openDoc(joinRel(dirname(api.rel), m.ref))}>
+										Open
+									</Button>
+								</Property>
+								<Property label="Palette">
+									<Select
+										value={m.palette ?? ""}
+										title="A palette laid over the drawing's colours: the same drawing as another map"
+										options={[{ value: "", label: "The drawing's own" }, ...(m.palette && !pals.some((p) => p.ref === m.palette) ? [{ value: m.palette, label: m.palette }] : []), ...pals.map((p) => ({ value: p.ref, label: p.label }))]}
+										onChange={(v) => api.map(i, name, { palette: v })}
+									/>
+								</Property>
+								<Property label="State" title="Which of the drawing's states; empty for its first">
+									<TextField value={m.state ?? ""} placeholder="first" onChange={(v) => api.map(i, name, { state: v })} />
+								</Property>
+								<Property label="Mode" title="Paint: its colours over the token; mask: the token times its value">
+									<SegmentedControl<"paint" | "mask">
+										label="Mode"
+										options={[
+											{ value: "paint", label: "Paint" },
+											{ value: "mask", label: "Mask" },
+										]}
+										value={m.mode ?? "paint"}
+										onChange={(v) => api.map(i, name, { mode: v as TextureMap["mode"] })}
+									/>
+								</Property>
+							</div>
+						))}
+						{newMap === i ? (
+							<div class="ed-item">
+								<InlineName value="" onCommit={(n) => (api.addMap(i, n), setNewMap(null))} onCancel={() => setNewMap(null)} />
+							</div>
+						) : (
+							<div class="insp-actions">
+								<Button variant="borderless" icon="plus" title="Another map of this texture: height, glow, rough, whatever the game reads" onClick={() => setNewMap(i)}>
+									Add map
+								</Button>
+							</div>
+						)}
+					</div>
+				);
+			})}
+		</InspectorSection>
 	);
 }

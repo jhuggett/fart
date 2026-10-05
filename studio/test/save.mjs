@@ -52,10 +52,14 @@ try {
 		// the sidebar is inside the open asset once one is open: back to the assets first
 		await page.evaluate(() => (fastart.sidebar.view.value = "assets"));
 		await page.waitForTimeout(100);
-		const folder = page.locator(".tree-row.folder", { hasText: "ships" });
-		if (!(await folder.locator(".caret.open").count())) await folder.click();
+		// a click on a folder row only ever opens it
+		await page.locator(".nav-body .ur-row.folder", { hasText: "ships" }).click();
 		await page.waitForTimeout(150);
-		await page.locator(".tree-row.leaf", { hasText: name }).first().click();
+		await page.locator(".nav-body .ur-row.leaf", { hasText: name }).first().click();
+		await page.waitForTimeout(300);
+		// leaving an edited asset asks about its checkpoint: no, the file is the document
+		const leave = page.locator(".ur-sheet button", { hasText: "Don't save" });
+		if (await leave.count()) await leave.click();
 		await page.waitForTimeout(700);
 	};
 	const dirty = () => page.evaluate(() => fastart.ed.dirty.value);
@@ -85,13 +89,13 @@ try {
 	check("the mtime advanced", mtime(file) > m0);
 	check("no temp files left", tmps().length === 0, tmps().join(","));
 	check("the document is dirty", await dirty());
-	// the Save button's tooltip carries the last write; the tree (back at the assets) marks the file
-	const status = (await page.locator(".projectbar .btn", { hasText: "Save" }).getAttribute("title")) ?? "";
-	check("the project bar says when it wrote", /on disk \d\d:\d\d:\d\d/.test(status), status || `written=${await page.evaluate(() => fastart.ed.written.value)}`);
-	check("the Save button marks the change", (await page.locator(".projectbar .btn .dot").count()) === 1);
+	// the activity view says Edited, the document's crumb carries the unsaved dot, and the store knows when it wrote
+	check("the store says when it wrote", await page.evaluate(() => fastart.ed.written.value > 0));
+	check("the activity view says Edited", (await page.locator(".ur-activity-status.edited").count()) === 1);
+	check("the crumb marks the change", (await page.locator('[data-crumb="asset"] .ur-dot').count()) === 1);
 	await page.evaluate(() => (fastart.sidebar.view.value = "assets"));
 	await page.waitForTimeout(100);
-	check("the sidebar marks the file", (await page.locator(".tree-row.leaf.active .dot").count()) === 1);
+	check("the navigator marks the file", (await page.locator(".nav-body .ur-row.leaf.selected .ur-dot").count()) === 1);
 
 	await page.locator(".canvas-wrap canvas").click({ position: { x: 30, y: 30 } });
 	await page.keyboard.press("Meta+s");
@@ -160,11 +164,11 @@ try {
 	external2.meta.about = "changed again";
 	fs.writeFileSync(file, JSON.stringify(external2, null, 2) + "\n");
 	await setPivot(7, 7); // pending: the flush runs before the watch does
-	await until(async () => (await page.locator(".dialog").count()) > 0, 3000);
-	const dialogUp = (await page.locator(".dialog").count()) > 0;
+	await until(async () => (await page.locator(".ur-sheet").count()) > 0, 3000);
+	const dialogUp = (await page.locator(".ur-sheet").count()) > 0;
 	check("a conflict asks instead of overwriting", dialogUp);
 	check("the file was not overwritten meanwhile", JSON.parse(fs.readFileSync(file, "utf8")).meta.about === "changed again" && JSON.stringify(pivot(file)) !== "[7,7]");
-	if (dialogUp) await page.locator(".dialog .btn.primary").click();
+	if (dialogUp) await page.locator(".ur-sheet button[type=submit]").click();
 	await page.waitForTimeout(500);
 	check("Reload takes the file's version", (await page.evaluate(() => fastart.ed.doc.value.meta?.about)) === "changed again" && JSON.stringify(await docPivot()) === "[6,6]");
 	await page.keyboard.press("Meta+z");

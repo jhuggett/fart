@@ -9,7 +9,7 @@
 #   make serve DIR=path/to/art      the LAN server only, no window (try DIR=examples/space)
 #   make test       every check: core, corpus, Odin loader, studio
 #   make check-save the save model, end to end, in a headless browser (needs the app built)
-#   make check-ui   the workspace (sidebar, project bar, tools, inspector), the same way
+#   make check-ui   the workspace (navigator, path bar, tools, inspector), the same way
 #   make validate DIR=path/to/art   fart validate
 #   make skill      install the fastart skill for Claude Code (~/.claude/skills)
 

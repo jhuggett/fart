@@ -46,6 +46,7 @@ import {
 	type TextureMap,
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
+import { turned, opposite } from "../canvas/orbit.ts";
 import { project, refreshFiles } from "./project.ts";
 import { dirname, joinRel } from "./paths.ts";
 import { clearLocal } from "./local.ts";
@@ -84,6 +85,8 @@ export const md = {
 	clipTime: signal(0),
 	playing: signal(false),
 	sel: signal<Sel3 | null>(null),
+	/** the other shapes chosen with it (a marquee, ⇧-clicks): they move, turn, size and go together */
+	also: signal<Sel3[]>([]),
 	/** a corner of the selected mesh */
 	vert: signal<number | null>(null),
 	hover: signal<Sel3 | null>(null),
@@ -167,7 +170,7 @@ export function deforming(): boolean {
 	return md.deform.value && md.curClip.value < 0 && !!part && !part.like && sh?.kind === "mesh";
 }
 /** The current state's morph entry for a shape of a part, made from the base when there is none. */
-function morphEntry(d: Doc3, partIndex: number, shape: number): Vec3[] | null {
+export function morphEntry(d: Doc3, partIndex: number, shape: number): Vec3[] | null {
 	const part = d.parts?.[partIndex];
 	const st = d.states?.[md.curState.value];
 	const sh = part?.shapes?.[shape];
@@ -556,12 +559,20 @@ export function setView(name: string) {
 		md.viewName.value = name;
 	});
 }
-/** Orbit: yaw and pitch in view space, laid over the current turn. */
-export function orbit(yaw: number, pitch: number) {
-	const q = quatMul(quatAxis([1, 0, 0], pitch), quatMul(quatAxis([0, 1, 0], yaw), quatFromEuler(md.turn.value)));
+/** Orbit: a turntable about the world's up axis (or, free, a tumble in view space). */
+export function orbit(yaw: number, pitch: number, free = false) {
+	const t = turned(md.turn.value, yaw, pitch, free);
 	batch(() => {
-		md.turn.value = quatToEuler(q);
+		md.turn.value = t;
 		md.viewName.value = "";
+	});
+}
+/** The view from the other side. */
+export function flipView() {
+	const o = opposite(md.turn.value, md.viewName.value);
+	batch(() => {
+		md.turn.value = o.turn;
+		md.viewName.value = o.name;
 	});
 }
 export function setTurn(t: Vec3) {
@@ -839,10 +850,46 @@ export function addShape(sh: Shape3): Sel3 | null {
 	});
 	return sel;
 }
+// no shape chosen: none of the others either
+md.sel.subscribe((s) => {
+	if (!s && md.also.peek().length) md.also.value = [];
+});
+
+/** Every chosen shape: the one the inspector shows first, then the others. */
+export function selected(): Sel3[] {
+	const s = md.sel.value;
+	return s ? [s, ...md.also.value] : [];
+}
+export const sameSel = (a: Sel3, b: Sel3) => a.part === b.part && a.shape === b.shape;
+
+/** Choose these shapes; the first is the one the inspector shows. */
+export function selectShapes(list: Sel3[]) {
+	const uniq = list.filter((s, i) => list.findIndex((t) => sameSel(s, t)) === i);
+	batch(() => {
+		md.sel.value = uniq[0] ?? null;
+		md.also.value = uniq.slice(1);
+		md.vert.value = null;
+		md.edge.value = null;
+		if (uniq[0]) {
+			md.curPart.value = uniq[0].part;
+			md.partPicked.value = true;
+		}
+	});
+}
+
 export function deleteSel() {
 	const s = md.sel.value;
 	if (!s) return;
 	const v = md.vert.value;
+	if (md.also.value.length) {
+		// several shapes: from the last of each part back, so the indices hold
+		const all = selected().sort((a, b) => b.part - a.part || b.shape - a.shape);
+		mutate((d) => {
+			for (const t of all) d.parts![t.part].shapes?.splice(t.shape, 1);
+		});
+		selectShapes([]);
+		return;
+	}
 	const sh = parts()[s.part]?.shapes?.[s.shape];
 	if (sh && sh.kind === "mesh" && v !== null && sh.points.length > 4) {
 		// drop a corner: faces lose it, faces left with two points go
@@ -866,6 +913,20 @@ export function dupSel() {
 	const s = md.sel.value;
 	const sh = selShape();
 	if (!s || !sh) return;
+	if (md.also.value.length) {
+		// several shapes: each copy lands at the end of its part, and the copies are what is chosen
+		const all = selected();
+		const made: Sel3[] = [];
+		mutate((d) => {
+			for (const t of all) {
+				const list = d.parts![t.part].shapes!;
+				list.push(JSON.parse(JSON.stringify(list[t.shape])));
+				made.push({ part: t.part, shape: list.length - 1 });
+			}
+		});
+		selectShapes(made);
+		return;
+	}
 	mutate((d) => d.parts![s.part].shapes!.splice(s.shape + 1, 0, JSON.parse(JSON.stringify(sh))));
 	md.sel.value = { part: s.part, shape: s.shape + 1 };
 }
@@ -923,8 +984,15 @@ export function moveSelView(s: Sel3, dView: Vec3, merge = "move") {
 	if (!fp) return;
 	const inv = xf3Invert(fp.F);
 	const d = xf3ApplyDir(inv, dView);
+	// Deform: a mesh moves in this state's morph, and nothing else moves at all (only a mesh has one)
+	const morph = md.deform.value && md.curClip.value < 0;
 	mutate((doc) => {
 		const sh = doc.parts![s.part].shapes![s.shape];
+		if (morph) {
+			const pts = sh.kind === "mesh" ? morphEntry(doc, s.part, s.shape) : null;
+			if (pts) pts.forEach((p, k) => (pts[k] = round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]])));
+			return;
+		}
 		const add = (p: Vec3): Vec3 => round3([p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
 		if (sh.kind === "mesh") sh.points = sh.points.map(add);
 		else if (sh.kind === "ball") sh.at = add(sh.at);

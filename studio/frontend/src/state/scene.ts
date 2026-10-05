@@ -13,10 +13,6 @@ import {
 	VIEWS,
 	DEFAULT_LIGHT,
 	DEFAULT_AMBIENT,
-	quatAxis,
-	quatFromEuler,
-	quatMul,
-	quatToEuler,
 	xfInvert,
 	xfApply,
 	xf3Invert,
@@ -32,6 +28,7 @@ import {
 } from "@fastart/core";
 import { shell } from "../shell/shell.ts";
 import { project } from "./project.ts";
+import { turned, opposite } from "../canvas/orbit.ts";
 import { dirname, joinRel, basename } from "./paths.ts";
 import { loadPatterns, type TexturePattern } from "./textures.ts";
 
@@ -42,6 +39,8 @@ export const sc = {
 	rev: signal(0),
 	/** the chosen node, by path */
 	sel: signal<string | null>(null),
+	/** the other nodes chosen with it (a marquee, ⇧-clicks): they move, turn, size and go together */
+	also: signal<string[]>([]),
 	hover: signal<string | null>(null),
 	turn: signal<Vec3>([0, 0, 0]),
 	viewName: signal("front"),
@@ -79,6 +78,29 @@ export function nodeAt(path: string | null): SceneNode | undefined {
 	}
 	return node;
 }
+/** Every chosen node: the one the inspector shows first, then the others. */
+export function selectedNodes(): string[] {
+	const s = sc.sel.value;
+	return s ? [s, ...sc.also.value.filter((p) => p !== s)] : [];
+}
+/** Choose these nodes; the first is the one the inspector shows. */
+export function selectNodes(paths: string[]) {
+	const uniq = [...new Set(paths)];
+	batch(() => {
+		sc.sel.value = uniq[0] ?? null;
+		sc.also.value = uniq.slice(1);
+	});
+}
+// no node chosen: none of the others either
+sc.sel.subscribe((s) => {
+	if (!s && sc.also.peek().length) sc.also.value = [];
+});
+/** The chosen nodes with none inside another: what a delete or a duplicate acts on. */
+export function selectedRoots(): string[] {
+	const all = selectedNodes();
+	return all.filter((p) => !all.some((q) => q !== p && p.startsWith(q + "/")));
+}
+
 export function parentPath(path: string): string | null {
 	const i = path.lastIndexOf("/");
 	return i < 0 ? null : path.slice(0, i);
@@ -380,11 +402,19 @@ export function setView(name: string) {
 		sc.viewName.value = name;
 	});
 }
-export function orbit(yaw: number, pitch: number) {
-	const q = quatMul(quatAxis([1, 0, 0], pitch), quatMul(quatAxis([0, 1, 0], yaw), quatFromEuler(sc.turn.value)));
+export function orbit(yaw: number, pitch: number, free = false) {
+	const t = turned(sc.turn.value, yaw, pitch, free);
 	batch(() => {
-		sc.turn.value = quatToEuler(q);
+		sc.turn.value = t;
 		sc.viewName.value = "";
+	});
+}
+/** The view from the other side. */
+export function flipView() {
+	const o = opposite(sc.turn.value, sc.viewName.value);
+	batch(() => {
+		sc.turn.value = o.turn;
+		sc.viewName.value = o.name;
 	});
 }
 export function setTurn(t: Vec3) {
@@ -498,14 +528,13 @@ export function placeable(): { rel: string; kind: "fart" | "shart"; label: strin
 	const rel = sc.path.value ?? "";
 	const dir = dirname(rel);
 	const out: { rel: string; kind: "fart" | "shart"; label: string }[] = [];
-	for (const [file, t] of project.thumbs.value) {
+	// by kind, which the project knows without reading a file
+	for (const file of project.files.value) {
 		if (file === rel) continue;
-		if (t.scene) {
-			if ((t.scene.scene.scene.space === "3d") === is3d()) out.push({ rel: relTo(dir, file), kind: "shart", label: file });
-			continue;
-		}
-		if (!t.doc.parts || (t.space3d ?? false) !== is3d()) continue;
-		out.push({ rel: relTo(dir, file), kind: "fart", label: file });
+		const k = project.kinds.value[file];
+		if (k === "scene" || k === "3D scene") {
+			if ((k === "3D scene") === is3d()) out.push({ rel: relTo(dir, file), kind: "shart", label: file });
+		} else if ((k === "2D" || k === "3D") && (k === "3D") === is3d()) out.push({ rel: relTo(dir, file), kind: "fart", label: file });
 	}
 	return out.sort((a, b) => a.label.localeCompare(b.label));
 }

@@ -2,49 +2,28 @@
 // tools for the floating bar, its canvas (or a palette's swatches), the
 // timeline below when a clip is chosen. The frame is screens/Workspace.tsx.
 
-import { I } from "../ui/Icons.tsx";
+import { clipDuration } from "@fastart/core";
 import { PaletteView } from "../ui/PaletteView.tsx";
-import { Layers, addPartNow } from "../ui/Layers.tsx";
-import { BottomBar, StatesList, ClipsList, addStateNow, addClipNow } from "../ui/BottomBar.tsx";
+import { Layers } from "../ui/Layers.tsx";
+import { BottomBar, StatesList, ClipsList } from "../ui/BottomBar.tsx";
 import { Canvas } from "../canvas/Canvas.tsx";
-import { Tools, ToolButtons, type ToolSpec } from "../ui/Tools.tsx";
+import { ToolBar, Transport, gridMode, keyReadout, type ToolSpec } from "../ui/Tools.tsx";
 import { showIssues } from "../ui/ProjectBar.tsx";
-import { ed, curState, curClip, addToken, freshName, type Tool } from "../state/editor.ts";
-import { view } from "../canvas/view.ts";
+import { ed, curState, curClip, seek, type Tool } from "../state/editor.ts";
 import { run } from "../state/commands.ts";
-import { renaming, type MenuItem } from "../state/menu.ts";
+import { Checkbox, InspectorSection, Property } from "../ui/ur.tsx";
 
 export const EDITOR_TOOLS: ToolSpec<Tool>[] = [
-	{ tool: "select", label: "Select", key: "V", icon: I.select },
-	{ tool: "rect", label: "Rect", key: "R", icon: I.rect },
-	{ tool: "circle", label: "Circle", key: "O", icon: I.circle },
-	{ tool: "line", label: "Line", key: "L", icon: I.line },
-	{ tool: "poly", label: "Pen", key: "P", icon: I.poly, makes: "click for corners, drag for curves; click the first point or press Enter to close" },
+	{ tool: "select", label: "Select", key: "V", icon: "mouse-pointer-2" },
+	{ tool: "rect", label: "Rect", key: "R", icon: "square" },
+	{ tool: "circle", label: "Circle", key: "O", icon: "circle" },
+	{ tool: "line", label: "Line", key: "L", icon: "slash" },
+	{ tool: "poly", label: "Pen", key: "P", icon: "pen-tool", makes: "click for corners, drag for curves; click the first point or press Enter to close" },
 ];
-
-/** The sidebar's Add menu for a 2D asset. */
-export function editorAdd(): MenuItem[] {
-	if (ed.isPalette.value) {
-		return [
-			{
-				label: "Colour",
-				run: () => {
-					addToken(freshName("colour", ed.tokens.value.map((t) => t.name)));
-					renaming.value = { kind: "token", index: ed.doc.value.palette?.length ? ed.doc.value.palette.length - 1 : 0 };
-				},
-			},
-		];
-	}
-	return [
-		{ label: "Layer", run: addPartNow },
-		{ label: "State", run: () => addStateNow() },
-		{ label: "Clip", run: addClipNow },
-	];
-}
 
 export function EditorSidebar() {
 	void ed.rev.value;
-	if (ed.isPalette.value) return <div class="empty">a palette: colours other assets draw from · they are on the canvas</div>;
+	if (ed.isPalette.value) return <div class="nav-empty">A palette: its colours are on the canvas</div>;
 	return (
 		<>
 			<Layers />
@@ -54,39 +33,63 @@ export function EditorSidebar() {
 	);
 }
 
-function hintNow(): string {
+/** The status bar's line: the mode, and what a gesture does in it. */
+export function editorStatus(): string {
+	if (ed.isPalette.value) return "A palette: colours other assets draw from";
 	const st = curState();
 	const clip = curClip();
-	if (ed.collide.value) return "collision lens: shapes a game may treat as solid · C flips back";
-	if (clip) return `previewing "${clip.name}" · Space plays · keys name states, pose those to change a key`;
-	if (ed.pending.value === "pivot") return "click the canvas to place the pivot";
-	if (ed.pending.value === "anchor") return "click the canvas to place the anchor";
-	if (ed.tool.value === "poly") return "pen: click for a corner, drag for a curve · click the first point or press Enter to close · Esc drops it";
-	if (st) return `state "${st.name}" · shapes edit in place · drag the part's ⌖ to move it, its lever to turn it, a ring to reach`;
+	if (ed.collide.value) return "Collision lens: shapes a game may treat as solid · C flips back";
+	if (clip) return `Previewing ${clip.name} · Space plays · keys name states, pose those to change a key`;
+	if (ed.pending.value === "pivot") return "Click the canvas to place the pivot";
+	if (ed.pending.value === "anchor") return "Click the canvas to place the anchor";
+	if (ed.tool.value === "poly") return "Pen: click for a corner, drag for a curve · click the first point or press Enter to close · Esc drops it";
+	if (st) return `${st.name} · Drag the pivot to move · drag the lever to rotate · ⌥-drag to duplicate`;
 	return "";
 }
 
+/** The path bar's right side: the tools and modes, then the clip's transport. */
 export function EditorTools() {
 	void ed.rev.value;
 	if (ed.isPalette.value) return null;
-	const posing = !!curClip();
+	const clip = curClip();
+	const posing = !!clip;
 	const collide = ed.collide.value;
+	const dur = clip ? clipDuration(clip) : 0;
 	return (
-		<Tools hint={hintNow()}>
-			<ToolButtons tools={EDITOR_TOOLS} current={ed.tool.value} disabled={(t) => posing && t !== "select"} why="a clip is a preview; pick a state to edit" />
-			<span class="sep" />
-			<button class={`tool ${ed.deform.value ? "active" : ""}`} disabled={posing || collide} title={posing ? "a clip is a preview; pick a state to deform" : "deform: corner and handle drags reshape the part in this state only, a morph the clips lerp  (D)"} onClick={() => run("edit.deform")}>
-				<I.state />
-				<span class="key">D</span>
-			</button>
-			<button class={`tool ${collide ? "active" : ""}`} title="the collision lens  (C)" onClick={() => run("view.collision")}>
-				<I.collision />
-				<span class="key">C</span>
-			</button>
-			<button class={`tool ${view.snapGrid.value ? "active" : ""}`} title="snap to grid  (⌘ ')" onClick={() => run("view.snapGrid")}>
-				<I.grid />
-			</button>
-		</Tools>
+		<>
+			<ToolBar
+				tools={EDITOR_TOOLS}
+				current={ed.tool.value}
+				disabled={(t) => posing && t !== "select"}
+				why="A clip is a preview; pick a state to edit"
+				modes={[
+					{ id: "deform", command: "edit.deform", label: "Deform: drags reshape the part in this state only", icon: "spline", key: "D", on: ed.deform.value, disabled: posing || collide, why: posing ? "A clip is a preview; pick a state to deform" : "Leave the collision lens to deform" },
+					{ id: "collision", command: "view.collision", label: "Collision lens", icon: "shield", key: "C", on: collide },
+					gridMode(),
+				]}
+			/>
+			{clip && (
+				<>
+					<span class="ur-pathbar-sep" />
+					<Transport name={clip.name} playing={ed.playing.value} onPlay={() => run("clip.play")} onRewind={() => seek(0)} readout={keyReadout(clip.keys, ed.clipTime.value)} progress={dur > 0 ? ed.clipTime.value / dur : 0} />
+				</>
+			)}
+		</>
+	);
+}
+
+/** The View tab's own section: the lenses of the 2D canvas. */
+export function EditorView() {
+	const posing = !!curClip();
+	return (
+		<InspectorSection title="Overlays">
+			<Property label="">
+				<Checkbox checked={ed.collide.value} label="Collision lens" onChange={() => run("view.collision")} />
+			</Property>
+			<Property label="">
+				<Checkbox checked={ed.deform.value} disabled={posing || ed.collide.value} label="Deform in this state" onChange={() => run("edit.deform")} />
+			</Property>
+		</InspectorSection>
 	);
 }
 

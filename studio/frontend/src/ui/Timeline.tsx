@@ -2,8 +2,10 @@
 // playhead to scrub, play and loop, and the selected key's state, ease and
 // time. Keys name states; posing happens in the state.
 
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { clipDuration, type Curve, type Ease } from "@fastart/core";
+import { menuAt } from "../state/menu.ts";
+import { Button, NumberField, Select, TextField, cx } from "./ur.tsx";
 import { ed, curClip, states, addKey, deleteKey, setKeyTime, setKeyState, setKeyEase, setKeyCurve, setKeyEvents, seek, endGesture } from "../state/editor.ts";
 
 const EASES: Ease[] = ["linear", "in", "out", "in-out", "step"];
@@ -17,6 +19,20 @@ const CURVES: { name: string; curve: Curve; ease: Ease }[] = [
 ];
 const curveName = (c: Curve | undefined) => (c ? (CURVES.find((k) => k.curve.every((v, i) => Math.abs(v - c[i]) < 1e-6))?.name ?? "custom") : "");
 const PAD = 14;
+
+/** The key's events as one typed line: it lands when the field is left or Return is pressed. */
+function EventsField({ value, onCommit }: { value: string; onCommit: (v: string) => void }) {
+	const [v, set] = useState(value);
+	useEffect(() => set(value), [value]);
+	const commit = (t: string) => {
+		if (t !== value) onCommit(t);
+	};
+	return (
+		<span class="ed-tl-events" title="Names a game hears when the playhead crosses this key: footstep, hit, …  (comma-separated)">
+			<TextField value={v} placeholder="Events" onChange={set} onBlur={commit} onSubmit={commit} />
+		</span>
+	);
+}
 
 export function Timeline() {
 	void ed.rev.value;
@@ -109,52 +125,54 @@ export function Timeline() {
 	};
 
 	void pct;
+	const canDelete = clip.keys.length >= 2;
 	return (
-		<div class="timeline">
-			<button class="btn small" title="play / pause  (Space)" onClick={() => (ed.playing.value = !playing)}>
-				{playing ? "❚❚" : "▶"}
-			</button>
-			<span class="time">
+		<div class="ed-timeline">
+			<Button variant="toolbar" icon={playing ? "pause" : "play"} title="Play / pause (Space)" onClick={() => (ed.playing.value = !playing)} />
+			<span class="ed-tl-time">
 				{t.toFixed(2)} / {dur.toFixed(2)} s
 			</span>
-			<div class="track" ref={track} onPointerDown={scrub}>
+			<div class="ed-tl-track" ref={track} onPointerDown={scrub}>
 				{Array.from({ length: Math.floor(span) + 1 }, (_, s) => (
-					<span class="tick" style={{ left: left(s) }}>
+					<span class="ed-tl-tick" style={{ left: left(s) }}>
 						{s}s
 					</span>
 				))}
 				{clip.keys.map((k, i) => (
 					<span
-						class={`key ${i === ki ? "active" : ""} ${k.events?.length ? "ev" : ""}`}
+						class={cx("ed-tl-key", i === ki && "selected", !!k.events?.length && "ev")}
 						style={{ left: left(k.t) }}
 						title={`${k.state ?? "inline"} @ ${k.t}s${k.events?.length ? ` · ${k.events.join(", ")}` : ""}`}
+						tabIndex={0}
 						onPointerDown={(e) => dragKey(i, e)}
+						onContextMenu={(e) => {
+							ed.curKey.value = i;
+							menuAt(e, [{ label: "Delete key", danger: true, disabled: !canDelete, run: () => deleteKey(i) }]);
+						}}
+						onKeyDown={(e) => {
+							if ((e.key === "Backspace" || e.key === "Delete") && canDelete) {
+								e.preventDefault();
+								e.stopPropagation();
+								deleteKey(i);
+							}
+						}}
 					/>
 				))}
-				<span class="playhead" style={{ left: left(t) }} />
+				<span class="ed-tl-playhead" style={{ left: left(t) }} />
 			</div>
-			<button class="btn small ghost" title="a key at the playhead" onClick={addKey}>
-				+ key
-			</button>
+			<Button icon="plus" title="A key at the playhead" onClick={addKey}>
+				Key
+			</Button>
 			{key && (
 				<>
-					<select class="picker" value={key.state ?? ""} onChange={(e) => setKeyState(ki, (e.target as HTMLSelectElement).value)} title="the state this key shows">
-						{key.state === undefined && <option value="">inline pose</option>}
-						{states().map((s) => (
-							<option value={s.name}>{s.name}</option>
-						))}
-					</select>
-					<select class="picker" value={key.ease ?? "linear"} onChange={(e) => setKeyEase(ki, (e.target as HTMLSelectElement).value as Ease)} title="how time approaches this key" disabled={!!key.curve}>
-						{EASES.map((e) => (
-							<option value={e}>{e}</option>
-						))}
-					</select>
-					<select
-						class="picker"
+					<Select value={key.state ?? ""} width={120} title="The state this key shows" options={[...(key.state === undefined ? [{ value: "", label: "Inline pose" }] : []), ...states().map((s) => ({ value: s.name, label: s.name }))]} onChange={(v) => setKeyState(ki, v)} />
+					<Select<Ease> value={key.ease ?? "linear"} width={84} title="How time approaches this key" disabled={!!key.curve} options={EASES} onChange={(v) => setKeyEase(ki, v)} />
+					<Select
 						value={curveName(key.curve)}
-						title="a bezier curve toward this key; it wins over the ease, which stays as the nearest name for older readers"
-						onChange={(e) => {
-							const v = (e.target as HTMLSelectElement).value;
+						width={104}
+						title="A bezier curve toward this key; it wins over the ease, which stays as the nearest name for older readers"
+						options={[{ value: "", label: "No curve" }, ...CURVES.map((c) => ({ value: c.name, label: c.name })), { value: "custom", label: "Custom…" }]}
+						onChange={(v) => {
 							if (!v) return setKeyCurve(ki, undefined);
 							const preset = CURVES.find((c) => c.name === v);
 							if (preset) {
@@ -162,52 +180,28 @@ export function Timeline() {
 								setKeyEase(ki, preset.ease);
 							} else setKeyCurve(ki, key.curve ?? [0.42, 0, 0.58, 1]);
 						}}
-					>
-						<option value="">no curve</option>
-						{CURVES.map((c) => (
-							<option value={c.name}>{c.name}</option>
-						))}
-						<option value="custom">custom…</option>
-					</select>
+					/>
 					{key.curve &&
 						key.curve.map((v, j) => (
-							<input
-								class="num"
-								type="number"
-								step={0.01}
+							<NumberField
+								key={j}
 								value={v}
+								step={0.01}
+								stepper={false}
+								width={48}
+								label={["x1", "y1", "x2", "y2"][j]}
 								title={["x1", "y1", "x2", "y2"][j]}
-								onInput={(e) => {
-									const n = Number((e.target as HTMLInputElement).value);
-									if (!Number.isFinite(n)) return;
+								onChange={(n) => {
 									const c = [...key.curve!] as Curve;
 									c[j] = n;
 									setKeyCurve(ki, c, `curve-${ki}`);
 								}}
-								onBlur={endGesture}
-								onKeyDown={(e) => e.stopPropagation()}
+								onDone={endGesture}
 							/>
 						))}
-					<input
-						class="text"
-						placeholder="events"
-						value={key.events?.join(", ") ?? ""}
-						title="names a game hears when the playhead crosses this key: footstep, hit, …  (comma-separated)"
-						onChange={(e) => setKeyEvents(ki, (e.target as HTMLInputElement).value.split(","))}
-						onKeyDown={(e) => e.stopPropagation()}
-					/>
-					<input
-						class="num"
-						type="number"
-						min={0}
-						step={0.05}
-						value={key.t}
-						onChange={(e) => setKeyTime(ki, Number((e.target as HTMLInputElement).value))}
-						title="seconds"
-					/>
-					<button class="btn x" title="delete key" disabled={clip.keys.length < 2} onClick={() => deleteKey(ki)}>
-						×
-					</button>
+					<EventsField key={`${ed.curClip.value}:${ki}`} value={key.events?.join(", ") ?? ""} onCommit={(v) => setKeyEvents(ki, v.split(","))} />
+					<NumberField value={key.t} min={0} step={0.05} suffix="s" stepper={false} width={64} label="Seconds" title="Seconds" onChange={(v) => setKeyTime(ki, v)} />
+					<Button variant="toolbar" class="ur-btn-sm" icon="trash-2" title="Delete key (⌫)" disabled={!canDelete} onClick={() => deleteKey(ki)} />
 				</>
 			)}
 		</div>

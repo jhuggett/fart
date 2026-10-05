@@ -1,0 +1,101 @@
+/* Uranus tokens — compiled from tokens.json */
+:root, [data-theme="light"] {
+  --bg-window: #ecebe8;
+  --bg-sidebar: #e5e3df;
+  --bg-content: #f8f7f5;
+  --bg-raised: #ffffff;
+  --bg-control: #ffffff;
+  --bg-hover: #dcd9d4;
+  --bg-canvas: #f2f1ee;
+  --canvas-grid: #e3e1dd;
+  --canvas-grid-major: #d1cec9;
+  --canvas-origin: #a39e97;
+  --separator: #d6d3ce;
+  --control-edge: #7c7770;
+  --text-primary: #1f1d1a;
+  --text-secondary: #4f4a45;
+  --text-tertiary: #615c56;
+  --accent: #9e3d19;
+  --accent-fill: #a8431d;
+  --on-accent: #ffffff;
+  --accent-tint: #f3dfd5;
+  --selection-inactive: #d3d0ca;
+  --focus-ring: #9e3d19;
+  --success: #246340;
+  --warning: #7a5200;
+  --danger: #a81f3a;
+  --axis-x: #c8382f;
+  --axis-y: #2b7f2f;
+  --axis-z: #2f63c8;
+  --pivot: #14807e;
+  --shadow-control: 0 0.5px 1px rgba(0,0,0,0.12);
+  --shadow-tile: 0 1px 2px rgba(31,29,26,0.06);
+  --shadow-popover: 0 8px 28px rgba(31,29,26,0.18), 0 0 0 0.5px rgba(31,29,26,0.12);
+  --shadow-window: 0 22px 70px rgba(0,0,0,0.28), 0 0 0 0.5px rgba(0,0,0,0.2);
+}
+[data-theme="dark"] {
+  --bg-window: #262422;
+  --bg-sidebar: #2b2926;
+  --bg-content: #1e1d1b;
+  --bg-raised: #33312e;
+  --bg-control: #3d3a37;
+  --bg-hover: #3a3734;
+  --bg-canvas: #1a1917;
+  --canvas-grid: #262422;
+  --canvas-grid-major: #34322f;
+  --canvas-origin: #5c5853;
+  --separator: #3a3835;
+  --control-edge: #8f8a83;
+  --text-primary: #ece9e4;
+  --text-secondary: #b8b2aa;
+  --text-tertiary: #ada79e;
+  --accent: #f28c66;
+  --accent-fill: #b54c25;
+  --on-accent: #ffffff;
+  --accent-tint: #4a2c20;
+  --selection-inactive: #45423e;
+  --focus-ring: #f28c66;
+  --success: #6cc893;
+  --warning: #e3b552;
+  --danger: #f78b9a;
+  --axis-x: #f0675c;
+  --axis-y: #6cc66f;
+  --axis-z: #6b9cf2;
+  --pivot: #4cc7c3;
+  --shadow-control: 0 0.5px 1px rgba(0,0,0,0.4);
+  --shadow-tile: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-popover: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.1);
+  --shadow-window: 0 22px 70px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.12);
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-window: 12px;
+  --row-height: 24px;
+  --control-height: 22px;
+  --toolbar-button: 28px;
+  --toolbar-height: 52px;
+  --sidebar-width: 260px;
+  --inspector-width: 280px;
+  --launcher-width: 800px;
+  --launcher-height: 460px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, "Cascadia Mono", Consolas, monospace;
+}
+.large-title { font-family: var(--font-sans); font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -0.4px; }
+.title { font-family: var(--font-sans); font-size: 15px; line-height: 20px; font-weight: 600; }
+.headline { font-family: var(--font-sans); font-size: 13px; line-height: 16px; font-weight: 600; }
+.body { font-family: var(--font-sans); font-size: 13px; line-height: 16px; font-weight: 400; }
+.callout { font-family: var(--font-sans); font-size: 12px; line-height: 15px; font-weight: 400; }
+.caption { font-family: var(--font-sans); font-size: 11px; line-height: 14px; font-weight: 400; }
+.caption-strong { font-family: var(--font-sans); font-size: 11px; line-height: 14px; font-weight: 600; }
+.mono-body { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; }
+.mono-caption { font-family: var(--font-mono); font-size: 11px; line-height: 14px; font-weight: 400; }

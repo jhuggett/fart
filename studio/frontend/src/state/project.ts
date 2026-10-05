@@ -3,12 +3,17 @@
 // it and the ways a project gets opened (dialog, drop, argv, the Finder).
 
 import { signal, batch } from "@preact/signals";
-import { parseDoc, parseScene, loadScene, flattenScene, resolvePalettes, stringifyDoc, isPaletteFile, as3d, projectDoc, type Doc, type Token, type LoadedScene, type Placed } from "@fastart/core";
-import { shell, initShell, type ServeInfo, type Caps } from "../shell/shell.ts";
+import { parseScene, loadScene, flattenScene, stringifyDoc, type Doc } from "@fastart/core";
+import type { ThumbJob, ThumbResult } from "./thumbWorker.ts";
+import { drawSceneThumb } from "../canvas/scene3.ts";
+import { shell, initShell, type ServeInfo, type Caps, type GitChange, type FileInfo } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
 import { openModel, leaveModel, md } from "./model.ts";
 import { openScene, leaveScene, sc } from "./scene.ts";
-import { ask, confirm } from "./prompt.ts";
+import { ask, confirm, choose } from "./prompt.ts";
+import { nav, visit, resetNav, walk } from "./nav.ts";
+import { logActivity, busy } from "./activity.ts";
+import { openDocNow } from "./doc.ts";
 import { basename, dirname, joinRel, under, stripExt } from "./paths.ts";
 import { refreshSetup } from "./setup.ts";
 import { sidebar } from "./sidebar.ts";
@@ -20,13 +25,22 @@ import { sidebar } from "./sidebar.ts";
  */
 export type Screen = "welcome" | "browse" | "edit" | "model" | "scene" | "docs" | "setup";
 
+/**
+ * What the project keeps of a file it is not editing: an index of its
+ * names and its picture, never the file itself. A project of hundreds of
+ * models would not fit in memory otherwise.
+ */
 export interface Thumb {
+	/** names only: the parts, states, clips and colours, and the palettes it draws from */
 	doc: Doc;
-	tokens: Token[];
-	/** 1.3: the file is a 3D model; the thumb is its front view */
+	/** 1.3: the file is a 3D model; the picture is its front view */
 	space3d?: boolean;
-	/** a .shart: the scene, loaded, and its instances placed for the thumb */
-	scene?: { scene: LoadedScene; placed: Placed[] };
+	/** a .shart: how many instances it places */
+	scene?: { instances: number };
+	/** the picture, drawn once (an object URL), "" when there is nothing to draw yet */
+	image: string;
+	/** when the file was written, as it was read: a later one is read again */
+	mtime: number;
 }
 
 export const project = {
@@ -44,7 +58,7 @@ export const project = {
 	error: signal<string | null>(null),
 	busy: signal(false),
 	/** what the machine can do with files; the menus read it */
-	caps: signal<Caps>({ trash: false, reveal: "" }),
+	caps: signal<Caps>({ trash: false, reveal: "", os: "" }),
 	/** served mode: the folder's absolute path on the machine, for setup only */
 	servedRoot: signal(""),
 	/** the project has an assets/ folder: new assets land there */
@@ -52,7 +66,41 @@ export const project = {
 	/** the branch the project's repository is on; "" outside a repository */
 	branch: signal(""),
 	branches: signal<string[]>([]),
+	/** what is uncommitted under the project, for the source control tab */
+	changes: signal<GitChange[]>([]),
+	/** what each file is ("2D", "3D", "palette", "scene", "3D scene"), known without reading any of them */
+	kinds: signal<Record<string, string>>({}),
+	/** the palette files each file draws from, as it names them */
+	refs: signal<Record<string, string[]>>({}),
+	/** the recents' branches, by folder, for the launcher */
+	recentBranches: signal<Record<string, string>>({}),
+	/** the window is full screen: the traffic lights are hidden, and so is the room left for them */
+	fullscreen: signal(false),
 };
+
+const LAUNCH_KEY = "fastart.launcher";
+/** "Show this window when Uranus launches": off, the last project opens instead. */
+export const showLauncher = signal(readLaunch());
+function readLaunch(): boolean {
+	try {
+		return localStorage.getItem(LAUNCH_KEY) !== "off";
+	} catch {
+		return true;
+	}
+}
+export function setShowLauncher(on: boolean) {
+	showLauncher.value = on;
+	try {
+		localStorage.setItem(LAUNCH_KEY, on ? "on" : "off");
+	} catch {
+		// the choice lasts the session
+	}
+}
+
+/** The traffic lights sit inline (the app on a Mac, out of full screen): the header they sit in leaves them room. */
+export function inlineLights(): boolean {
+	return project.caps.value.os === "darwin" && !project.fullscreen.value;
+}
 
 /** In a project (an asset open or not), as opposed to the launcher, docs or setup. */
 export function inWorkspace(s: Screen = project.screen.value): boolean {
@@ -78,6 +126,8 @@ project.error.subscribe((e) => {
 export async function boot() {
 	await initShell();
 	void shell.caps().then((c) => (project.caps.value = c));
+	void shell.fullscreen().then((on) => (project.fullscreen.value = on));
+	shell.onFullscreen((on) => (project.fullscreen.value = on));
 	if (shell.kind === "http") {
 		const info = await shell.info();
 		batch(() => {
@@ -92,6 +142,7 @@ export async function boot() {
 	}
 	project.home.value = await shell.home();
 	project.recents.value = await shell.recents();
+	void refreshRecentBranches();
 	void refreshSetup();
 	shell.onOpenFiles(() => void drainOpens());
 	shell.log(`boot: shell=${shell.kind} url=${location.href}`);
@@ -100,31 +151,62 @@ export async function boot() {
 	window.addEventListener("error", (ev) => shell.log(`error: ${ev.message} @ ${ev.filename}:${ev.lineno}`));
 	if (await drainOpens()) return;
 	const def = await shell.defaultRoot();
-	if (def) await openProject(def);
-	else project.screen.value = "welcome";
+	if (def) return void (await openProject(def));
+	// the launcher, unless it was asked not to show: then the last project
+	const last = project.recents.value[0];
+	if (!showLauncher.value && last && (await shell.isDir(last))) return void (await openProject(last));
+	project.screen.value = "welcome";
+}
+
+async function refreshRecentBranches() {
+	const out: Record<string, string> = {};
+	await Promise.all(project.recents.value.map(async (r) => (out[r] = await shell.branch(r).catch(() => ""))));
+	project.recentBranches.value = out;
 }
 
 /**
- * Create New Project: a name, a home for it, then <home>/<name> with an
- * assets/ folder inside; it opens at once.
+ * Leaving an asset that has changed since its checkpoint asks once. The
+ * edits are in the file already; the question is whether this version
+ * becomes the one Revert goes back to. False means stay.
  */
-export async function createProject() {
-	const name = await ask("Name the new project", "", { hint: "a folder of this name is made, with assets/ inside" });
-	if (!name) return;
-	let parent: string | null;
-	try {
-		parent = await shell.pickParentFolder();
-	} catch (e) {
-		project.error.value = `the folder dialog failed: ${String(e)}`;
-		return;
-	}
-	if (!parent) return;
-	try {
-		const root = await shell.newProject(parent, name);
-		await openProject(root);
-	} catch (e) {
-		project.error.value = String(e);
-	}
+export async function mayLeave(): Promise<boolean> {
+	const d = openDocNow();
+	if (!d || !d.dirty) return true;
+	const name = stripExt(basename(d.path));
+	const pick = await choose(`Save a checkpoint of "${name}"?`, "Your edits are already in the file on disk. Saving keeps this version as the one Revert goes back to.", [
+		{ id: "discard", label: "Don't save", danger: true },
+		{ id: "cancel", label: "Cancel" },
+		{ id: "save", label: "Save", primary: true },
+	]);
+	if (pick === "cancel") return false;
+	if (pick === "save") await d.save();
+	return true;
+}
+
+/** How a new project starts: bare, or with one asset of a kind to draw in. */
+export type Starter = "Empty" | "2D" | "3D";
+
+/**
+ * Create new project: <parent>/<name> with an assets/ folder inside,
+ * a first asset when asked for one, a repository when asked for one. It
+ * opens at once. Throws with the reason when it cannot.
+ */
+export async function createProjectAt(parent: string, name: string, start: Starter, repo: boolean) {
+	const root = await shell.newProject(parent, name);
+	if (repo) await shell.gitInit(root).catch((e) => (project.error.value = `the folder was made, but not the repository: ${String(e)}`));
+	await openProject(root);
+	const first = name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "asset";
+	if (start === "2D") await newFile(first);
+	else if (start === "3D") await newModel(first);
+}
+
+/** Clone a repository into <parent>/<its name>, then open it. Progress shows in the activity view. */
+export async function cloneProject(url: string, parent: string, onProgress?: (message: string, done: number | null) => void) {
+	shell.onGit((p) => onProgress?.(p.message, p.done < 0 ? null : p.done));
+	const root = await busy(`Cloning ${url.replace(/\.git$/, "").split(/[/:]/).pop()}`, () => shell.gitClone(url, parent));
+	onProgress = undefined;
+	await openProject(root);
+	logActivity(`Cloned ${basename(root)}`, "download");
 }
 
 /** The folder a new asset lands in when none is named: assets/ when the project has one. */
@@ -133,7 +215,7 @@ export function assetHome(): string {
 }
 
 /** A plain name (no slash) goes to the assets folder; a path stays a path. */
-function placed(name: string): string {
+export function placed(name: string): string {
 	const home = assetHome();
 	return home && !name.includes("/") ? `${home}/${name}` : name;
 }
@@ -150,6 +232,39 @@ export async function refreshBranch() {
 		project.branch.value = b;
 		project.branches.value = bs;
 	});
+	void refreshGit();
+}
+
+/** What is uncommitted, re-read: after a save, a file operation, a commit. */
+export async function refreshGit() {
+	const root = project.root.value;
+	project.changes.value = root && shell.kind === "wails" && project.branch.value ? await shell.gitStatus(root) : [];
+}
+
+/** A branch from here, switched to. */
+export async function newBranch(name: string) {
+	const root = project.root.value;
+	if (!root) return;
+	try {
+		await shell.newBranch(root, name);
+		logActivity(`New branch ${name}`, "git-branch");
+	} catch (e) {
+		project.error.value = String(e);
+	}
+	await refreshBranch();
+}
+
+/** Everything uncommitted, committed under a message. */
+export async function commitAll(message: string) {
+	const root = project.root.value;
+	if (!root) return;
+	const n = project.changes.value.length;
+	try {
+		await busy("Committing", () => shell.gitCommit(root, message), `Committed ${n} change${n === 1 ? "" : "s"}`, "git-commit-horizontal");
+	} catch (e) {
+		project.error.value = String(e);
+	}
+	await refreshGit();
 }
 
 /** Check a branch out; git's own words show when it will not. The shelf re-reads. */
@@ -157,8 +272,10 @@ export async function switchBranch(name: string) {
 	const root = project.root.value;
 	if (!root) return;
 	if (name === project.branch.value) return;
+	if (!(await mayLeave())) return;
 	try {
 		await shell.switchBranch(root, name);
+		logActivity(`Switched to ${name}`, "git-branch");
 	} catch (e) {
 		project.error.value = String(e);
 	}
@@ -179,6 +296,8 @@ export async function drainOpens(): Promise<boolean> {
 export async function openProject(root: string) {
 	let r = root;
 	while (r.length > 1 && r.endsWith("/")) r = r.slice(0, -1);
+	if (!(await mayLeave())) return;
+	resetNav();
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
 	if (sc.path.value) await leaveScene();
@@ -188,7 +307,7 @@ export async function openProject(root: string) {
 	});
 	project.recents.value = await shell.pushRecent(r);
 	sidebar.view.value = "assets";
-	await goBrowse();
+	await showBrowser();
 	void refreshSetup();
 	void refreshBranch();
 }
@@ -218,7 +337,7 @@ export async function openPath(path: string): Promise<boolean> {
 
 export async function pickFolder() {
 	try {
-		const p = await shell.pickFolder();
+		const p = await shell.pickFolderAt("Open a project: any folder of .fart files", "Open");
 		if (p) await openProject(p);
 	} catch (e) {
 		shell.log(`pickFolder failed: ${String(e)}`);
@@ -231,21 +350,45 @@ export async function forgetRecent(root: string) {
 }
 
 export async function goWelcome() {
+	if (!(await mayLeave())) return;
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
 	if (sc.path.value) await leaveScene();
 	project.screen.value = "welcome";
+	void refreshRecentBranches();
 }
 
-/** The project with nothing open: the shelf on the canvas, the assets in the sidebar. */
-export async function goBrowse() {
+/** The project with nothing open: the asset browser in the content, the assets in the navigator. */
+export async function goBrowse(): Promise<boolean> {
+	if (!(await mayLeave())) return false;
+	await showBrowser();
+	return true;
+}
+
+async function showBrowser() {
 	if (ed.path.value) await leaveFile();
 	if (md.path.value) await leaveModel();
 	if (sc.path.value) await leaveScene();
-	sidebar.view.value = "assets";
+	if (sidebar.view.value === "asset") sidebar.view.value = "assets";
 	project.screen.value = "browse";
+	visit({ kind: "folder", path: nav.folder.value });
 	await refreshFiles();
 }
+
+/** The browser, on one folder of the project ("" is all of it). */
+export async function goFolder(path: string): Promise<boolean> {
+	if (inWorkspace() && project.screen.value !== "browse" && !(await mayLeave())) return false;
+	nav.folder.value = path;
+	nav.selected.value = null;
+	// already in the browser: another folder of the same listing, nothing to re-read
+	if (project.screen.value === "browse") visit({ kind: "folder", path });
+	else await showBrowser();
+	return true;
+}
+
+/** Back and forward through the folders and documents visited. */
+export const goBack = () => walk(-1, (p) => (p.kind === "folder" ? goFolder(p.path) : openDoc(p.path)));
+export const goForward = () => walk(1, (p) => (p.kind === "folder" ? goFolder(p.path) : openDoc(p.path)));
 
 export function goDocs(page?: string) {
 	if (page) project.docsPage.value = page;
@@ -266,62 +409,194 @@ export function leaveSetup() {
 	project.screen.value = project.setupBack.value;
 }
 
+const THUMB_PX = 384;
+
+/** A drawing, as a picture the browser can show and forget the drawing. */
+function pictureOf(paint: (c: HTMLCanvasElement) => void): Promise<string> {
+	const c = document.createElement("canvas");
+	paint(c);
+	if (!c.width || !c.height) return Promise.resolve("");
+	return new Promise((resolve) => c.toBlob((b) => resolve(b ? URL.createObjectURL(b) : "")));
+}
+
+// one worker, made when the first picture is asked for
+let worker: Worker | null = null;
+let jobs = 0;
+const waiting = new Map<number, (r: ThumbResult) => void>();
+function inWorker(job: Omit<ThumbJob, "id">): Promise<ThumbResult> {
+	if (!worker) {
+		worker = new Worker(new URL("./thumbWorker.ts", import.meta.url), { type: "module" });
+		worker.onmessage = (e: MessageEvent<ThumbResult>) => {
+			waiting.get(e.data.id)?.(e.data);
+			waiting.delete(e.data.id);
+		};
+		worker.onerror = () => {
+			// a worker that died takes its jobs with it: answer them empty, start afresh next time
+			for (const [id, done] of waiting) done({ id, index: null, space3d: false, image: null });
+			waiting.clear();
+			worker = null;
+		};
+	}
+	const id = ++jobs;
+	return new Promise((resolve) => {
+		waiting.set(id, resolve);
+		worker!.postMessage({ ...job, id });
+	});
+}
+
+/** Read one file: its index and its picture. null when it cannot be read. */
+async function loadThumb(root: string, rel: string, mtime: number): Promise<Thumb | null> {
+	const text = await shell.readFile(root, rel);
+	if (text === null) return null;
+	const dir = dirname(rel);
+	if (rel.endsWith(".shart")) {
+		// a scene: read what it names, place it
+		const { raw } = parseScene(text);
+		if (!raw) return null;
+		try {
+			const loaded = await loadScene(raw, (ref) => shell.readFile(root, joinRel(dir, ref)), "", [], basename(rel));
+			const placed = flattenScene(loaded);
+			const space3d = raw.space === "3d";
+			const image = await pictureOf((c) => drawSceneThumb(c, { placed, space3d }, THUMB_PX));
+			return { doc: { version: 1, name: raw.name }, space3d, scene: { instances: placed.length }, image, mtime };
+		} catch {
+			return null; // a scene that cannot be read stays a glyph
+		}
+	}
+	// the palettes it draws from, read here: the worker has no way to the disk
+	const refs: Record<string, string> = {};
+	const named = /"palette_refs"\s*:\s*\[([^\]]*)\]/.exec(text.slice(0, 65536));
+	for (const m of named?.[1].matchAll(/"((?:[^"\\]|\\.)*)"/g) ?? []) {
+		const t = await shell.readFile(root, joinRel(dir, m[1]));
+		if (t !== null) refs[m[1]] = t;
+	}
+	const r = await inWorker({ text, refs, px: THUMB_PX });
+	if (!r.index) return null;
+	return { doc: r.index, image: r.image ? URL.createObjectURL(r.image) : "", mtime, ...(r.space3d ? { space3d: true } : {}) };
+}
+
+// The thumbnails load lazily. The list of files shows at once, each with
+// its kind (the shell sniffs that without parsing); a file is read only
+// when its tile nears the screen (the browser asks), or when something
+// needs the names inside every file (search). The parsing, projecting
+// and painting happen in a worker, so the window never waits for a big
+// model. What was read stays until its file changes on disk.
+let thumbRun = 0;
+let thumbQueue: string[] = [];
+let thumbUrgent: string[] = [];
+let thumbsWanted = false;
+let reading = false;
+/** how long each file took to read and draw, for scripts and the console */
+export const thumbLog: { rel: string; ms: number }[] = [];
+const breathe = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A tile came into view: its file jumps the queue. */
+export function wantThumb(rel: string) {
+	if (thumbQueue.includes(rel) && !thumbUrgent.includes(rel)) thumbUrgent.push(rel);
+	void readThumbs();
+}
+
+/** Something needs every file's index: keep reading with an asset open too. */
+export function wantAllThumbs() {
+	if (thumbsWanted || !thumbQueue.length) return;
+	thumbsWanted = true;
+	void readThumbs();
+}
+
+/** How much of the project has been read: 1 when all of it has. */
+export const thumbsRead = signal(1);
+
+async function readThumbs() {
+	const root = project.root.value;
+	if (reading || root === null) return;
+	reading = true;
+	const run = thumbRun;
+	const thumbs = new Map(project.thumbs.value);
+	let last = 0;
+	const publish = (now = false) => {
+		// many readings, one redraw
+		if (!now && performance.now() - last < 250) return;
+		last = performance.now();
+		batch(() => {
+			project.thumbs.value = new Map(thumbs);
+			thumbsRead.value = project.files.value.length ? 1 - thumbQueue.length / project.files.value.length : 1;
+		});
+	};
+	try {
+		while (run === thumbRun && thumbQueue.length) {
+			const urgent = thumbUrgent.shift();
+			// nothing on screen is waiting: the rest are read only when something asks for them all
+			if (!urgent && !thumbsWanted) break;
+			const rel = urgent ?? thumbQueue[0];
+			const at = thumbQueue.indexOf(rel);
+			if (at < 0) continue;
+			thumbQueue.splice(at, 1);
+			const mtime = (await shell.stat(root, rel)) ?? 0;
+			if (run !== thumbRun) break;
+			const had = thumbs.get(rel);
+			if (had && had.mtime === mtime) continue;
+			// one file that will not read or draw must not stop the rest
+			const began = performance.now();
+			const t = await loadThumb(root, rel, mtime).catch((e) => (shell.log(`thumb: ${rel}: ${String(e)}`), null));
+			thumbLog.push({ rel, ms: Math.round(performance.now() - began) });
+			if (run !== thumbRun) {
+				if (t?.image) URL.revokeObjectURL(t.image);
+				break;
+			}
+			if (had?.image) URL.revokeObjectURL(had.image);
+			if (t) thumbs.set(rel, t);
+			else thumbs.delete(rel);
+			publish(!!urgent && !thumbUrgent.length);
+			// let the pointer and the keys in between two files
+			await breathe(urgent ? 0 : 16);
+		}
+	} finally {
+		reading = false;
+	}
+	if (run === thumbRun) {
+		publish(true);
+		if (!thumbQueue.length) thumbsWanted = false;
+	} else void readThumbs();
+}
+
 export async function refreshFiles() {
 	const root = project.root.value;
 	if (root === null) return;
 	project.busy.value = true;
 	const files = await shell.listFiles(root);
-	project.files.value = files;
-	project.hasAssets.value = files.some((f) => f.startsWith("assets/")) || (await shell.stat(root, "assets")) !== null;
+	if (root !== project.root.value) return;
+	const [hasStat, kinds] = await Promise.all([shell.stat(root, "assets"), shell.kinds(root).catch(() => ({}) as Record<string, FileInfo>)]);
+	const hasAssets = files.some((f) => f.startsWith("assets/")) || hasStat !== null;
+	if (root !== project.root.value) return;
+	thumbRun++;
+	// what was read before stays up; each file is checked against the disk as its turn comes
 	const thumbs = new Map<string, Thumb>();
-	await Promise.all(
-		files.map(async (rel) => {
-			const text = await shell.readFile(root, rel);
-			if (text === null) return;
-			if (rel.endsWith(".shart")) {
-				// a scene: read what it names, place it, for the shelf
-				const { raw } = parseScene(text);
-				if (!raw) return;
-				try {
-					const dir = dirname(rel);
-					const loaded = await loadScene(raw, (ref) => shell.readFile(root, joinRel(dir, ref)), "", [], basename(rel));
-					thumbs.set(rel, { doc: { version: 1, name: raw.name }, tokens: [], space3d: raw.space === "3d", scene: { scene: loaded, placed: flattenScene(loaded) } });
-				} catch {
-					// a scene that cannot be read stays off the shelf
-				}
-				return;
-			}
-			let doc: Doc | null = null;
-			try {
-				const r = parseDoc(text);
-				doc = r.doc ?? (r.report.errors.every((e) => !["json", "version", "schema"].includes(e.code)) ? (JSON.parse(text) as Doc) : null);
-			} catch {
-				doc = null;
-			}
-			if (!doc) return;
-			// a 3D file shows its front view on the shelf
-			const d3 = as3d(doc);
-			if (d3) {
-				try {
-					doc = projectDoc(d3, { view: "front" });
-				} catch {
-					return;
-				}
-			}
-			const dir = dirname(rel);
-			const { tokens } = await resolvePalettes(doc, (ref) => shell.readFile(root, joinRel(dir, ref)));
-			thumbs.set(rel, { doc, tokens, ...(d3 ? { space3d: true } : {}) });
-		}),
-	);
+	for (const [rel, t] of project.thumbs.value) {
+		if (files.includes(rel)) thumbs.set(rel, t);
+		else if (t.image) URL.revokeObjectURL(t.image);
+	}
+	// palettes first: they are small, and the menus that list them should not wait
+	thumbQueue = [...files.filter((f) => f.includes("palette")), ...files.filter((f) => !f.includes("palette"))];
+	thumbUrgent = [];
 	batch(() => {
+		project.files.value = files;
+		project.hasAssets.value = hasAssets;
+		project.kinds.value = Object.fromEntries(Object.entries(kinds).map(([rel, i]) => [rel, i.kind]));
+		project.refs.value = Object.fromEntries(Object.entries(kinds).map(([rel, i]) => [rel, i.refs]));
 		project.thumbs.value = thumbs;
 		project.busy.value = false;
 	});
+	void readThumbs();
+	void refreshGit();
 }
 
 export async function openDoc(rel: string): Promise<boolean> {
+	if (openDocNow()?.path === rel) return true;
+	if (!(await mayLeave())) return false;
 	const ok = await openDocOnly(rel);
 	if (ok) {
+		visit({ kind: "doc", path: rel });
+		nav.folder.value = dirname(rel);
 		// a fresh asset starts with the document in the inspector, and its insides in the sidebar
 		ed.partPicked.value = false;
 		md.partPicked.value = false;
@@ -408,14 +683,14 @@ export async function newModel(name: string) {
 
 /** The project's palette files: colours and no parts. */
 export function paletteFiles(): string[] {
-	return [...project.thumbs.value].filter(([, t]) => !t.scene && isPaletteFile(t.doc)).map(([rel]) => rel).sort();
+	return project.files.value.filter((rel) => project.kinds.value[rel] === "palette").sort();
 }
 
 /** The files that draw from a palette file, by its project path. */
 export function linkedBy(target: string): string[] {
 	const out: string[] = [];
-	for (const [rel, t] of project.thumbs.value) {
-		for (const ref of t.doc.palette_refs ?? []) if (joinRel(dirname(rel), ref) === target) out.push(rel);
+	for (const [rel, refs] of Object.entries(project.refs.value)) {
+		for (const ref of refs) if (joinRel(dirname(rel), ref) === target) out.push(rel);
 	}
 	return out.sort();
 }
@@ -468,36 +743,60 @@ export async function deleteFile(rel: string) {
 		danger: true,
 	});
 	if (!ok) return;
-	if (ed.path.value === rel) await goBrowse();
+	if (openDocNow()?.path === rel) await showBrowser();
+	if (nav.selected.value === rel) nav.selected.value = null;
 	try {
 		await shell.removeFile(root, rel);
+		logActivity(`${trash ? "Moved" : "Deleted"} ${name}${trash ? " to the Trash" : ""}`, "trash-2");
 	} catch (e) {
 		project.error.value = String(e);
 	}
 	await refreshFiles();
 }
 
-/**
- * Rename a file, asked inline. A plain name stays in its folder; a name
- * with a slash is a path from the project's root, so this moves too.
- */
-export async function renameFile(rel: string) {
-	const root = project.root.value;
-	if (root === null) return;
-	const stem = stripExt(basename(rel));
-	const name = await ask(`Rename "${stem}"`, stem);
-	if (!name || name === stem) return;
+/** What a new name may be: lower-case letters, numbers, - and _. */
+export const ASSET_NAME = /^[a-z0-9][a-z0-9_-]*$/;
+export const NAME_HINT = "Use lower-case letters, numbers, - and _.";
+const extOf = (rel: string) => (rel.endsWith(".shart") ? ".shart" : ".fart");
+
+/** Why a file cannot take this name, or null when it can. */
+export function renameProblem(rel: string, name: string): string | null {
+	if (!ASSET_NAME.test(name)) return NAME_HINT;
 	const dir = dirname(rel);
-	const bare = name.endsWith(".fart") ? name.slice(0, -5) : name;
-	const to = `${name.includes("/") ? bare : dir ? `${dir}/${bare}` : bare}.fart`;
-	if (to === rel) return;
+	const to = `${dir ? `${dir}/` : ""}${name}${extOf(rel)}`;
+	return to !== rel && project.files.value.includes(to) ? `${name} already exists here.` : null;
+}
+
+/** Rename a file in its folder; the open asset follows it. */
+export async function renameTo(rel: string, name: string): Promise<string | null> {
+	const root = project.root.value;
+	if (root === null) return null;
+	const dir = dirname(rel);
+	const to = `${dir ? `${dir}/` : ""}${name}${extOf(rel)}`;
+	if (to === rel) return rel;
+	const open = openDocNow();
 	try {
+		// the file moves under the open asset: let go of it first, pick it up after
+		if (open?.path === rel) await showBrowser();
 		await shell.renameFile(root, rel, to);
-		if (ed.path.value === rel) ed.path.value = to;
+		logActivity(`Renamed ${stripExt(basename(rel))} to ${name}`, "pencil");
 	} catch (e) {
 		project.error.value = `could not rename: ${String(e)}`;
+		await refreshFiles();
+		return null;
 	}
 	await refreshFiles();
+	if (nav.selected.value === rel) nav.selected.value = to;
+	if (open?.path === rel) await openDoc(to);
+	return to;
+}
+
+/** Rename a file, asked in a sheet. */
+export async function renameFile(rel: string) {
+	const stem = stripExt(basename(rel));
+	const name = await ask(`Rename "${stem}"`, stem, { ok: "Rename", mono: true, hint: NAME_HINT, validate: (v) => (v === stem ? null : renameProblem(rel, v)) });
+	if (!name || name === stem) return;
+	await renameTo(rel, name);
 }
 
 /** A copy beside the original ("hero copy"). */

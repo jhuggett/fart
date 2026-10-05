@@ -6,31 +6,49 @@ of any game or engine, and it confers none. Its function is to produce
 files that conform to the specification, and to show them as a
 conforming reader would.
 
+Help follows you: the ? tab of the inspector (or the `?` key) shows the
+part of this guide for the screen you are on and the thing you have
+chosen, and a ? anywhere else opens the topics for that place. The Help
+menu searches this guide by word (Cmd+Shift+/), lists the keyboard
+shortcuts that work on the screen you are on (Cmd+/), and starts from
+the common questions: getting started, drawing, colours, rigging and
+animation, 3D, scenes, games, and projects and setup.
+
 ## Projects
 
-A folder is a project. The app opens on the **launcher**: **Create New
-Project** makes a folder with `assets/` inside (new assets land there);
-**Open Existing Project** (Cmd+Shift+O) takes any folder of `.fart`
-files; recent projects wait on the right. Dropping a folder on the
-window, double-clicking a `.fart` in the Finder, or `studio some/dir`
-and `studio thing.fart` from a terminal open one too.
+A folder is a project. The app opens on the **launcher**, a small
+welcome window: **Create new project…** (Cmd+Shift+N) asks for a name, a
+location, what to start with and whether to make a git repository, then
+makes the folder with `assets/` inside (new assets land there); **Open
+existing project…** (Cmd+O) takes any folder of `.fart` files; **Clone
+git repository…** (Cmd+Alt+C) checks one out from a remote. Recent
+projects wait on the right (arrows and Return, Backspace forgets one).
+Dropping a folder on the window, double-clicking a `.fart` in the Finder,
+or `studio some/dir` and `studio thing.fart` from a terminal open one too.
 
-A project is a split view. The **sidebar** on the left (Cmd+B) lists the
-assets as a tree; its **+** adds an asset, a 3D asset, a palette, a scene
-or a 3D scene (a name like `enemies/bat` makes the folder too), and ↻
-re-reads the folder. With nothing open the canvas is the **shelf**, every
-asset as a live thumbnail: click one to open it. Opening an asset pushes
-the sidebar into it (layers, states, clips; a scene's nodes) and its +
-adds to the asset; **‹** goes back to the assets with the asset still on
-the canvas, lit in the tree. Cmd+W closes the asset and shows the shelf.
+A project is one window in three columns, each with its own header. The
+**navigator** on the left (Cmd+0) has four tabs: the **assets** as a tree,
+with a filter and a **+** at the bottom that adds an asset, a 3D asset, a
+palette, a scene or a 3D scene; the open asset's **outline** (parts,
+states, clips; a scene's nodes), each group with its own +; **search**
+across names; and **source control** (branches, what is uncommitted,
+Review & commit…). With nothing open the middle is the **asset browser**,
+every asset as a live thumbnail: click one to pick it (the inspector
+shows it, and renames it), double-click or press Return to open it.
+Cmd+W closes the asset and shows the browser again.
 
-The **project bar** heads the canvas: the project's name, its branch
-when the folder is in a git repository (click to switch), then the
-**asset** and the **state** as quick switchers (Cmd+Shift+P, Cmd+Shift+S).
-The tools float at the bottom of the canvas. The **inspector** on the
-right (Cmd+Alt+0) shows what is selected, else the asset, else the
-project; a click on empty canvas lets go of everything and brings the
-asset back.
+The middle column's header holds the **project picker** (the project
+over its branch: recent projects, the branches, New branch…) and, dead
+centre, the **activity view**: Saved, Edited, or what Uranus is busy
+with; click it for what happened lately, and for Save and Revert. Under
+it the **path bar**: back and forward (Cmd+[ and Cmd+]), then project ›
+folders › asset › state, every segment a menu of its siblings
+(Cmd+Shift+P and Cmd+Shift+S open the asset's and the state's), then the
+tools. Nothing floats over the canvas; the hint and the zoom are in the
+status bar under it. The **inspector** on the right (Cmd+Alt+0) has four
+tabs: what is selected (else the asset, else the project; a click on
+empty canvas lets go of everything), the **view** (camera, overlays,
+zoom), **history** (the checkpoint, undo, the log) and **Ask**.
 
 ## The editor
 
@@ -45,16 +63,18 @@ into the file beside the curve, so older tools draw the shape. **Deform**
 state's morph, and clips lerp the corners.
 
 Four regions, the way Rive, Spine and Figma lay it out: **structure on
-the left** (the project's files, then the open file's parts as a tree),
-**the canvas in the middle**, **the inspector on the right** (whatever is
-selected), and **the timeline along the bottom** when a clip is chosen.
-States and clips are listed in the left panel, under the layers.
+the left** (the navigator: the project's assets, and the open asset's
+outline of parts, states and clips), **the canvas in the middle** with
+the tools in the path bar above it and the status bar below, **the
+inspector on the right** (whatever is selected), and **the timeline
+along the bottom** when a clip is chosen.
 
-- **Tools**: Select `V`, Rect `R`, Circle `O`, Line `L`, Poly `P`. The
-  digits `1`–`5` still work. `C` is the collision lens.
+- **Tools**: Select `V`, Rect `R`, Circle `O`, Line `L`, Pen `P`, in the
+  path bar. The digits `1`–`5` still work in 2D. `D` is Deform, `C` the
+  collision lens, and the grid button snaps.
 - **Canvas**: the tool is what a click does. Hold `Space` and drag (or
   middle-drag) to pan; scroll pans; `Cmd`+scroll or a pinch zooms about
-  the cursor. `Cmd =` / `Cmd -` zoom, `Cmd 0` is actual size, `Shift 1`
+  the cursor. `Cmd =` / `Cmd -` zoom, `Shift 0` is actual size, `Shift 1`
   fits everything, `Shift 2` fits the selection. Right-click for the
   short list. `Cmd K` for the long one.
 - **Select**: hovering outlines what a click would pick; a selected shape
@@ -75,18 +95,22 @@ States and clips are listed in the left panel, under the layers.
   token, an anchor, or press `Enter` with a part current. New things
   arrive already being renamed.
 
-## Layers (left)
+## Parts and the outline
 
-The parts of the file as a tree: children sit under their parents. Click
+The navigator's Outline tab lists the parts of the file as a tree: children
+sit under their parents, and a parent folds. The + beside Parts adds one. Click
 to make a part current (new shapes land there); the **eye** hides a part
 while you work and the **lock** keeps it out of reach, and neither is
-saved. Right-click a row for rename, pivot, anchor, order and delete.
+saved. Right-click a row for rename, pivot, anchor, order and delete
+(⌫ on a row deletes too).
 File order is paint order; raise and lower a part from the inspector or
 the menu.
 
-## Inspector (right)
+## The inspector
 
-The properties of whatever is selected, as numbers you can type:
+The properties of whatever is selected, as numbers you can type (Return
+or leaving the field commits, ↑ ↓ step, drag an X/Y/Z badge to scrub).
+Sections fold. Its other tabs are the view, history, Ask and this help:
 
 - **Shape**: its fill (a palette token, picked from a grid), its numbers
   (centre and radius, ends and width), raise, lower, to part, delete.
@@ -104,15 +128,16 @@ The properties of whatever is selected, as numbers you can type:
 A shape never holds a colour. It names a **slot** (`skin`, `cloth`), and
 the file's Colours list says what that slot means today: change a colour
 there and every shape using it follows. Click the canvas with nothing
-selected to see the list in the inspector: **+ colour** adds a slot, a
-click on a swatch opens the picker, a double-click on a name renames it
-(shapes follow), × removes it.
+selected to see the list in the inspector: the **+** beside Colours adds
+a slot, a click on a swatch opens the picker, a double-click on a name
+renames it (shapes follow), and the selected colour shows its hex and a
+delete (also in its right-click menu, and on ⌫).
 
 A **palette file** is a `.fart` with colours and no parts: a project's
-shared vocabulary of slots. **Palette** in the sidebar's + makes one (a
+shared vocabulary of slots. **Palette** in the navigator's + makes one (a
 plain name lands in `palettes/`), and opening one shows only its
-swatches. Link a palette file to an art file under **Shared palettes**
-(+ link); its slots then appear under *From shared*, greyed, to paint
+swatches. Link a palette file to an art file with the **+** beside
+**Shared palettes**; its slots then appear under *From shared*, greyed, to paint
 with. The file's own colours win over shared ones, so **override** copies
 a shared slot into the file when one chest wants its own wood. A linked
 palette that cannot be found is marked *missing* and its slots paint
@@ -135,13 +160,13 @@ state or a clip frame to check its work, and validates before applying.
 The transcript shows what it did (read, looked, changed, with a note)
 and what it said. A conversation continues per project; the + starts a
 fresh one. Each turn takes a few seconds and costs what a Claude Code
-turn costs; the panel keeps a running total. On the shelf, with no file
+turn costs; the panel keeps a running total. In the browser, with no file
 open, it can open files and talk about the project. Setup says whether
 Claude Code was found.
 
 ## Setup: agents and loaders
 
-**Setup** (on the launcher, and under ⋯ in the project bar) checks
+**Setup** (Help › Setup…, or Settings, Cmd+,) checks
 what this machine and the open project's repository have in place for
 fastart, and installs what is missing with one click: the Claude Code
 skill in `~/.claude/skills/fastart` (the format in one page, so Claude
@@ -169,7 +194,7 @@ none gets one, `default`, with every part where it was drawn), and
 everything you do happens in whichever state you are looking at: shapes
 are drawn and reshaped in place, even inside a part that the state has
 turned, and the part itself is placed by dragging its ⌖ and turned by
-its lever. **+ state** makes a new state as a copy of the one on the
+its lever. The **+** beside States makes a new state as a copy of the one on the
 canvas; right-click any state to duplicate that one instead. A state
 says which parts show (the checkboxes in Layers), where each sits, and
 in what order (raise and lower in the inspector). The last state cannot
@@ -182,8 +207,9 @@ is paint order, so a lid may layer differently open and closed.
 ## Clips: states in time
 
 A clip is a list of keys, each at a time in seconds, each naming a state.
-**+ clip** (left panel, under the states) makes one with a single key
-at 0. Select a clip and the timeline appears under the canvas: **▶** (or Space) plays, the ruler
+The **+** beside Clips in the outline makes one with a single key
+at 0. Select a clip and its transport appears in the path bar and the
+timeline under the canvas: **▶** (or Space) plays, the ruler
 scrubs, **+ key** drops a key at the playhead, and a key drags along the
 ruler. The selected key's state, its ease (how time approaches it), and
 its time sit to the right. Between keys the parts tween: offset and size
@@ -237,8 +263,8 @@ reads it, one without ignores it.
 
 ## Chains: reaching with IK
 
-Give a part an anchor (a hand, a foot), then **+ chain** in the Chains
-panel: the chain runs from the part's parent to the part and reaches
+Give a part an anchor (a hand, a foot), then the **+** beside IK in
+the inspector: the chain runs from the part's parent to the part and reaches
 with that anchor. **longer** adds the next parent; **bend** says which
 way an elbow should fold when it could go either way. Every chain shows
 a teal ring at its reach point: drag the ring and the chain's
@@ -253,11 +279,11 @@ The Collision button (or C) dims the art and edits the document's
 A line is a capsule (a girth slider when selected); they never draw
 in-game. Esc deselects, X deletes, C flips back.
 
-## Themes
+## Appearance
 
-The ◐ button in the project bar picks a theme: Graphite (the default),
-Midnight, Moss, Plum, Paper (light), and High contrast, or **System** to
-follow the OS between Graphite and Paper. The canvas grid, selection and
+Uranus comes in Light and Dark and follows the OS. The sun/moon button
+at the right of the content header pins the other one; Settings (Cmd+,)
+goes back to following the system. The canvas grid, selection and
 handles follow the panels. The choice is remembered per device, so a
 tablet can wear a different one than the desk.
 
@@ -272,20 +298,34 @@ Cmd+Z undoes; Cmd+Shift+Z (or Cmd+Y) redoes. `?` opens these docs.
 
 ## The panels
 
-Every panel has a draggable edge: the sidebar, the inspector, and the
-Ask panel in either dock. Drag to resize, double-click
-the edge to put it back. Sizes are remembered on this device.
+The navigator and the inspector each have a draggable edge. Drag to
+resize, double-click the edge to put it back. Sizes are remembered on this device.
+Each hides from its own header (Cmd+0, Cmd+Alt+0); hidden, its button
+moves to the content header.
+
+The inspector's **View** tab holds how things are shown rather than what
+they are: the tile size, the sort and whether subfolders are included in
+the asset browser; the zoom, the grid snap and the overlays on a canvas;
+the camera in a 3D view. **History** shows the open asset's checkpoint
+and what Uranus did lately. **Help** (the ? tab, or the `?` key) shows
+the part of this guide that answers what is on screen and what is
+chosen; a ? elsewhere (the launcher, Settings, Ask, source control)
+opens its own topics. The navigator's **search** tab finds assets, parts,
+states, clips and colours by name, and **source control** lists what is
+uncommitted and commits it.
 
 ## Saving is a checkpoint, not a copy
 
 The file on disk always mirrors what you see, written a beat after every
 change, so a game hot-reloading the file shows your experiment live.
-**Save** (Cmd+S) marks the checkpoint; leaving the file any other way —
-closing it, opening another, quitting — rolls the disk back to the last
-checkpoint. The amber dot by the filename means "uncommitted: this rolls
-back unless you Save." The checkpoint also lives beside the file as
-`<name>.fart~`, rewritten at every open and save, so even a crash can't
-lose the last saved state.
+**Save** (Cmd+S) marks the checkpoint: the version **Revert** goes back
+to. Nothing reverts on its own. The dot by the asset's name (in the path
+bar, the navigator and the activity view's "Edited") means it has
+changed since its checkpoint; leaving it then asks once whether to save
+one (Don't save · Cancel · Save), and your edits stay in the file either
+way. The checkpoint lives beside the file as `<name>.fart~`. The
+inspector's History tab shows when each was written, with Undo, Redo,
+Revert and Save.
 
 The studio watches the open file. When another tool writes it (a game's
 build step, Claude in a terminal) and you have nothing pending, the
@@ -297,7 +337,7 @@ studio does not know ride along untouched, load to save.
 
 ## Serve: the tablet workflow
 
-**Serve** (under ⋯ in the project bar) puts this same editor on your network (port 4747)
+**Serve** (in the project picker, and the File menu) puts this same editor on your network (port 4747)
 and shows the URL and a QR code. Scan it and the editor opens in the
 tablet's browser, on the same project. Draw with the pencil; one finger
 draws, two fingers pan and pinch. Every change streams back to disk. No
@@ -334,18 +374,42 @@ shading the slot instead of picking a darker colour.
 
 A file with `"space": "3d"` is a model, not a drawing: mesh, ball and
 rod shapes, three-coordinate points, turns about x, y and z. **3D
-Asset** in the sidebar's + makes one; opening one lands in the model screen,
+Asset** in the navigator's + makes one; opening one lands in the model screen,
 the same four regions with the model turned under a **view**.
 
-- **The view** is a turn laid on the model. Pick front, back, left,
-  right, top or bottom in the toolbar or the inspector, or **drag on
-  nothing (or Alt-drag anywhere) to orbit**. The little axes in the
-  corner say which way the model is turned. Wheel pans, ⌘-wheel zooms,
-  as ever.
+- **The view** is a turn laid on the model. Press `1` for the front,
+  `3` for the right, `7` for the top and `9` for the other side, click
+  X, Y or Z in the status bar to look along that axis, or pick a camera
+  in the inspector's View tab.
+- **Orbit** with the middle button, with two fingers on a trackpad, or
+  with Alt-drag anywhere. The view turns like a
+  turntable about what is chosen, which stays where it is on the canvas,
+  and the horizon stays level; hold ⌘ to tumble freely. Shift with the
+  middle button (or with two fingers), or Space-drag, pans. A mouse wheel
+  or a pinch zooms at the cursor. `F` frames what is chosen.
+  The other digits are the view's too: `4` and `6` turn it a step, `8`
+  and `2` tilt it, `5` fits everything. No digit picks a tool in a 3D
+  view; the tools are on their letters.
+- **Choose several shapes** by dragging a marquee over them from empty
+  canvas, or by Shift-clicking them one at a time. They move, turn, size,
+  duplicate and delete together; the inspector shows the first.
+- **Move, turn and size along the world's axes.** A picked part (or a
+  selected shape) wears three arrows, X Y and Z: drag one to move along
+  that axis whatever the view. A part wears three rings too: drag one to
+  turn about that axis. Or use the keys: `G` moves, `T` turns, `S`
+  sizes, following the pointer; then `X`, `Y` or `Z` holds an axis and a
+  typed number is the amount (`G` `Y` `2.5`, `T` `Z` `90`, `S` `2`).
+  Return or a click keeps it, Esc or a right click puts it back, Shift
+  snaps. The pivot's ring still moves a part freely in the view plane and
+  its lever still turns it about the view.
+- **With Deform on**, moving, turning and sizing a mesh (by drag, by
+  handle or by key) reshapes it in this state only, like a corner drag
+  does. A ball or a rod cannot be deformed; Uranus says so rather than
+  changing every state.
 - **The tools make solids.** Rect (R) drags a **box**, Circle (O) a
   **ball**, Line (L) a **rod**, Poly (P) clicks a profile and closes it
   into a **prism**. Each is drawn in the view plane and is as deep as the
-  **depth** field in the toolbar, centred on the depth of what is
+  **depth** field in the path bar, centred on the depth of what is
   selected (else the part's pivot). So the way to model a pistol is to
   pick the left view, click its profile, close it, then turn to the top
   and drag the barrel's octagon... or just its box.
@@ -383,7 +447,7 @@ the same four regions with the model turned under a **view**.
   `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with
   its animations for any other engine. Chains work in 3D with a `pole`
   in place of `bend`; the model screen does not show them yet.
-- **Deform** (D) in the floating tools makes corner drags reshape the
+- **Deform** (D) in the path bar makes corner drags reshape the
   part *in the current state only*: a morph (format 1.6) the clips lerp
   between keys. The part's row says **morph**, the inspector counts the
   reshaped meshes and has **reset**. Off, corner drags edit the base
@@ -405,8 +469,16 @@ the same four regions with the model turned under a **view**.
 
 A `.shart` file (a Scene Hierarchy of Art, dot-s-h-art) composes the
 project's files into a scene and draws nothing of its own. **Scene** or
-**3D Scene** in the sidebar's + makes one; opening one lands in the
+**3D Scene** in the navigator's + makes one; opening one lands in the
 scene screen.
+
+Nodes work like parts do in the model view. A chosen node wears the X, Y
+and Z arrows and three rings; `G`, `T` and `S` move, turn and size it,
+with `X` `Y` `Z` to hold an axis and digits for the amount. Drag a
+marquee from empty canvas, or Shift-click, to choose several: they move
+together, and each turns and sizes about its own origin. In a 3D scene
+the middle button (or two fingers, or Alt-drag) orbits about what is
+chosen and `F` frames it; a 2D scene has the same handles in its plane.
 
 - **Nodes** on the left are the tree: an **instance** places a file of
   the project, a **scene** places another scene whole, a **group** is a
@@ -445,9 +517,10 @@ for it here. In a browser (Serve) there is nothing to update.
 ## Files a tool refused
 
 A file that is not JSON, carries a version the studio does not know, or
-breaks the schema will not open; the shelf says why. A file with softer
+breaks the schema will not open; a notice says why. A file with softer
 trouble — a token nothing supplies, a state naming a part that is gone —
-opens anyway, renders the trouble in loud magenta, and lists it in the
-toolbar so you can fix it. The format spec (next page) has the full list
+opens anyway, renders the trouble in loud magenta, and counts it at the
+right of the content header (click the count for the list) so you can
+fix it. The format spec (in the docs) has the full list
 of what is checked, and `fart validate` checks a whole folder from the
 command line.

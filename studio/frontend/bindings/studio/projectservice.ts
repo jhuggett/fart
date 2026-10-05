@@ -53,6 +53,13 @@ export function Checkout(): $CancellablePromise<string> {
 }
 
 /**
+ * CloseWindow is the launcher's close light.
+ */
+export function CloseWindow(): $CancellablePromise<void> {
+    return $Call.ByID(1832720096);
+}
+
+/**
  * DefaultRoot is the terminal's directory when the studio was launched
  * from one; launched from the Finder (cwd / or the home folder) it is "",
  * and the welcome screen takes over.
@@ -84,8 +91,44 @@ export function ForgetRecent(root: string): $CancellablePromise<string[] | null>
     return $Call.ByID(1309726106, root);
 }
 
+/**
+ * Fullscreen says whether the window is full screen right now.
+ */
+export function Fullscreen(): $CancellablePromise<boolean> {
+    return $Call.ByID(2439434473);
+}
+
+/**
+ * GitClone clones url into <parent>/<name of the repository> and answers
+ * with the new folder. Git's progress is relayed on "git" as it comes.
+ */
+export function GitClone(url: string, parent: string): $CancellablePromise<string> {
+    return $Call.ByID(2042867317, url, parent);
+}
+
+/**
+ * GitCommit stages everything under the project and commits it.
+ */
+export function GitCommit(dir: string, message: string): $CancellablePromise<void> {
+    return $Call.ByID(3204675157, dir, message);
+}
+
+/**
+ * GitInit makes the project a repository, if it is not one already.
+ */
+export function GitInit(dir: string): $CancellablePromise<void> {
+    return $Call.ByID(2872777578, dir);
+}
+
 export function GitRoot(dir: string): $CancellablePromise<string> {
     return $Call.ByID(151827472, dir);
+}
+
+/**
+ * GitStatus lists what is uncommitted under the project.
+ */
+export function GitStatus(dir: string): $CancellablePromise<$models.GitChange[] | null> {
+    return $Call.ByID(46096378, dir);
 }
 
 export function Home(): $CancellablePromise<string> {
@@ -94,6 +137,14 @@ export function Home(): $CancellablePromise<string> {
 
 export function IsDir(path: string): $CancellablePromise<boolean> {
     return $Call.ByID(2956617335, path);
+}
+
+/**
+ * Kinds is every file of the project and what it is ("2D", "3D",
+ * "palette", "scene", "3D scene"), without parsing any of them.
+ */
+export function Kinds(root: string): $CancellablePromise<{ [_ in string]?: $models.FileInfo } | null> {
+    return $Call.ByID(1108223755, root);
 }
 
 export function ListFiles(root: string): $CancellablePromise<string[] | null> {
@@ -108,12 +159,28 @@ export function Log(msg: string): $CancellablePromise<void> {
 }
 
 /**
+ * NewBranch makes a branch from where the project is and switches to it.
+ */
+export function NewBranch(dir: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(3014102262, dir, name);
+}
+
+/**
  * NewProject makes <parent>/<name> with an assets folder and a .gitignore
  * for the checkpoints, and returns the new root. It refuses to touch a
  * folder that already exists.
  */
 export function NewProject(parent: string, name: string): $CancellablePromise<string> {
     return $Call.ByID(1830481623, parent, name);
+}
+
+/**
+ * PickFile shows the platform's open dialog inside the project and answers
+ * with the file's path from the project's root. "" means cancelled; a file
+ * outside the project is refused, since a project only names its own files.
+ */
+export function PickFile(root: string, dir: string, title: string, button: string, exts: string[] | null): $CancellablePromise<string> {
+    return $Call.ByID(1032951431, root, dir, title, button, exts);
 }
 
 /**
@@ -124,10 +191,25 @@ export function PickFolder(): $CancellablePromise<string> {
 }
 
 /**
+ * PickFolderAt is the folder dialog with its own words, for a new project's
+ * home and a clone's destination. "" means cancelled.
+ */
+export function PickFolderAt(title: string, button: string): $CancellablePromise<string> {
+    return $Call.ByID(1349797788, title, button);
+}
+
+/**
  * PickParentFolder shows the folder dialog for a new project's home. "" means cancelled.
  */
 export function PickParentFolder(): $CancellablePromise<string> {
     return $Call.ByID(1601152289);
+}
+
+/**
+ * PopupMenu shows the platform's context menu at a point of the page.
+ */
+export function PopupMenu(items: $models.PopupItem[] | null, x: number, y: number): $CancellablePromise<void> {
+    return $Call.ByID(4289174141, items, x, y);
 }
 
 export function PushRecent(root: string): $CancellablePromise<string[] | null> {
@@ -235,8 +317,8 @@ export function Version(): $CancellablePromise<string> {
 }
 
 /**
- * WindowLauncher shrinks the window to the launcher and centres it; the
- * size it had is kept for WindowWork.
+ * WindowLauncher makes the window the launcher: small, fixed, centred.
+ * The size it had is kept for WindowWork.
  */
 export function WindowLauncher(): $CancellablePromise<void> {
     return $Call.ByID(2755277972);

@@ -1,4 +1,5 @@
 import { endGesture } from "../state/editor.ts";
+import { Property } from "./ur.tsx";
 
 export function Slider(props: {
 	label: string;
@@ -6,14 +7,16 @@ export function Slider(props: {
 	min: number;
 	max: number;
 	step?: number;
+	title?: string;
 	show?: (v: number) => string;
 	onInput: (v: number) => void;
 }) {
 	return (
-		<label class="slider">
-			<span>{props.label}</span>
+		<Property label={props.label} title={props.title}>
 			<input
+				class="ed-range"
 				type="range"
+				aria-label={props.label}
 				min={props.min}
 				max={props.max}
 				step={props.step ?? 1}
@@ -23,7 +26,7 @@ export function Slider(props: {
 				onPointerUp={endGesture}
 				onKeyUp={endGesture}
 			/>
-			<span class="v">{props.show ? props.show(props.value) : Math.round(props.value)}</span>
-		</label>
+			<span class="ed-range-val">{props.show ? props.show(props.value) : Math.round(props.value)}</span>
+		</Property>
 	);
 }

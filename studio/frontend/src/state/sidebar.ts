@@ -1,8 +1,9 @@
-// The sidebar: a stack two deep. At its root, the project's assets as a
-// tree of folders and files; choosing one pushes the asset's own view
-// (layers, states, clips, or a scene's nodes) with a way back. Open or
-// closed persists per device, so does the inspector; expanded folders
-// last the session, and the open asset's folders open themselves.
+// The navigator and the inspector: which column is open, and which tab
+// each shows. The navigator's tabs are the project's assets, the open
+// asset's outline (parts, states, clips, or a scene's nodes), search and
+// source control; the inspector's are the selection, the view, history
+// and Ask. Open or closed persists per device; expanded folders last the
+// session, and the open asset's folders open themselves.
 
 import { signal, effect } from "@preact/signals";
 import { project } from "./project.ts";
@@ -29,13 +30,19 @@ function remember(key: string, open: boolean) {
 	}
 }
 
-export type SidebarView = "assets" | "asset";
+/** "asset" is the Outline tab: the open asset's insides */
+export type SidebarView = "assets" | "asset" | "search" | "git";
+export type InspectorTab = "inspector" | "view" | "history" | "ask" | "help";
 
 export const sidebar = {
 	open: signal<boolean>(saved(KEY)),
 	inspector: signal<boolean>(saved(KEY_INSPECTOR)),
-	/** the assets list, or the open asset's insides */
+	/** the navigator's tab */
 	view: signal<SidebarView>("assets"),
+	/** the inspector's tab */
+	tab: signal<InspectorTab>("inspector"),
+	/** which column the keys are in: the selection of the other dims */
+	focus: signal<"nav" | "content" | "insp">("content"),
 	expanded: signal<Set<string>>(new Set()),
 };
 
@@ -47,6 +54,16 @@ export function toggleSidebar() {
 export function toggleInspector() {
 	sidebar.inspector.value = !sidebar.inspector.value;
 	remember(KEY_INSPECTOR, sidebar.inspector.value);
+}
+
+export function showTab(v: SidebarView) {
+	sidebar.view.value = v;
+	if (!sidebar.open.value) toggleSidebar();
+}
+
+export function showInspectorTab(t: InspectorTab) {
+	sidebar.tab.value = t;
+	if (!sidebar.inspector.value) toggleInspector();
 }
 
 /** Into the open asset. */

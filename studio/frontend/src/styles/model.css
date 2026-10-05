@@ -1,0 +1,135 @@
+/* The model screen's own styles. Tokens only (tokens.css); components are ur.css. */
+
+/* ------------------------------------------------------------ outline */
+/* a part's membership of the state on show: a check before its icon */
+.model-member {
+	display: inline-flex;
+	flex: none;
+}
+.ur-row.selected:not(.inactive) .model-member .ur-checkbox-box {
+	border-color: var(--on-accent);
+}
+
+/* ------------------------------------------------------------ inspector */
+.model-grow {
+	flex: 1;
+	min-width: 0;
+}
+
+/* the fill: a swatch and a name, dressed as a select; its list drops below */
+.model-fill {
+	flex: 1;
+	min-width: 0;
+}
+.model-fill-btn {
+	all: unset;
+	box-sizing: border-box;
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--control-height);
+	padding: 0 5px 0 4px;
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--control-edge);
+	background: var(--bg-control);
+	box-shadow: var(--shadow-control);
+	font: 400 12px/20px var(--font-sans);
+	color: var(--text-primary);
+	cursor: default;
+}
+.model-fill-btn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+.model-fill-btn .ur-icon {
+	flex: none;
+	color: var(--text-secondary);
+}
+.model-fill-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* a shape that names a colour the palette does not have */
+.model-swatch-missing {
+	background: var(--danger);
+}
+.model-fill-pop {
+	width: 100%;
+	min-width: 160px;
+	max-height: 248px;
+	overflow: auto;
+	padding: var(--space-1) var(--space-3);
+}
+
+/* ------------------------------------------------------------ timeline */
+.model-timeline {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 40px;
+	padding: 0 var(--space-3);
+	border-top: 1px solid var(--separator);
+	font: 400 12px/15px var(--font-sans);
+	color: var(--text-primary);
+}
+.model-scrub {
+	flex: 1;
+	min-width: 80px;
+	margin: 0;
+	accent-color: var(--accent-fill);
+}
+.model-time {
+	flex: none;
+	min-width: 48px;
+	text-align: right;
+	font: 400 12px/16px var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+.model-keys {
+	min-width: 0;
+	max-width: 40%;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.model-keys .ur-seg button {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.model-timeline > .ur-btn,
+.model-timeline > .ur-checkbox,
+.model-timeline > .ur-field,
+.model-timeline > .ur-select {
+	flex: none;
+}
+.model-timeline-sep {
+	flex: none;
+	width: 1px;
+	height: 16px;
+	background: var(--separator);
+}
+
+/* ------------------------------------------------------------ the Project… sheet */
+.model-views {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-2) var(--space-3);
+}
+.model-outline {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.model-outline .ur-select {
+	flex: 1;
+}
+.model-outline .ur-select:has(select:disabled) {
+	opacity: 0.5;
+}

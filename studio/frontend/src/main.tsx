@@ -1,7 +1,19 @@
 import { render } from "preact";
+import "./tokens.css";
+import "./ur.css";
 import "./theme.css";
+import "./app.css";
+import "./styles/editor.css";
+import "./styles/model.css";
+import "./styles/scene.css";
 import { App } from "./App.tsx";
-import { boot, project } from "./state/project.ts";
+import { boot, project, openDoc, goBrowse, thumbLog } from "./state/project.ts";
+import { nav } from "./state/nav.ts";
+import { glStats } from "./canvas/gl3.ts";
+import { uncovered, dangling, contextNow, TOPICS, CATEGORIES, searchHelp } from "./state/help.ts";
+import { chosenBounds } from "./canvas/model3.ts";
+import { modal3, handles as gizmoHandles } from "./canvas/gizmo3.ts";
+import { viewXf3, xf3ApplyDir } from "@fastart/core";
 import { initTheme } from "./state/theme.ts";
 import { applyLayout } from "./state/layout.ts";
 
@@ -13,10 +25,10 @@ void boot();
 // A probe for scripts and the console: the store, the view, and the
 // screen mapping. Read-only in spirit; nothing in the app uses it.
 import { ed, applyExternalDoc, revertToCheckpoint, flushNow } from "./state/editor.ts";
-import { md, projectViews } from "./state/model.ts";
-import { sc } from "./state/scene.ts";
+import { md, projectViews, selected } from "./state/model.ts";
+import { sc, selectedNodes } from "./state/scene.ts";
 import { sidebar } from "./state/sidebar.ts";
 import { update } from "./state/update.ts";
 import { view, toScreen, toWorld } from "./canvas/view.ts";
 import { frameW, partXf, worldPivot, poseLever, chainGrabs, worldHandles } from "./canvas/interact.ts";
-(globalThis as { fastart?: unknown }).fastart = { ed, md, sc, sidebar, update, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, worldHandles, applyExternalDoc, revertToCheckpoint, flushNow };
+(globalThis as { fastart?: unknown }).fastart = { ed, md, sc, sidebar, nav, openDoc, goBrowse, thumbLog, chosenBounds, glStats, help: { uncovered, dangling, contextNow, TOPICS, CATEGORIES, searchHelp }, selected, selectedNodes, modal3, gizmoHandles, upOnScreen: () => xf3ApplyDir(viewXf3(md.turn.value), [0, 1, 0]), update, projectViews, project, view, toScreen, toWorld, frameW, partXf, worldPivot, poseLever, chainGrabs, worldHandles, applyExternalDoc, revertToCheckpoint, flushNow };

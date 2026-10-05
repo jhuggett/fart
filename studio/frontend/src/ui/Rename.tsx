@@ -13,6 +13,9 @@ export function InlineName(props: { value: string; onCommit: (name: string) => v
 	return (
 		<input
 			class={`rename ${props.class ?? ""}`}
+			spellcheck={false}
+			autocomplete="off"
+			aria-label="Name"
 			defaultValue={props.value}
 			ref={(el) => {
 				if (props.focus === false) return;

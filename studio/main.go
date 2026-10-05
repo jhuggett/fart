@@ -31,6 +31,9 @@ func init() {
 	application.RegisterEvent[ChatEvent]("chat")
 	application.RegisterEvent[ToolCall]("tool")
 	application.RegisterEvent[UpdateProgress]("update")
+	application.RegisterEvent[bool]("fullscreen")
+	application.RegisterEvent[string]("popup")
+	application.RegisterEvent[GitProgress]("git")
 }
 
 func main() {
@@ -107,18 +110,44 @@ func main() {
 
 	proj.queueArgs(os.Args[1:], cwd)
 
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	// with nothing to open the window is the launcher: small, fixed, centred.
+	// With a project on the way it opens at its working size at once.
+	opts := application.WebviewWindowOptions{
 		Title:            "Uranus",
-		Width:            1360,
-		Height:           860,
-		MinWidth:         640,
-		MinHeight:        420,
-		BackgroundColour: application.NewRGB(18, 18, 19),
+		Width:            launcherW,
+		Height:           launcherH,
+		MinWidth:         launcherW,
+		MinHeight:        launcherH,
+		DisableResize:    true,
+		InitialPosition:  application.WindowCentered,
+		BackgroundColour: application.NewRGB(38, 36, 34),
 		EnableFileDrop:   true,
 		URL:              "/",
-	})
+		// no title bar: the traffic lights sit inline, in the navigator's
+		// header (the page leaves room for them, and takes it back in
+		// full screen, where they hide)
+		Mac: application.MacWindow{
+			TitleBar:                application.MacTitleBarHiddenInsetUnified,
+			InvisibleTitleBarHeight: 0,
+		},
+	}
+	if proj.pendingOpen() || proj.DefaultRoot() != "" {
+		opts.Width, opts.Height = workW, workH
+		opts.MinWidth, opts.MinHeight = workMinW, workMinH
+		opts.DisableResize = false
+		proj.working = true
+	}
+	win := app.Window.NewWithOptions(opts)
 	proj.win = win
 	app.Menu.Set(buildMenu(app))
+	// the lights hide in full screen: the page closes the gap it left for them
+	full := func(on bool) func(*application.WindowEvent) {
+		return func(*application.WindowEvent) { app.Event.Emit("fullscreen", on) }
+	}
+	win.OnWindowEvent(events.Common.WindowFullscreen, full(true))
+	win.OnWindowEvent(events.Common.WindowUnFullscreen, full(false))
+	win.OnWindowEvent(events.Mac.WindowWillEnterFullScreen, full(true))
+	win.OnWindowEvent(events.Mac.WindowWillExitFullScreen, full(false))
 	// a folder or a .fart dropped on the window opens, like the Finder's
 	win.OnWindowEvent(events.Common.WindowFilesDropped, func(ev *application.WindowEvent) {
 		for _, f := range ev.Context().DroppedFiles() {
