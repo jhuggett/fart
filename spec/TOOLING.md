@@ -3,8 +3,13 @@
 Research notes (October 2026) on making an agent's work with `.fart`
 files cheaper and better: fewer tokens, fewer turns, less rewriting. The
 measurements are of this repository's own files with Anthropic's
-tokenizer; the field notes are what others have found. Nothing here is
-built yet; the plan at the end is ranked.
+tokenizer; the field notes are what others have found. **Built** (October
+2026): items 1–8 of the plan below, as `fart fmt`, `fart outline`,
+`fart tokens`, the `get_document` details, `apply_patch`, the verbs
+`pose`, `morph`, `clip`, `make`, `render` sheets, `@fastart/make`,
+Regenerate in Uranus, the split skill, and `fart lint`/`fart new` with
+the direction file (`DIRECTION.md`). The evaluation set (item 8) is
+`evals/` and runs through Claude Code by hand.
 
 ## What the tokens are spent on
 
