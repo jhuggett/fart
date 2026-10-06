@@ -133,3 +133,38 @@
 .model-outline .ur-select:has(select:disabled) {
 	opacity: 0.5;
 }
+
+/* ------------------------------------------------------------ the mesh section */
+/* the operation just done, over its numbers */
+.model-op-head {
+	margin: var(--space-2) 0 var(--space-1);
+	padding-top: var(--space-2);
+	border-top: 1px solid var(--separator);
+	color: var(--text-secondary);
+}
+.model-op-failed {
+	color: var(--danger);
+}
+
+/* ------------------------------------------------------------ modifiers */
+/* one modifier of the stack: its name and its controls on a row, its fields under it */
+.model-mod {
+	padding: var(--space-1) 0 var(--space-2);
+	border-top: 1px solid var(--separator);
+}
+.model-mod:first-of-type {
+	border-top: 0;
+}
+.model-mod-head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-height: var(--control-height);
+	margin-bottom: var(--space-1);
+	color: var(--text-secondary);
+}
+/* a colour that is not set: the faces keep what they had */
+.model-swatch-none {
+	background: transparent;
+	border: 1px dashed var(--control-edge);
+}

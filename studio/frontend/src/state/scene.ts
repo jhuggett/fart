@@ -31,6 +31,7 @@ import { project } from "./project.ts";
 import { turned, opposite } from "../canvas/orbit.ts";
 import { dirname, joinRel, basename } from "./paths.ts";
 import { loadPatterns, type TexturePattern } from "./textures.ts";
+import { sidecarOf, type Compiled } from "./sidecar.ts";
 
 export const sc = {
 	scene: signal<Scene>({ version: 1 }),
@@ -51,6 +52,8 @@ export const sc = {
 	playing: signal(false),
 	/** textures of the placed documents, by the document's project path */
 	patterns: signal<Map<string, Map<string, TexturePattern>>>(new Map()),
+	/** the placed 3D documents' compiled sidecars (1.8), by the document's project path: drawn in place of generating */
+	compiled: signal<Map<string, Compiled>>(new Map()),
 	issues: signal<Issue[]>([]),
 	dirty: signal(false),
 	written: signal(0),
@@ -306,7 +309,14 @@ export async function reload() {
 	if (!rel) return;
 	const r = root();
 	const dir = dirname(rel);
-	const read = (p: string) => shell.readFile(r, joinRel(dir, p));
+	// the text of every file read, by its project path: a placed model's sidecar is of those very bytes
+	const texts = new Map<string, string>();
+	const read = async (p: string) => {
+		const at = joinRel(dir, p);
+		const t = await shell.readFile(r, at);
+		if (t !== null && at.endsWith(".fart")) texts.set(at, t);
+		return t;
+	};
 	const loaded = await loadScene(sc.scene.value, read, "", [], basename(rel));
 	if (sc.path.value !== rel) return;
 	const report = validateScene(sc.scene.value, { refs: refInfo(loaded) });
@@ -321,9 +331,29 @@ export async function reload() {
 		}
 	};
 	await collect(loaded);
+	// a placed model is not being edited here: it is drawn from its sidecar, built first where it is missing or stale
+	const compiled = new Map<string, Compiled>();
+	if (sc.scene.value.space === "3d") {
+		const models: string[] = [];
+		const gather = (ls: LoadedScene) => {
+			for (const [ref, lr] of ls.refs) {
+				const p = joinRel(dir, ls.dir + ref);
+				if (lr?.kind === "fart" && (lr.doc as { space?: string }).space === "3d" && texts.has(p) && !models.includes(p)) models.push(p);
+				else if (lr?.kind === "shart") gather(lr.scene);
+			}
+		};
+		gather(loaded);
+		await Promise.all(
+			models.map(async (p) => {
+				const c = await sidecarOf(r, p, texts.get(p)!);
+				if (c) compiled.set(p, c);
+			}),
+		);
+	}
 	if (sc.path.value !== rel) return;
 	batch(() => {
 		sc.loaded.value = loaded;
+		sc.compiled.value = compiled;
 		sc.patterns.value = pats;
 		sc.issues.value = [...report.errors, ...report.warnings];
 		sc.rev.value++;

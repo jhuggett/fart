@@ -6,7 +6,8 @@
 // Codes are the contract (spec/examples/manifest.json lists them); every
 // loader that refuses a file names the same code.
 
-import { FORMAT_VERSION } from "./types.ts";
+import { FORMAT_VERSION, type SweepShape } from "./types.ts";
+import { sweepMesh } from "./solids.ts";
 
 export type ErrorCode =
 	| "json"
@@ -36,7 +37,12 @@ export type ErrorCode =
 	| "dup.texture"
 	| "morph"
 	| "curve"
-	| "crease";
+	| "crease"
+	| "paint"
+	| "shades"
+	| "skin"
+	| "mod"
+	| "pipe";
 export type WarningCode = "unknown" | "reserved" | "unresolved";
 
 export interface Issue {
@@ -68,7 +74,14 @@ const KINDS = ["circle", "line", "poly", "path"];
 const KINDS3 = ["mesh", "ball", "rod", "sweep"];
 const COLLISION_KINDS3 = ["mesh", "ball", "rod", "box"];
 const SMOOTH_FIELDS = ["normals", "angle", "smooth", "creases", "bake"];
-const SWEEP_FIELDS = ["kind", "color", "shade", "op", "axis", "profile", "segments", "from", "to"];
+const SWEEP_FIELDS = ["kind", "color", "shade", "op", "axis", "profile", "segments", "from", "to", "path", "radius", "radii", "caps", "closed"];
+// 1.8: paint on meshes and sweeps, modifiers on both, shades where there are points
+const PAINT_FIELDS = ["colors", "paint", "mods"];
+const KNOWN_MOD: Record<string, string[]> = {
+	mirror: ["op", "axis", "merge"],
+	solidify: ["op", "thick", "offset", "inner", "rim"],
+	crease: ["op", "angle", "value"],
+};
 const RESERVED_KINDS = ["ring", "path"];
 const SPACES = ["2d", "3d"];
 // "resolved" is a loader's palette cache that older writers leaked into files; ignored, never meant
@@ -264,8 +277,137 @@ function checkPath(ctx: Ctx, sh: Obj, path: string) {
 	}
 }
 
-/** 1.7: how a mesh (or a sweep) is lit and smoothed: normals, angle, smooth levels, creases over n points, a bake. */
-function checkSmoothFields(ctx: Ctx, sh: Obj, path: string, n: number, edges: Set<string> | null) {
+/**
+ * 1.8: `colors` and `paint` over `faces` faces (unknown when negative),
+ * and the paint indices the mods name. Returns how many colours the shape
+ * has, for whatever else indexes them.
+ */
+function checkPaint(ctx: Ctx, sh: Obj, path: string, faces: number): number {
+	let nc = 0;
+	if ("colors" in sh && ctx.array(sh.colors, `${path}/colors`)) {
+		sh.colors.forEach((c, i) => ctx.name(c, `${path}/colors/${i}`));
+		nc = sh.colors.length;
+	}
+	if ("paint" in sh && ctx.array(sh.paint, `${path}/paint`)) {
+		const ints = sh.paint.every((v, i) => {
+			if (Number.isInteger(v) && (v as number) >= 0) return true;
+			ctx.err("schema", `${path}/paint/${i}`, "expected a non-negative integer");
+			return false;
+		});
+		if (!("colors" in sh)) ctx.err("paint", `${path}/paint`, "paint indexes colors, and the shape has none");
+		else if (ints) sh.paint.forEach((v, i) => {
+			if ((v as number) > nc) ctx.err("paint", `${path}/paint/${i}`, `paint ${v} is past the last colour (${nc}): 0 is the shape's color, n is colors[n - 1]`);
+		});
+		if (faces >= 0 && sh.paint.length !== faces) ctx.err("paint", `${path}/paint`, `paint has one entry per face: ${sh.paint.length} for ${faces} faces`);
+	}
+	return nc;
+}
+
+/** 1.9: a skin over `n` points (unknown when negative): joints, and per point one to four [joint, weight] pairs adding up to 1. Whether the joints are parts is checked with the document. */
+function checkSkin(ctx: Ctx, sh: Record<string, unknown>, path: string, n: number): void {
+	if (!("skin" in sh)) return;
+	const skin = sh.skin;
+	if (!ctx.object(skin, `${path}/skin`)) return;
+	if (Array.isArray(sh.mods) && sh.mods.length) ctx.err("skin", `${path}/skin`, "a mesh with mods has no skin: weights are not carried through a modifier");
+	if (typeof sh.smooth === "number" && sh.smooth > 0) ctx.err("skin", `${path}/skin`, "a mesh with smooth levels has no skin: weights are not carried through subdivision");
+	if ("host" in skin && typeof skin.host !== "boolean") ctx.err("schema", `${path}/skin/host`, "host is true or false");
+	let nj = -1;
+	if (ctx.array(skin.joints, `${path}/skin/joints`)) {
+		nj = skin.joints.length;
+		if (nj === 0) ctx.err("skin", `${path}/skin/joints`, "a skin has at least one joint");
+		skin.joints.forEach((j, i) => {
+			if (typeof j !== "string" || j === "") ctx.err("schema", `${path}/skin/joints/${i}`, "a joint is a part's name");
+		});
+	}
+	if (!ctx.array(skin.weights, `${path}/skin/weights`)) return;
+	if (n >= 0 && skin.weights.length !== n) ctx.err("skin", `${path}/skin/weights`, `weights are one entry per point: ${skin.weights.length} for ${n} points`);
+	skin.weights.forEach((entry, i) => {
+		const at = `${path}/skin/weights/${i}`;
+		if (!Array.isArray(entry) || entry.length < 2 || entry.length > 8 || entry.length % 2 !== 0 || entry.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
+			ctx.err("skin", at, "an entry is one to four pairs of [joint, weight]");
+			return;
+		}
+		const seen = new Set<number>();
+		let sum = 0;
+		for (let k = 0; k < entry.length; k += 2) {
+			const [j, w] = [entry[k] as number, entry[k + 1] as number];
+			if (!Number.isInteger(j) || j < 0 || (nj >= 0 && j >= nj)) ctx.err("skin", at, `${j} is not a joint of the skin`);
+			else if (seen.has(j)) ctx.err("skin", at, `joint ${j} twice in one entry`);
+			seen.add(j);
+			if (!(w > 0)) ctx.err("skin", at, "a weight is above 0");
+			sum += w;
+		}
+		if (Math.abs(sum - 1) > 0.01) ctx.err("skin", at, `a point's weights add up to 1: these add up to ${Math.round(sum * 1000) / 1000}`);
+	});
+}
+
+/** 1.8: the modifiers on a cage, in order; `nc` is how many colours a paint index may reach. */
+function checkMods(ctx: Ctx, sh: Obj, path: string, nc: number) {
+	if (!("mods" in sh) || !ctx.array(sh.mods, `${path}/mods`)) return;
+	sh.mods.forEach((m, i) => {
+		const mp = `${path}/mods/${i}`;
+		if (!ctx.object(m, mp)) return;
+		if (typeof m.op !== "string") {
+			ctx.err("schema", `${mp}/op`, "a mod names its op");
+			return;
+		}
+		switch (m.op) {
+			case "mirror":
+				if (m.axis !== "x" && m.axis !== "y" && m.axis !== "z") ctx.err("schema", `${mp}/axis`, "axis is x, y or z");
+				if ("merge" in m) ctx.number(m.merge, `${mp}/merge`, 0);
+				break;
+			case "solidify":
+				ctx.number(m.thick, `${mp}/thick`, 0);
+				if ("offset" in m && !(isNum(m.offset) && m.offset >= -1 && m.offset <= 1)) ctx.err("schema", `${mp}/offset`, "offset is a number from -1 (inward) to 1 (outward)");
+				for (const k of ["inner", "rim"] as const) {
+					if (!(k in m)) continue;
+					if (!(Number.isInteger(m[k]) && (m[k] as number) >= 0)) ctx.err("schema", `${mp}/${k}`, "expected a non-negative integer");
+					else if ((m[k] as number) > nc) ctx.err("paint", `${mp}/${k}`, `paint ${m[k]} is past the last colour (${nc})`);
+				}
+				break;
+			case "crease":
+				if ("angle" in m && !(isNum(m.angle) && m.angle >= 0 && m.angle <= 180)) ctx.err("schema", `${mp}/angle`, "angle is degrees, 0 to 180");
+				if ("value" in m && ctx.number(m.value, `${mp}/value`) && ((m.value as number) < 0 || (m.value as number) > 1)) ctx.err("crease", `${mp}/value`, `a crease is in 0–1; got ${m.value}`);
+				break;
+			default:
+				ctx.err("mod", `${mp}/op`, `"${m.op}" is not a modifier this version has (mirror, solidify, crease)`);
+				return;
+		}
+		ctx.unknown(m, KNOWN_MOD[m.op], [], mp);
+	});
+}
+
+/** 1.8: a pipe: a 3D path body, a radius and one factor per path point, an optional closed section. */
+function checkPipe(ctx: Ctx, sh: Obj, path: string) {
+	let n = -1;
+	if (ctx.object(sh.path, `${path}/path`)) {
+		const body = sh.path;
+		const bp = `${path}/path`;
+		if (ctx.array(body.points, `${bp}/points`)) {
+			const ok = body.points.every((p, i) => ctx.vec3(p, `${bp}/points/${i}`));
+			if (body.points.length < 2) ctx.err("schema", `${bp}/points`, "a path needs at least two points");
+			else if (ok) n = body.points.length;
+		}
+		for (const k of ["in", "out"] as const) {
+			if (!(k in body) || !ctx.array(body[k], `${bp}/${k}`)) continue;
+			(body[k] as unknown[]).forEach((v, i) => ctx.vec3(v, `${bp}/${k}/${i}`));
+			if (n >= 0 && (body[k] as unknown[]).length !== n) ctx.err("curve", `${bp}/${k}`, `${k} has one handle per point: ${(body[k] as unknown[]).length} for ${n} points`);
+		}
+		ctx.unknown(body, ["points", "in", "out"], [], bp);
+	}
+	if ("closed" in sh && typeof sh.closed !== "boolean") ctx.err("schema", `${path}/closed`, "expected true or false");
+	if ("caps" in sh && typeof sh.caps !== "boolean") ctx.err("schema", `${path}/caps`, "expected true or false");
+	if (sh.closed === true && n >= 0 && n < 3) ctx.err("pipe", `${path}/path/points`, "a closed pipe needs at least three path points");
+	if ("radius" in sh) ctx.number(sh.radius, `${path}/radius`, 0);
+	if ("radii" in sh && ctx.array(sh.radii, `${path}/radii`)) {
+		sh.radii.forEach((v, i) => ctx.number(v, `${path}/radii/${i}`, 0));
+		if (n >= 0 && sh.radii.length !== n) ctx.err("pipe", `${path}/radii`, `radii are one per path point: ${sh.radii.length} for ${n} points`);
+	}
+	if ("profile" in sh && ctx.object(sh.profile, `${path}/profile`)) checkPath(ctx, { ...sh.profile, closed: true }, `${path}/profile`);
+}
+
+/** 1.7: how a mesh (or a sweep) is lit and smoothed: normals, angle, smooth levels, creases over n points, a bake (1.8: with paint over `nc` colours, and shades). */
+function checkSmoothFields(ctx: Ctx, sh: Obj, path: string, n: number, edges: Set<string> | null, nc = 0) {
 	if ("normals" in sh && sh.normals !== "flat" && sh.normals !== "smooth") ctx.err("schema", `${path}/normals`, "normals is flat or smooth");
 	if ("angle" in sh) ctx.number(sh.angle, `${path}/angle`, 0);
 	if ("smooth" in sh && !(Number.isInteger(sh.smooth) && (sh.smooth as number) >= 0)) ctx.err("schema", `${path}/smooth`, "smooth is a whole number of subdivision levels, 0 or more");
@@ -299,6 +441,15 @@ function checkSmoothFields(ctx: Ctx, sh: Obj, path: string, n: number, edges: Se
 		}
 		if ("tris" in b) checkTris(ctx, b.tris, `${path}/bake/tris`, bn);
 		if ("of" in b && typeof b.of !== "string") ctx.err("schema", `${path}/bake/of`, "of is the cage's hash, a string");
+		if ("paint" in b && ctx.array(b.paint, `${path}/bake/paint`)) {
+			if (!b.paint.every((v) => Number.isInteger(v) && (v as number) >= 0)) ctx.err("schema", `${path}/bake/paint`, "expected non-negative integers");
+			else if (b.paint.some((v) => (v as number) > nc)) ctx.err("paint", `${path}/bake/paint`, `a baked paint index is past the last colour (${nc})`);
+			if (Array.isArray(b.faces) && b.paint.length !== b.faces.length) ctx.err("paint", `${path}/bake/paint`, `a bake's paint has one entry per baked face: ${b.paint.length} for ${b.faces.length}`);
+		}
+		if ("shades" in b && ctx.array(b.shades, `${path}/bake/shades`)) {
+			b.shades.forEach((v, i) => ctx.number(v, `${path}/bake/shades/${i}`, 0));
+			if (bn >= 0 && b.shades.length !== bn) ctx.err("shades", `${path}/bake/shades`, `a bake's shades are one per baked point: ${b.shades.length} for ${bn}`);
+		}
 	}
 }
 
@@ -480,26 +631,49 @@ function checkShape3(ctx: Ctx, sh: unknown, path: string, drawn: boolean): strin
 					const b = f[(i + 1) % f.length];
 					edges.add(a < b ? `${a}:${b}` : `${b}:${a}`);
 				}
-				checkSmoothFields(ctx, sh, path, n, meshOk ? edges : null);
+				const nc = checkPaint(ctx, sh, path, meshOk ? (sh.faces as unknown[]).length : -1);
+				if ("shades" in sh && ctx.array(sh.shades, `${path}/shades`)) {
+					sh.shades.forEach((v, i) => ctx.number(v, `${path}/shades/${i}`, 0));
+					if (n >= 0 && sh.shades.length !== n) ctx.err("shades", `${path}/shades`, `shades are one per point: ${sh.shades.length} for ${n} points`);
+				}
+				checkMods(ctx, sh, path, nc);
+				checkSmoothFields(ctx, sh, path, n, meshOk ? edges : null, nc);
+				checkSkin(ctx, sh, path, n);
 			}
 			break;
 		}
 		case "sweep": {
-			if (sh.op !== "lathe" && sh.op !== "extrude") ctx.err("schema", `${path}/op`, "op is lathe or extrude");
-			if (sh.axis !== "x" && sh.axis !== "y" && sh.axis !== "z") ctx.err("schema", `${path}/axis`, "axis is x, y or z");
-			if (!ctx.object(sh.profile, `${path}/profile`)) break;
-			checkPath(ctx, { closed: sh.op === "extrude" ? true : sh.profile.closed === true, w: 0, ...sh.profile }, `${path}/profile`);
+			const before = ctx.errors.length;
+			if (sh.op !== "lathe" && sh.op !== "extrude" && sh.op !== "pipe") ctx.err("schema", `${path}/op`, "op is lathe, extrude or pipe");
+			if (sh.op === "pipe") checkPipe(ctx, sh, path);
+			else {
+				if (sh.axis !== "x" && sh.axis !== "y" && sh.axis !== "z") ctx.err("schema", `${path}/axis`, "axis is x, y or z");
+				if (!ctx.object(sh.profile, `${path}/profile`)) break;
+				checkPath(ctx, { closed: sh.op === "extrude" ? true : sh.profile.closed === true, w: 0, ...sh.profile }, `${path}/profile`);
+			}
 			if ("segments" in sh && !(Number.isInteger(sh.segments) && (sh.segments as number) >= 3)) ctx.err("schema", `${path}/segments`, "segments is a whole number, 3 or more");
 			if ("from" in sh) ctx.number(sh.from, `${path}/from`);
 			if ("to" in sh) ctx.number(sh.to, `${path}/to`);
-			checkSmoothFields(ctx, sh, path, -1, null);
+			// paint counts the faces of the mesh the sweep makes: generate it when the sweep itself is sound
+			let faces = -1;
+			if (ctx.errors.length === before && Array.isArray(sh.paint)) {
+				try {
+					faces = sweepMesh(sh as unknown as SweepShape).faces.length;
+				} catch {
+					faces = -1;
+				}
+			}
+			const nc = checkPaint(ctx, sh, path, faces);
+			if ("shades" in sh) ctx.err("shades", `${path}/shades`, "shades are one per point, and a sweep has no points of its own");
+			checkMods(ctx, sh, path, nc);
+			checkSmoothFields(ctx, sh, path, -1, null, nc);
 			break;
 		}
 	}
 	if ("shade" in sh) ctx.number(sh.shade, `${path}/shade`, 0);
 	if (!drawn) checkCollisionFields(ctx, sh, path);
 	if (drawn) checkTextureFields(ctx, sh, path, 3, kind === "mesh" && Array.isArray(sh.faces) ? sh.faces.length : -1);
-	ctx.unknown(sh, drawn ? (kind === "sweep" ? [...SWEEP_FIELDS, ...SMOOTH_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, ...SMOOTH_FIELDS, ...TEXTURE_FIELDS]) : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
+	ctx.unknown(sh, drawn ? (kind === "sweep" ? [...SWEEP_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, ...TEXTURE_FIELDS] : [...SHAPE3_FIELDS, ...SMOOTH_FIELDS, ...PAINT_FIELDS, "shades", "skin", ...TEXTURE_FIELDS]) : [...SHAPE3_FIELDS, "size", "rotate", ...COLLISION_FIELDS], [], path);
 	return kind;
 }
 
@@ -725,6 +899,8 @@ function colorRefs(doc: Obj): { color: string; path: string }[] {
 		if (!Array.isArray(shapes)) return;
 		shapes.forEach((sh, i) => {
 			if (isObj(sh) && isName(sh.color)) refs.push({ color: sh.color, path: `${path}/${i}/color` });
+			// 1.8: a shape's further colours resolve as its colour does
+			if (isObj(sh) && Array.isArray(sh.colors)) sh.colors.forEach((c, j) => isName(c) && refs.push({ color: c, path: `${path}/${i}/colors/${j}` }));
 		});
 	};
 	if (Array.isArray(doc.parts)) {
@@ -823,6 +999,19 @@ export function validate(input: unknown, opts: ValidateOptions = {}): Report {
 			if (!src) ctx.err("ref.part", `/parts/${i}/like`, `no part named "${p.like}"`);
 			else if (p.like === p.name) ctx.err("like", `/parts/${i}/like`, "a part cannot be like itself");
 			else if (isName(src.like)) ctx.err("like", `/parts/${i}/like`, `"${p.like}" is itself like another part; like does not chain`);
+		});
+	}
+
+	// skins (1.9): every joint is a part
+	if (Array.isArray(doc.parts)) {
+		doc.parts.forEach((p, i) => {
+			if (!isObj(p) || !Array.isArray(p.shapes)) return;
+			p.shapes.forEach((sh, si) => {
+				if (!isObj(sh) || !isObj(sh.skin) || !Array.isArray(sh.skin.joints) || sh.skin.host === true) return; // (a host's joints are the host's to have)
+				sh.skin.joints.forEach((j, ji) => {
+					if (typeof j === "string" && j !== "" && !partSet.has(j)) ctx.err("skin", `/parts/${i}/shapes/${si}/skin/joints/${ji}`, `no part named "${j}"`);
+				});
+			});
 		});
 	}
 

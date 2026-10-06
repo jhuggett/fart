@@ -8,6 +8,7 @@
     "build:dev": "vite build --minify false --mode development",
     "build": "vite build --mode production",
     "check": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

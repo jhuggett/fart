@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { as3d, asMesh, bakePath, bakePaths, cageHash, cornerNormals, flattenPart, parseDoc, pathPoints, projectDoc, sampleClip, sampleClip3, shapeDistance, shapesOfPosed, subdivide, surfaceOf, sweepMesh, toGlb, validate, type Doc, type MeshShape, type PathShape, type SweepShape } from "../src/index.ts";
+import { as3d, asMesh, bakePath, bakePaths, bakeSmooth, cageHash, cornerNormals, flattenPart, parseDoc, pathPoints, projectDoc, sampleClip, sampleClip3, shapeDistance, shapesOfPosed, subdivide, surfaceOf, sweepMesh, toGlb, validate, type Doc, type MeshShape, type PathShape, type SweepShape } from "../src/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const examples = resolve(here, "../../../spec/examples");
@@ -149,4 +149,53 @@ test("glTF: a smooth morphed mesh exports targets on the subdivided layout; the 
 	const acc = gltf.accessors[prim.targets![0].POSITION];
 	assert.ok(acc.count >= 96 * 2 * 3, `the target covers the subdivided surface (${acc.count} vertices)`);
 	assert.ok(acc.max![0] > 0.5);
+});
+
+test("subdivision carries a textured cage's pattern coordinates: within each face, level by level, into the surface, the triangles and the bake", () => {
+	// a cube, every face wearing the whole of a 4 by 4 cell
+	const points: MeshShape["points"] = [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1], [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1]];
+	const faces = [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [4, 5, 1, 0], [3, 2, 6, 7]];
+	const square: [number, number][] = [[0, 0], [4, 0], [4, 4], [0, 4]];
+	const uvs = faces.map(() => square.map((uv) => [...uv] as [number, number]));
+	const one = subdivide({ points, faces, uvs }, 1);
+	assert.equal(one.uvs!.length, one.faces.length);
+	// the child at a corner: that corner's coordinates, the middles of its two edges, the face's middle
+	assert.deepEqual(one.uvs![0], [[0, 0], [2, 0], [2, 2], [0, 2]]);
+	assert.deepEqual(one.uvs![1], [[4, 0], [4, 2], [2, 2], [2, 0]]);
+	// corner for corner with the child's points: the corner that is the cage's own point keeps the cage's coordinates
+	one.faces.forEach((f, i) => {
+		const parent = Math.floor(i / 4);
+		assert.deepEqual(one.uvs![i][0], uvs[parent][faces[parent].indexOf(f[0])]);
+		assert.deepEqual(one.uvs![i][2], [2, 2]);
+	});
+	const two = subdivide({ points, faces, uvs }, 2);
+	assert.equal(two.uvs!.length, 96);
+	assert.ok(two.uvs!.every((f) => f.length === 4 && f.every(([u, v]) => u >= 0 && u <= 4 && v >= 0 && v <= 4)));
+	// without coordinates (or with ones that do not fit the faces) there are none to carry
+	assert.equal(subdivide({ points, faces }, 1).uvs, undefined);
+	assert.equal(subdivide({ points, faces, uvs: uvs.slice(1) }, 1).uvs, undefined);
+	// the surface a reader draws wears them, and so do its triangles
+	const cage: MeshShape = { kind: "mesh", color: "c", points, faces, smooth: 2, texture: "weave", mapping: { uvs } };
+	const surf = surfaceOf(cage);
+	assert.equal(surf.mapping!.uvs!.length, surf.faces.length);
+	assert.deepEqual(surf.mapping!.uvs, two.uvs);
+	const doc = as3d({ version: 1, space: "3d", palette: [{ name: "c", rgb: [1, 1, 1, 255] }], parts: [{ name: "a", pivot: [0, 0, 0], shapes: [cage] }] } as unknown as Doc)!;
+	const tm = flattenPart(doc, doc.parts![0])[0];
+	assert.equal(tm.texture, "weave");
+	assert.equal(tm.uvs!.length, tm.count * 6);
+	// explicit, not box mapped: box mapping would give coordinates the size of the cube (-1 to 1); these reach 4
+	assert.ok(Math.max(...tm.uvs!) > 3.9 && Math.min(...tm.uvs!) >= 0);
+	// the bake holds them too, and is used only while it is the cage's and the coordinates' own
+	const baked = structuredClone(cage);
+	const holder = { parts: [{ shapes: [baked] }] };
+	assert.equal(bakeSmooth(holder), 1);
+	assert.equal((baked.bake!.uvs as unknown[]).length, 96);
+	assert.deepEqual(surfaceOf(baked).mapping!.uvs, two.uvs);
+	const moved = structuredClone(baked);
+	moved.mapping!.uvs![0][0] = [1, 1];
+	assert.deepEqual(surfaceOf(moved).mapping!.uvs![0][0], [1, 1], "a bake of other coordinates is passed over");
+	const old = structuredClone(baked);
+	delete old.bake!.uvs;
+	delete old.bake!.uvOf;
+	assert.deepEqual(surfaceOf(old).mapping!.uvs, two.uvs, "a bake with no coordinates is passed over for a cage that has them");
 });

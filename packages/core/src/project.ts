@@ -19,6 +19,8 @@ import {
 	sampleTargets3,
 	shapesOf3,
 	shapesOf3Posed,
+	shapesOf3Skinned,
+	sourceOf3,
 	turnXf3,
 	v3dot,
 	v3norm,
@@ -149,7 +151,7 @@ export function projectFrame(src: Doc3, poses: readonly StatePart3[] | undefined
 	const W = worldTransforms3(src, poses ?? []);
 	const out: FramePart[] = [];
 	for (const sp of list) {
-		const rp = restFor(src, V, rest, sp);
+		const rp = restFor(src, V, rest, sp, W);
 		const index = parts.findIndex((p) => p.name === sp.part);
 		if (!rp || index < 0) continue;
 		const w = opts.instance ? xf3Mul(opts.instance, W.get(sp.part) ?? IDENT3) : (W.get(sp.part) ?? IDENT3);
@@ -169,9 +171,10 @@ function transpose3(V: Xf3): Xf3 {
 }
 
 /** One part's geometry in view space (the view turn applied), through `like`; with a pose entry, as its morph has it (1.6). */
-function restPart(src: Doc3, V: Xf3, part: Part3, sp?: StatePart3): RestPart {
+function restPart(src: Doc3, V: Xf3, part: Part3, sp?: StatePart3, W?: ReadonlyMap<string, Xf3>): RestPart {
 	const move = (p: Vec3) => xf3Apply(V, p);
-	const raw = shapesOf3Posed(src, part, sp);
+	// (with the pose's world maps, a skin (1.9) places its points)
+	const raw = W ? shapesOf3Skinned(src, part, sp, W) : shapesOf3Posed(src, part, sp);
 	const shapes: Shape3[] = raw.map((sh) => {
 		// a smooth mesh or a sweep projects its surface (1.7): subdivide the cage, then turn it
 		if (sh.kind === "mesh" || sh.kind === "sweep") {
@@ -198,9 +201,10 @@ function morphs(rp: RestPart | undefined, sp: StatePart3): boolean {
 }
 
 /** The rest part an entry draws: the shared one, or a morphed one of its own. */
-function restFor(src: Doc3, V: Xf3, rest: Map<string, RestPart>, sp: StatePart3): RestPart | undefined {
+function restFor(src: Doc3, V: Xf3, rest: Map<string, RestPart>, sp: StatePart3, W?: ReadonlyMap<string, Xf3>): RestPart | undefined {
 	const rp = rest.get(sp.part);
-	return morphs(rp, sp) ? restPart(src, V, rp!.part, sp) : rp;
+	const skinned = !!rp && !!W && (sourceOf3(src, rp.part).shapes?.some((sh) => sh.kind === "mesh" && sh.skin) ?? false);
+	return morphs(rp, sp) || skinned ? restPart(src, V, rp!.part, sp, W) : rp;
 }
 
 /**
@@ -239,7 +243,11 @@ function projectShapes(rest: RestPart, M: Xf3, light: Vec3, ambient: number, out
 				if (!vis) return;
 				const points = face.map((i) => flat(pts[i]));
 				const depth = face.reduce((acc, i) => acc + pts[i][2], 0) / face.length;
-				const poly: Shape = { kind: "poly", color: sh.color, shade: shadeOf(n, sh.shade), points, tris: triangulate(points) };
+				// 1.8: a painted face wears its own token; a face has one shade in 2D, so its points' shades are averaged
+				const pi = sh.paint && sh.paint.length === sh.faces.length ? sh.paint[fi] : 0;
+				const token = (pi > 0 ? sh.colors?.[pi - 1] : undefined) ?? sh.color;
+				const own = sh.shades && sh.shades.length === sh.points.length ? face.reduce((acc, i) => acc + sh.shades![i], 0) / face.length : 1;
+				const poly: Shape = { kind: "poly", color: token, shade: shadeOf(n, (sh.shade ?? 1) * own), points, tris: triangulate(points) };
 				if (sh.texture && uvs) {
 					// the pattern's affine onto the projected face, from three corners that are not collinear
 					const xf = affineFrom(uvs[fi].slice(0, 3), points.slice(0, 3)) ?? affineFrom([uvs[fi][0], uvs[fi][1], uvs[fi][uvs[fi].length - 1]], [points[0], points[1], points[points.length - 1]]);

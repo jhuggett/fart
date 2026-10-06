@@ -7,6 +7,7 @@
 import type { MeshShape, Anchor3, Clip3, ClipKey3, Doc3, Part3, Shape3, State3, StatePart3, Target3, Vec3 } from "./types.ts";
 import { lerpMorphs, ease } from "./clips.ts";
 import { triangulate } from "./geometry.ts";
+import { posedMesh } from "./mods.ts";
 import type { Vec2 } from "./types.ts";
 
 // ----------------------------------------------------------------- vectors
@@ -299,9 +300,96 @@ export function shapesOf3Posed(doc: Doc3, part: Part3, sp?: StatePart3): Shape3[
 	if (!sp?.morph?.length || part.like) return base;
 	return base.map((sh, i) => {
 		const m = sp.morph!.find((x) => x.shape === i);
-		return m && sh.kind === "mesh" && m.points.length === sh.points.length ? { ...sh, points: m.points } : sh;
+		return m && sh.kind === "mesh" && m.points.length === sh.points.length ? posedMesh(sh, m.points) : sh;
 	});
 }
+/**
+ * 1.9: a part's shapes as a pose has them, skins included. A skinned
+ * mesh's points are placed by its joints' world maps (`W`, from
+ * worldTransforms3 of the same pose) and handed back in the part's own
+ * rest space, so drawing them through the part's map, as any shape is
+ * drawn, lands them where the skin puts them. A pose that leaves every
+ * joint where the part is changes nothing, and gives the shape itself.
+ */
+export function shapesOf3Skinned(doc: Doc3, part: Part3, sp: StatePart3 | undefined, W: ReadonlyMap<string, Xf3>): Shape3[] {
+	const shapes = shapesOf3Posed(doc, part, sp);
+	if (!shapes.some((sh) => sh.kind === "mesh" && sh.skin && !sh.skin.host)) return shapes;
+	return skinShapes3(shapes, false, doc, part, W);
+}
+
+/**
+ * 1.9: shapes drawn on a host (clothes on a body): those whose skin is
+ * on a host, placed by the host's parts under its pose (`W`), as drawn
+ * on `hostPart`; handed back in that part's rest space, to be drawn
+ * through its map.
+ */
+export function shapesOf3Worn(shapes: readonly Shape3[], host: Doc3, hostPart: Part3, W: ReadonlyMap<string, Xf3>): Shape3[] {
+	return skinShapes3(shapes, true, host, hostPart, W);
+}
+
+function skinShapes3(shapes: readonly Shape3[], onHost: boolean, doc: Doc3, part: Part3, W: ReadonlyMap<string, Xf3>): Shape3[] {
+	const Wp = W.get(part.name) ?? XF3_ID;
+	const maps = skinMaps3(doc, part, W);
+	const back = xf3Invert(Wp);
+	return shapes.map((sh) => {
+		if (sh.kind !== "mesh" || !sh.skin || (sh.skin.host === true) !== onHost || sh.skin.weights.length !== sh.points.length) return sh;
+		const joints = sh.skin.joints.map(maps);
+		if (joints.every((J) => J.every((v, i) => Math.abs(v - Wp[i]) < 1e-9))) return sh;
+		const points = sh.points.map((p, i) => {
+			const entry = sh.skin!.weights[i];
+			let sum = 0;
+			const at: Vec3 = [0, 0, 0];
+			for (let k = 0; k + 1 < entry.length; k += 2) {
+				const J = joints[entry[k]];
+				if (!J) continue;
+				const q = xf3Apply(J, p);
+				at[0] += q[0] * entry[k + 1];
+				at[1] += q[1] * entry[k + 1];
+				at[2] += q[2] * entry[k + 1];
+				sum += entry[k + 1];
+			}
+			return sum > 0 ? xf3Apply(back, [at[0] / sum, at[1] / sum, at[2] / sum]) : p;
+		});
+		return { ...sh, points };
+	});
+}
+
+/**
+ * 1.9: the map a joint gives the points of a skin drawn by `part`. The
+ * joint's own world map; or, for a `like` part, its side's: the part
+ * itself where it is like the joint, else its nearest ancestor that is,
+ * else the joint's own map on the point reflected across x = 0 when the
+ * part is drawn mirrored.
+ */
+export function skinJoint3(doc: Doc3, part: Part3, joint: string): string {
+	if (sourceOf3(doc, part) === part) return joint;
+	const parts = doc.parts ?? [];
+	const byName = new Map(parts.map((p) => [p.name, p]));
+	const seen = new Set<string>();
+	for (let p: Part3 | undefined = part; p && !seen.has(p.name); p = p.parent ? byName.get(p.parent) : undefined) {
+		seen.add(p.name);
+		if (p.like === joint) return p.name;
+	}
+	// (or one below the part: a hand's own fingers)
+	for (const q of parts) if (q.like === joint) {
+		const up = new Set<string>();
+		for (let p: Part3 | undefined = q; p && !up.has(p.name); p = p.parent ? byName.get(p.parent) : undefined) {
+			up.add(p.name);
+			if (p === part) return q.name;
+		}
+	}
+	return joint;
+}
+
+/** 1.9: a joint's map for the points of a skin drawn by `part`: its side's joint's (skinJoint3), on the point reflected across x = 0 where the part and that joint differ in being drawn mirrored. */
+export function skinMaps3(doc: Doc3, part: Part3, W: ReadonlyMap<string, Xf3>): (joint: string) => Xf3 {
+	const flipped = xf3Det(W.get(part.name) ?? XF3_ID) < 0;
+	const REFLECT: Xf3 = [-1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+	// a joint drawn mirrored holds what is on the other side: where the part and the joint differ in that, the point is reflected first
+	const sided = (J: Xf3): Xf3 => ((xf3Det(J) < 0) !== flipped ? xf3Mul(J, REFLECT) : J);
+	return (joint) => sided(W.get(skinJoint3(doc, part, joint)) ?? XF3_ID);
+}
+
 /** A 3D part's rest points by shape index: a mesh's, else null. */
 export function basePoints3(doc: Doc3, partName: string): (shape: number) => readonly Vec3[] | null {
 	const part = partOf3(doc, partName);

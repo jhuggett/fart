@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -165,6 +166,28 @@ func (p *ProjectService) ReadFile(root, rel string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// imageTypes are the pictures a model can have pinned behind it as a
+// reference, by extension.
+var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+
+// ReadImage is an image file of the project as a data URL, for a
+// reference image behind a model. Only pictures: anything else is refused.
+func (p *ProjectService) ReadImage(root, rel string) (string, error) {
+	full, err := rooted(root, rel)
+	if err != nil {
+		return "", err
+	}
+	mime, ok := imageTypes[strings.ToLower(filepath.Ext(full))]
+	if !ok {
+		return "", errors.New("not an image: " + rel)
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func (p *ProjectService) Exists(root, rel string) bool {

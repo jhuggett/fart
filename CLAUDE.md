@@ -92,3 +92,15 @@ follow the spec, never the other way round.
   `state/textures.ts` for the 2D painter's patterns and WebGL; the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.
+- Mesh editing in the model screen: `frontend/src/state/meshops.ts` is
+  the geometry (pure, no imports: extrude, inset, loop cut, rims, merge,
+  flip, wind outward, creases; every result says where each point and
+  face came from, so creases, uvs and morphs are carried), tested by
+  `npm test -w @fastart/studio`. `state/model.ts` lays a result into the
+  document as one undo step (`runMeshOp`, and `startOp`/`adjustOp` for
+  an operation whose numbers stay open); `canvas/meshtool3.ts` is E I K
+  following the pointer; `state/tools.ts` + `mcp.go` offer the same to
+  Claude as `mesh_*` tools. `state/workspace.ts` holds what is the
+  studio's and never the file's (symmetry, reference images, the
+  mannequin, clay shading), in localStorage per document. `make
+  check-mesh` (`studio/test/mesh.mjs`) drives all of it headlessly.

@@ -4,7 +4,7 @@
 // the bake as a poly. Recursive de Casteljau against the distance of the
 // control points from the chord, the classic test.
 
-import type { Doc, PathBake, PathShape, Vec2 } from "./types.ts";
+import type { Doc, PathBake, PathShape, Vec2, Vec3 } from "./types.ts";
 import { triangulate } from "./geometry.ts";
 
 /** The flattening tolerance editors bake at, document units: half a pixel at the studio's default zoom. */
@@ -112,4 +112,63 @@ export function bakePaths(doc: Doc, tol = FLATNESS): void {
 	};
 	for (const part of doc.parts ?? []) bake(part.shapes);
 	bake(doc.collision);
+}
+
+/**
+ * A path with three coordinates (1.8, a pipe's spine) as a polyline
+ * within `tol` of the curve, and where each of its points sits along the
+ * path: `at[i]` is the segment's index plus the cubic's own parameter
+ * there, so a value kept per path point (a radius) can be read between.
+ */
+export function pathPoints3(sh: { points: Vec3[]; in?: Vec3[]; out?: Vec3[] }, closed = false, tol = FLATNESS): { points: Vec3[]; at: number[] } {
+	const pts = sh.points;
+	const n = pts.length;
+	const points: Vec3[] = [];
+	const at: number[] = [];
+	if (n === 0) return { points, at };
+	const zero = (v: Vec3 | undefined) => !v || (Math.abs(v[0]) < 1e-9 && Math.abs(v[1]) < 1e-9 && Math.abs(v[2]) < 1e-9);
+	const mid = (a: Vec3, b: Vec3): Vec3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+	// how far a control point stands off the chord
+	const off = (p: Vec3, a: Vec3, b: Vec3): number => {
+		const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+		const v: Vec3 = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+		const len = Math.hypot(d[0], d[1], d[2]);
+		if (len < 1e-12) return Math.hypot(v[0], v[1], v[2]);
+		return Math.hypot(v[1] * d[2] - v[2] * d[1], v[2] * d[0] - v[0] * d[2], v[0] * d[1] - v[1] * d[0]) / len;
+	};
+	const cubic = (p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t0: number, t1: number, depth: number): void => {
+		if (depth >= 16 || Math.max(off(p1, p0, p3), off(p2, p0, p3)) <= tol) {
+			points.push(p3);
+			at.push(t1);
+			return;
+		}
+		const p01 = mid(p0, p1);
+		const p12 = mid(p1, p2);
+		const p23 = mid(p2, p3);
+		const p012 = mid(p01, p12);
+		const p123 = mid(p12, p23);
+		const m = mid(p012, p123);
+		const tm = (t0 + t1) / 2;
+		cubic(p0, p01, p012, m, t0, tm, depth + 1);
+		cubic(m, p123, p23, p3, tm, t1, depth + 1);
+	};
+	points.push(pts[0]);
+	at.push(0);
+	const segs = closed ? n : n - 1;
+	for (let i = 0; i < segs; i++) {
+		const j = (i + 1) % n;
+		const a = pts[i];
+		const b = pts[j];
+		const o = sh.out?.[i];
+		const inn = sh.in?.[j];
+		if (zero(o) && zero(inn)) {
+			points.push(b);
+			at.push(i + 1);
+		} else cubic(a, [a[0] + (o?.[0] ?? 0), a[1] + (o?.[1] ?? 0), a[2] + (o?.[2] ?? 0)], [b[0] + (inn?.[0] ?? 0), b[1] + (inn?.[1] ?? 0), b[2] + (inn?.[2] ?? 0)], b, i, i + 1, 0);
+	}
+	if (closed) {
+		points.pop(); // back at the start
+		at.pop();
+	}
+	return { points: points.map((p) => [p[0], p[1], p[2]]), at };
 }

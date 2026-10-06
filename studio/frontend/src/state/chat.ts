@@ -81,17 +81,21 @@ function describeTool(name: string, input: string): string | null {
 	} catch {
 		// a truncated input: describe by name
 	}
+	if (name.startsWith("mcp__uranus__mesh_") && name !== "mcp__uranus__mesh_info") return null; // the note says what changed
 	switch (name) {
 		case "mcp__uranus__get_document":
 			return "read the document";
 		case "mcp__uranus__apply_document":
 			return null; // the note says what changed
 		case "mcp__uranus__render":
+			if (Array.isArray(args.views) && args.views.length) return `looked at the model from ${args.views.join(", ")}`;
 			return `looked at ${typeof args.clip === "string" ? `clip ${args.clip}${typeof args.t === "number" ? ` at ${args.t}s` : ""}` : typeof args.state === "string" ? `state ${args.state}` : "the canvas"}`;
 		case "mcp__uranus__validate":
 			return "validated";
 		case "mcp__uranus__open_file":
 			return `opened ${String(args.path ?? "")}`;
+		case "mcp__uranus__mesh_info":
+			return "measured the mesh";
 		case "ToolSearch":
 			return null;
 		case "Read":

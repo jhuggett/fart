@@ -106,6 +106,20 @@ saved. Right-click a row for rename, pivot, anchor, order and delete
 File order is paint order; raise and lower a part from the inspector or
 the menu.
 
+A part of several shapes opens to them too: one row a shape, above the
+part's children, in file order (later paints over earlier). Shapes have
+no names in the file, so a row reads as what the shape is and the colour
+it names (`circle · ink`, `mesh · white_plate`, `pipe · helm_trim`),
+with a number only where two in the part would read the same, and its
+colour as a swatch at the right. A click on a row chooses the shape
+exactly as a click on it on the canvas does, and ⇧ or ⌘ adds one or
+takes it out; a shape chosen on the canvas opens its part and marks its
+row. ↑ and ↓ walk the rows, ⌫ on a row deletes the shape, and a right
+click offers what the canvas does. A part of one shape stays a plain
+row, and a part holding more than twelve shapes and no children starts
+folded. What is open is the studio's and lasts the session; opening,
+folding and choosing never touch the file.
+
 ## The inspector
 
 The properties of whatever is selected, as numbers you can type (Return
@@ -390,8 +404,14 @@ the same four regions with the model turned under a **view**.
   The other digits are the view's too: `4` and `6` turn it a step, `8`
   and `2` tilt it, `5` fits everything. No digit picks a tool in a 3D
   view; the tools are on their letters.
+- **A part opens to its shapes** in the outline: a model that is one
+  part of many shapes (a prop a script wrote) shows what it is made of,
+  one row a shape (`mesh · barn_trim 3`, `ball · iron`, `pipe ·
+  helm_trim`; a sweep goes by what it does: lathe, extrude, pipe). Click
+  a row to choose the shape, right-click it for Duplicate, Mirror across
+  x and Delete. See Parts and the outline.
 - **Choose several shapes** by dragging a marquee over them from empty
-  canvas, or by Shift-clicking them one at a time. They move, turn, size,
+  canvas, or by Shift-clicking them one at a time, on the canvas or on their rows in the outline. They move, turn, size,
   duplicate and delete together; the inspector shows the first.
 - **Move, turn and size along the world's axes.** A picked part (or a
   selected shape) wears three arrows, X Y and Z: drag one to move along
@@ -447,6 +467,29 @@ the same four regions with the model turned under a **view**.
   `Y_UP * world_xf_3d`; `npx fart gltf model.fart` writes a `.glb` with
   its animations for any other engine. Chains work in 3D with a `pole`
   in place of `bend`; the model screen does not show them yet.
+- **Import glTF…** (File menu, ⌘I) brings a model in from Blender or any
+  tool that writes glTF: export a `.glb` (or a `.gltf` with its `.bin`
+  beside it), choose it, and a sheet shows what it would make before
+  anything is written: parts, shapes, points, faces, colours, clips, the
+  size in units, and whatever had to be left out. Every mesh node is a
+  part named for it, its origin the pivot, the mesh node above it its
+  parent; every material is a colour; a mesh of several materials is
+  one shape painted with them. glTF holds only triangles, so two in one
+  plane that share an edge come back as the quad they were, and
+  vertices split for shading weld into one corner. Smooth shading comes
+  across as smooth normals, animations as clips keyed where the source
+  keyed them, morph targets as states. **Size** is a scale or a height
+  in units (Blender works in metres; a prop here is tens of units, and
+  coordinates keep three decimals, so scale a small model up).
+  **Merge into one part** drops the rig; **A shape per material** is
+  for readers older than format 1.8. A file of the same name is replaced
+  only after asking. Textures, cameras and lights are not imported, and
+  a skin is flattened: each face rides the joint that holds most of it.
+  For a cage you mean to edit, export without applying subdivision and
+  set **smooth** here. A model dropped on the window opens the same
+  sheet, and the command line does the same:
+
+      npx fart import helm.glb --height 24
 - **Deform** (D) in the path bar makes corner drags reshape the
   part *in the current state only*: a morph (format 1.6) the clips lerp
   between keys. The part's row says **morph**, the inspector counts the
@@ -462,8 +505,163 @@ the same four regions with the model turned under a **view**.
   follows, so a breathing or squashing smooth thing is still two states
   and a clip.
 - **Sweeps.** A `sweep` shape (a lathe or an extrude of a profile, from
-  a generator or the file) shows its op, axis, segments or depth in the
-  inspector and is drawn as the mesh it makes.
+  a generator or the file; a pipe along a path, from the Pipe tool)
+  shows its op, axis, segments or depth in the inspector and is drawn as
+  the mesh it makes.
+- **Corners, edges and faces.** A selected mesh has a **Mesh** section
+  in the inspector, and **Choose** there says what a click on it
+  chooses: its corners, its edges or its faces. Hover shows which, a
+  click chooses one, Shift adds one or takes it out, ⌘A chooses them
+  all, Esc lets go of them (and again of the mesh). What is chosen drags
+  along the view plane, nudges with the arrows, and takes `G` `T` `S` and
+  the axis arrows, which then move only what is chosen. In a straight-on
+  view two edges or corners can lie one behind the other; the nearer one
+  is taken. Choosing edges or faces draws the mesh's wire, and creased
+  edges in green.
+- **Extrude, inset, loop cut.** With faces chosen, **Extrude** (`E`)
+  pushes them out along their normal and walls the border with quads,
+  and **Inset** (`I`) shrinks them inside a border ring of quads, with
+  an optional **raise**. With an edge chosen, **Loop cut** (`K`) runs a
+  new edge loop across the ring of four-sided faces the edge belongs to.
+  By key the pointer says how far: move it, or type a number, then
+  Return or a click keeps it and Esc or a right click puts it back,
+  leaving no undo step. From the button the operation is simply done.
+  Either way its numbers stay open at the foot of the Mesh section (the
+  amount, the raise, the cut's place as a slider) until something else
+  changes, and changing one runs it again inside the same undo step.
+- **Rims.** An open edge is one with a face on one side only, and a
+  **rim** is a loop of them, around a hole. Delete a face (⌫ with faces
+  chosen) and it leaves one. With an edge of it chosen, **Rim** chooses
+  the whole loop, **Extrude** (`E`) grows a band of quads from the
+  chosen open edges, **Fill** closes the rim with one face, and
+  **Bridge** joins two rims of the same count with a band of quads:
+  choose an edge on each. A rim that will not bridge says why.
+- **Merge, flip, wind outward.** **Merge** (`M`) welds corners that lie
+  within a distance of each other into one (the chosen corners when
+  several are, else all of them). **Flip** turns the chosen faces to
+  wind the other way, and **Wind outward** puts the whole mesh right:
+  neighbours are made to agree, then each piece is turned so that the
+  volume it encloses is positive.
+- **Creases on a selection.** With edges chosen the **Crease** field
+  sets them all (Shift-clicking a second, neighbouring corner still
+  chooses the edge between the two). **Crease by angle** creases every
+  edge whose faces meet at more than an angle, leaving alone the edges
+  that have a crease already.
+- **What an operation keeps.** Each is one undo step. Creases follow
+  their edges, explicit pattern coordinates stay one pair per corner,
+  and a morph of the mesh in any state or key is carried through, so
+  cutting a loop into a mesh that breathes leaves it breathing.
+  Operations change the base mesh every state shares; Deform is for
+  moving corners in one state.
+- **Symmetry.** **Mirror across x** in the Mesh section is a working
+  aid for that one mesh: while it is on, moving a corner moves its
+  mirror, a corner on the plane stays on it, and every operation is
+  done to the mirrored corners, edges and faces too. The dashed red line
+  is the plane. It is the studio's note, not a field: the file holds
+  plain geometry, both halves.
+- **Colours by face (1.8).** A shape names one colour, its **Fill**; a
+  mesh may give some of its faces others. Choose faces, pick a
+  **Colour** in the Mesh section (any colour of the palette) and press
+  **Paint**. Or press **Brush** (`B`) and click or drag over the mesh:
+  every face the pointer crosses takes the colour, one stroke one undo
+  step, until `B` or Esc puts the brush down. The file gains `colors`
+  and `paint` and keeps them small: paint a face the fill again and its
+  paint goes, and a colour no face wears is dropped. Extrude a painted
+  face and its walls wear the same; **Inset** has a **Border** colour
+  for its ring of quads, which with a little **Raise** is a trim band in
+  one step. Mirrored faces are painted too while symmetry is on.
+- **Modifiers (1.8).** The **Modifiers** section of a mesh or a sweep is
+  a list the file keeps and every reader applies to the cage, in order,
+  each time it is drawn: model half a helm with no thickness and let the
+  list make the rest. **Mirror** reflects the cage through the plane
+  where x, y or z is 0 and welds the corners that lie on it (**Merge**
+  is how near counts). **Solidify** gives a surface a wall: **Thick**,
+  an **Offset** (−1 the cage is the outside, 1 the inside, 0 the
+  middle), and an **Inner** and a **Rim** colour of their own.
+  **Crease** creases every edge sharper than an **Angle**, which with
+  smooth levels is a bevel. Add one from the menu at the foot of the
+  list, reorder with the arrows, remove with the bin; every change is
+  one undo step and shows at once. What you choose and drag is still the
+  cage, drawn as a dashed wire over the result. **Apply** bakes a
+  modifier (and the ones above it) into the mesh's own points and faces,
+  carrying its paint, creases, shades and every morph; a sweep applied
+  becomes a mesh. Leave them unapplied for as long as you can: an
+  applied mirror is twice the corners to move.
+  While a mesh has a Mirror modifier across x the working **Symmetry**
+  stands down, since the file is doing the mirroring: edit the half that
+  is there.
+- **Shades (1.8).** **Shade corners** in the Mesh section works out, for
+  every corner of the mesh, how much of the sky it can see past the
+  model's own geometry as this state poses it, and writes the answer as
+  `shades`: the inside of a hood, the foot of a plume and the fold
+  under a brim sit darker, and the canvas, a game and every projection
+  show it. From each corner 48 rays go out over the half of the sky its
+  normal faces; each that meets the model within reach counts as shadow,
+  nearer ones more. **Strength** is how dark a wholly hidden corner
+  gets; **Clear** takes the shades away. It is worked out once, when you
+  ask: shade last, and again after the shape changes. It reads the cage
+  with its modifiers, before smoothing, so both walls of a solidified
+  shell share a corner's shade.
+- **Pipes (1.8).** The **Pipe** tool (`U`) sweeps a round section along
+  a path: a horn, a plume's spine, a strap, a curl of trim. Click its
+  points, then Return (or click the last point again); Esc drops it. It
+  is as wide as a rod (half the **depth** field) and its points land on
+  the view plane through the part's pivot, so in the front, side or top
+  view you are drawing in a plane you can name. Turn **On surface** on
+  (the magnet in the path bar) and each click lands on the mesh under
+  the pointer instead, lifted off it along its normal by **Lift**, and
+  the pipe is given the points it needs to follow the surface between
+  your clicks: a curl drawn on a helm lies on the helm. The path's
+  points are then handles: drag one (it stays on the surface while On
+  surface is on), nudge it with the arrows, or type its coordinates; ⌫
+  takes the chosen point out. The inspector has the **Radius**, the
+  **Radius here** of the chosen point (0 at an end is a tapered tip),
+  **Segments**, **Caps**, **Closed** and **Round the path** (curved
+  through its points, or straight runs). With **Symmetry** on (it is
+  already on when the mesh you were on is mirrored) the pipe has a twin
+  across x that follows every change. A pipe is a sweep: it takes
+  modifiers too.
+- **Compiled sidecars (1.8).** Wherever Uranus shows a model it is not
+  editing (a tile in the browser, a model placed in a scene, the
+  mannequin) it draws the model from `name.fart.glb`, a compiled copy
+  kept beside the file with every mesh already generated, and makes that
+  copy first when it is missing or was made from an older file. So a
+  scene of heavy models opens at once the second time. The copies are
+  build artifacts, as `npx fart build` makes them: the studio never
+  opens or lists one, they are no part of a checkpoint, and a recolour
+  needs no rebuild because they hold each colour by name. The model you
+  are editing is always drawn from the file itself; its copy is made
+  again when you save. In a git repository that would commit them the
+  studio asks once whether to add `*.fart.glb` to `.gitignore`. **Build
+  compiled sidecars** in the File menu makes them for the whole project.
+- **Reference images.** The View tab's **Reference images** pins an
+  image of the project (png, jpg, webp, gif) behind the model in the
+  front, side or top view: its position, its width in the canvas's
+  units, its opacity. It shows only when the canvas looks straight from
+  that view (`1`, `3`, `7`), under the model and over the grid.
+- **A mannequin.** The View tab's **Mannequin** shows another 3D file of
+  the project under the one being edited, dimmed, in one of its states,
+  where its own coordinates put it: a body to fit a helm or a coat to.
+  It cannot be selected, picked or changed from here, and fit and frame
+  ignore it.
+- **Reference images, the mannequin and symmetry are remembered per
+  document on this device** and are never written into the `.fart`.
+- **Clay shading.** **Shading** in the View tab's Camera section swaps
+  the plain light (one flat light, the way Project draws) for **Clay**:
+  a warm key light with a soft edge, a cool fill from the other side and
+  a little rim, worked out per pixel from the mesh's normals. Rounded
+  forms then read the way a cel or clay shaded game shows them; set a
+  mesh's normals to smooth (or give it smooth levels) to see it. It
+  changes the canvas only.
+- **Ask Claude to model.** Claude has the same operations as tools
+  (extrude, inset, loop cut, bridge, fill, delete faces, merge, flip,
+  wind outward, crease, crease by angle, and a measure of the mesh),
+  each one undo step, each answering with what the mesh is now; and it
+  can look at the model from the front, the left, the top and a
+  three-quarter view in one go. It paints faces, sets and applies
+  modifiers, shades corners, draws a pipe from points (on a shape's
+  surface, if asked) and builds sidecars the same way, and it can look
+  at another model of the project without opening it.
 
 ## Scenes
 

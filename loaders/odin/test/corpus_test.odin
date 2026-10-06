@@ -511,3 +511,45 @@ curves_and_surfaces :: proc(t: ^testing.T) {
 	fart.flatten_part(&ds, jar, &tms3)
 	testing.expect(t, len(tms3) == 2 && len(tms3[0].positions) > 300 && len(tms3[1].positions) == 36, "the lathe and the extrude generate")
 }
+
+// 1.7: a smooth mesh that wears a texture by explicit pattern coordinates
+// keeps them: they are subdivided with the faces, within each face.
+@(test)
+subdivision_carries_pattern_coordinates :: proc(t: ^testing.T) {
+	defer free_all(context.temp_allocator)
+	SQUARE :: `[[0,0],[4,0],[4,4],[0,4]]`
+	data := `{"version":1,"space":"3d","palette":[{"name":"c","rgb":[1,1,1,255]}],"textures":[{"name":"weave","cell":[4,4],"maps":{}}],"parts":[{"name":"a","pivot":[0,0,0],"shapes":[
+		{"kind":"mesh","color":"c","smooth":2,"texture":"weave",
+		 "points":[[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]],
+		 "faces":[[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[4,5,1,0],[3,2,6,7]],
+		 "mapping":{"uvs":[` + SQUARE + "," + SQUARE + "," + SQUARE + "," + SQUARE + "," + SQUARE + "," + SQUARE + `]}}]}]}`
+	doc, ok := fart.load_bytes_3d(transmute([]byte)string(data))
+	if !testing.expect(t, ok, "the textured cube loads") do return
+	cage := &doc.parts[0].shapes[0]
+	// one level: a child at a corner has that corner's coordinates, the middles of its two edges, the face's middle
+	_, faces, _, uvs := fart.subdivide_once(cage.points[:], cage.faces[:], cage.creases[:], context.temp_allocator, cage.mapping.uvs[:])
+	testing.expect_value(t, len(faces), 24)
+	testing.expect_value(t, len(uvs), 24)
+	if len(uvs) == 24 {
+		testing.expect(t, uvs[0][0] == fart.V2{0, 0} && uvs[0][1] == fart.V2{2, 0} && uvs[0][2] == fart.V2{2, 2} && uvs[0][3] == fart.V2{0, 2})
+		testing.expect(t, uvs[1][0] == fart.V2{4, 0} && uvs[1][1] == fart.V2{4, 2} && uvs[1][2] == fart.V2{2, 2} && uvs[1][3] == fart.V2{2, 0})
+	}
+	// coordinates that do not fit the faces are not carried
+	_, _, _, none := fart.subdivide_once(cage.points[:], cage.faces[:], cage.creases[:], context.temp_allocator, cage.mapping.uvs[1:])
+	testing.expect_value(t, len(none), 0)
+	// the surface wears them, a list for each of its faces
+	surf := fart.surface_of(cage, context.temp_allocator)
+	testing.expect_value(t, len(surf.faces), 96)
+	testing.expect_value(t, len(surf.mapping.uvs), 96)
+	// and so do the triangles: textured, by the cage's own coordinates (box mapping would stay within the cube's size)
+	tms := make([dynamic]fart.Tri_Mesh)
+	defer fart.destroy_tri_meshes(&tms)
+	fart.flatten_part(&doc, &doc.parts[0], &tms)
+	testing.expect_value(t, tms[0].texture, "weave")
+	testing.expect_value(t, len(tms[0].uvs), len(tms[0].positions))
+	hi: f32 = -1e9
+	lo: f32 = 1e9
+	for uv in tms[0].uvs do hi, lo = max(hi, uv.x, uv.y), min(lo, uv.x, uv.y)
+	testing.expectf(t, hi > 3.9 && lo >= 0, "the pattern runs 0 to 4 over each face, got %v to %v", lo, hi)
+	fart.destroy_3d(&doc)
+}

@@ -45,8 +45,9 @@ across them.
   full screen, where they hide. Every header drags the window.
 - **Left is the navigator**, four tabs in its header: the project's
   **assets** as a tree (a filter and a New asset menu pinned to the
-  bottom), the open asset's **outline** (parts as a tree, then states,
-  then clips, each group with a +; a scene's nodes), **search** (assets,
+  bottom), the open asset's **outline** (parts as a tree, a part of
+  several shapes opening to them, then states, then clips, each group
+  with a +; a scene's nodes), **search** (assets,
   parts, states, clips and colours by name) and **source control**
   (branches, what is uncommitted, Review & commit…).
 - **The content header** holds the project picker (the project over its
@@ -120,19 +121,41 @@ definition each, and the tooltips repeat them.
 "Layers" is the panel; "parts" are what it lists. A part is a layer
 that can move, which is why it is not just called a layer.
 
+A part's shapes are rows under it, in file order, when it has more than
+one. A shape has no name in the file and the studio gives it none to
+keep: its row reads as its kind and the colour it names, `mesh ·
+white_plate`, numbered (`mesh · slit 2`) only where two in the part
+would read the same. The kind is the file's word, and a sweep goes by
+its `op`: lathe, extrude, pipe. A shape's row and the shape on the
+canvas are one selection.
+
 A 3D file (`space: "3d"`, 1.3) opens in the **model screen**: the same
 four regions, the canvas showing the model turned under a **view**. The
 words gain a coordinate, not a vocabulary:
 
 | word       | in the file     | what it is                                                  |
 |------------|-----------------|-------------------------------------------------------------|
-| box, ball, rod, prism | `mesh`, `ball`, `rod` | what the four drawing tools make: R drags a box, O a ball, L a rod, P clicks a prism's profile; each as deep as the **depth** field, along the view axis |
+| box, ball, rod, prism | `mesh`, `ball`, `rod` | what the four drawing tools make: R drags a box, O a ball, L a rod, P clicks a prism's profile; each as deep as the **depth** field, along the view axis. A fifth, U, clicks a **pipe**'s path |
 | corner     | `points[i]`     | a mesh's vertex; drags along the view plane                  |
 | view       | (not saved)     | a turn laid on the model: front, back, left, right, top, bottom, or free after an orbit |
 | orbit      |                 | a turntable about what is chosen: middle-drag, two fingers on a trackpad, or Alt-drag anywhere; `Cmd` held tumbles freely |
 | turn       | `rotate` `[x,y,z]` | a pose's turn about x, then y, then z; the lever turns about the view axis |
 | morph      | `morph` on a state entry | a mesh's corners as this state has them (1.6); **Deform** (D) sends corner drags there instead of the base |
+| edge, face | `faces[i]`      | a mesh's edge (two corners a face joins) and its face; **Choose** in the Mesh section says which of corners, edges and faces a click takes |
+| rim        |                 | a loop of open edges (a face on one side only), around a hole: what Fill closes and Bridge joins |
+| extrude, inset, loop cut | `points`, `faces` | faces pushed out along their normal; faces shrunk inside a border ring; a new edge loop across a ring of quads. Plain geometry in the file, one undo step each |
+| symmetry   | (not saved)     | a mesh edited with its mirror across x: a working aid, the file holds both halves |
+| reference image | (not saved) | an image pinned behind the model in the front, side or top view |
+| mannequin  | (not saved)     | another model of the project under this one, dimmed and out of reach, to fit to |
+| clay       | (not saved)     | the canvas lit softly (warm key, cool fill, a rim) in place of the plain light |
 | smooth     | `smooth`, `normals`, `creases` | the cage drawn subdivided (1.7), lit by averaged normals; an edge's crease keeps it sharp |
+| paint      | `colors`, `paint` | faces of a mesh in other colours of the palette than its fill (1.8); **Paint** gives the chosen faces the picked colour, the **Brush** paints the faces the pointer crosses |
+| modifier   | `mods[]`      | an operation the file keeps and every reader applies to the cage, in order (1.8): **Mirror**, **Solidify**, **Crease**. **Apply** bakes one into plain geometry |
+| cage       | `points`, `faces` | what the file holds and the hand edits, under smoothing and modifiers; drawn as a dashed wire over the result |
+| shades     | `shades`      | a number per corner, darkening it (1.8); **Shade corners** works them out from how much sky each corner sees |
+| pipe       | `sweep` with `op: "pipe"` | a round section carried along a path of points (1.8); the pipe tool clicks the points, which are then handles |
+| on surface | (not saved)     | a pipe's points land on the mesh under the pointer, lifted off it by **lift** |
+| sidecar    | `name.fart.glb` | a model compiled to triangles beside its file (1.8): what the studio draws a model from when it is not being edited. A build artifact, never opened or listed |
 | sweep      | `sweep`         | a solid from a profile (lathe, extrude), kept as the profile (1.7) |
 | Project…   |                 | write the 2D views (`name-left.fart`, …) beside the model    |
 
@@ -181,6 +204,7 @@ Figma's letters, because everyone's hands already know them.
 | `Cmd S`                 | save (the checkpoint)                         |
 | `Cmd N` `Cmd W`         | new asset, close the asset (the browser)      |
 | `Cmd Shift N` `Cmd O` `Cmd Alt C` | new project, open project, clone a repository |
+| `Cmd I`                 | import a glTF model (.glb, .gltf) as a 3D asset |
 | `Cmd Shift 1` `Cmd ,`   | the welcome window, settings                  |
 | `Cmd 0` `Cmd Alt 0`     | the navigator, the inspector                  |
 | `Cmd 1`–`Cmd 4`         | the navigator's tabs: assets, outline, search, source control |
@@ -218,6 +242,13 @@ Blender's hands first:
 | then digits                 | the amount: units, degrees, a factor          |
 | `Shift` while transforming  | snap: whole units, 15°, tenths                |
 | `Return` or a click, `Esc` or a right click | keep it, put it back (one undo step either way) |
+| `E` `I` `K` `M`             | on a selected mesh: extrude what is chosen, inset the chosen faces, cut a loop across the chosen edge, merge corners. `E` `I` `K` then follow the pointer or a typed amount; `Return` or a click keeps, `Esc` or a right click puts back and leaves no undo step |
+| `Cmd A`, `Shift` click      | on a selected mesh: choose every corner, edge or face; add one or take it out |
+| `B`                         | on a selected mesh: the brush. A click or a drag paints the faces under the pointer with the picked colour; `B` or `Esc` puts it down |
+| `U`                         | the pipe tool: click a path's points, `Return` (or a click on the last point) makes the pipe, `Esc` drops it |
+
+With corners, edges or faces chosen on a mesh, the arrows and `G` `T`
+`S` move, turn and size those and leave the rest of the mesh where it is.
 
 With **Deform** on, every one of these reshapes the mesh in this state
 only (its morph), never the base; a ball or a rod has no morph and is

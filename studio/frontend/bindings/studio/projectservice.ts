@@ -135,6 +135,13 @@ export function Home(): $CancellablePromise<string> {
     return $Call.ByID(447982831);
 }
 
+/**
+ * IgnoreSidecars adds *.fart.glb to the project's .gitignore.
+ */
+export function IgnoreSidecars(root: string): $CancellablePromise<void> {
+    return $Call.ByID(1941078042, root);
+}
+
 export function IsDir(path: string): $CancellablePromise<boolean> {
     return $Call.ByID(2956617335, path);
 }
@@ -199,6 +206,14 @@ export function PickFolderAt(title: string, button: string): $CancellablePromise
 }
 
 /**
+ * PickImport shows the platform's open dialog for a model, anywhere on
+ * disk, and answers with its path. "" means cancelled.
+ */
+export function PickImport(): $CancellablePromise<string> {
+    return $Call.ByID(4106690584);
+}
+
+/**
  * PickParentFolder shows the folder dialog for a new project's home. "" means cancelled.
  */
 export function PickParentFolder(): $CancellablePromise<string> {
@@ -225,6 +240,29 @@ export function ReadAt(base: string, rel: string): $CancellablePromise<$models.T
 
 export function ReadFile(root: string, rel: string): $CancellablePromise<string> {
     return $Call.ByID(1365949130, root, rel);
+}
+
+/**
+ * ReadImage is an image file of the project as a data URL, for a
+ * reference image behind a model. Only pictures: anything else is refused.
+ */
+export function ReadImage(root: string, rel: string): $CancellablePromise<string> {
+    return $Call.ByID(1453263833, root, rel);
+}
+
+/**
+ * ReadImport is a model's bytes (uri ""), or those of a file a .gltf
+ * names beside itself, as base64.
+ */
+export function ReadImport(path: string, uri: string): $CancellablePromise<string> {
+    return $Call.ByID(2934376241, path, uri);
+}
+
+/**
+ * ReadSidecar is a document's sidecar as base64, "" when it has none.
+ */
+export function ReadSidecar(root: string, rel: string): $CancellablePromise<string> {
+    return $Call.ByID(2227100975, root, rel);
 }
 
 export function Recents(): $CancellablePromise<string[] | null> {
@@ -263,6 +301,13 @@ export function ServeStatus(): $CancellablePromise<$models.ServeInfo> {
 
 export function ServeStop(): $CancellablePromise<void> {
     return $Call.ByID(935075611);
+}
+
+/**
+ * SidecarIgnore: "none", "ignored" or "offer" (see sidecarIgnore).
+ */
+export function SidecarIgnore(root: string): $CancellablePromise<string> {
+    return $Call.ByID(610483513, root);
 }
 
 /**
@@ -343,4 +388,11 @@ export function WriteAt(base: string, rel: string, text: string): $CancellablePr
  */
 export function WriteFile(root: string, rel: string, text: string): $CancellablePromise<void> {
     return $Call.ByID(1511688169, root, rel, text);
+}
+
+/**
+ * WriteSidecar writes a document's sidecar (base64 of a binary glTF).
+ */
+export function WriteSidecar(root: string, rel: string, data: string): $CancellablePromise<void> {
+    return $Call.ByID(3285454450, root, rel, data);
 }

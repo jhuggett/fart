@@ -10,6 +10,9 @@
 #   make test       every check: core, corpus, Odin loader, studio
 #   make check-save the save model, end to end, in a headless browser (needs the app built)
 #   make check-ui   the workspace (navigator, path bar, tools, inspector), the same way
+#   make check-mesh mesh editing in the model screen (extrude, inset, loop cut, rims, symmetry, references, the mesh tools), the same way
+#   make check-layers a part's shapes as rows in the outline (listed, folded, chosen, deleted), 3D and 2D, the same way
+#   make check-surface format 1.8 in the model screen (paint, modifiers, shades, pipes, compiled sidecars and their tools), the same way
 #   make validate DIR=path/to/art   fart validate
 #   make skill      install the fastart skill for Claude Code (~/.claude/skills)
 
@@ -18,7 +21,7 @@ export PATH := $(shell go env GOPATH)/bin:$(PATH)
 DIR ?= spec/examples
 UNAME := $(shell uname)
 
-.PHONY: help setup dev app run serve test validate skill install check-save check-ui release clean
+.PHONY: help setup dev app run serve test validate skill install check-save check-ui check-mesh check-surface check-layers release clean
 
 help:
 	@sed -n 's/^#   //p' Makefile
@@ -66,8 +69,9 @@ test: node_modules
 	npm test -w @fastart/core
 	odin test loaders/odin/test
 	npm run check -w @fastart/studio
+	npm test -w @fastart/studio
 	npm run build -w @fastart/studio
-	cd studio && go vet ./...
+	cd studio && go vet ./... && go test ./...
 
 # a studio release, end to end (see scripts/release.sh)
 release: node_modules
@@ -83,6 +87,27 @@ check-ui: node_modules
 	cd studio && go build -o bin/studio .
 	npx playwright install chromium >/dev/null 2>&1 || true
 	node studio/test/workspace.mjs
+
+# the model screen's mesh editing, end to end: SHOTS=dir keeps screenshots of each step
+check-mesh: node_modules
+	npm run build -w @fastart/studio
+	cd studio && go build -o bin/studio .
+	npx playwright install chromium >/dev/null 2>&1 || true
+	node studio/test/mesh.mjs $(SHOTS)
+
+# format 1.8 in the model screen, end to end: paint, the modifier stack, shades, pipes, sidecars: SHOTS=dir keeps screenshots
+check-surface: node_modules
+	npm run build -w @fastart/studio
+	cd studio && go build -o bin/studio .
+	npx playwright install chromium >/dev/null 2>&1 || true
+	node studio/test/surface.mjs $(SHOTS)
+
+# the outline's shape rows, end to end: listed, folded, chosen from the row and from the canvas, deleted in one undo step: SHOTS=dir keeps screenshots
+check-layers: node_modules
+	npm run build -w @fastart/studio
+	cd studio && go build -o bin/studio .
+	npx playwright install chromium >/dev/null 2>&1 || true
+	node studio/test/layers.mjs $(SHOTS)
 
 validate: node_modules
 	node packages/core/src/cli.ts validate $(DIR)

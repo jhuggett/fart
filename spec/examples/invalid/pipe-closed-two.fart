@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "space": "3d",
+  "name": "pipe-closed-two",
+  "palette": [
+    {
+      "name": "steel",
+      "rgb": [
+        150,
+        150,
+        160,
+        255
+      ]
+    },
+    {
+      "name": "gold",
+      "rgb": [
+        90,
+        60,
+        40,
+        255
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "a",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "shapes": [
+        {
+          "kind": "sweep",
+          "color": "steel",
+          "op": "pipe",
+          "closed": true,
+          "path": {
+            "points": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                -4,
+                0
+              ]
+            ]
+          },
+          "radius": 0.4
+        }
+      ]
+    }
+  ]
+}

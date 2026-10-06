@@ -7,8 +7,9 @@
 // format's y-down frame to the y-up one most engines use.
 
 import type { BallShape, Doc3, MeshShape, Part3, RodShape, Shape3, StatePart3, SweepShape, Vec2, Vec3 } from "./types.ts";
-import { pathPoints } from "./curves.ts";
-import { cornerNormals, smoothNormals, surfaceOf } from "./subdiv.ts";
+import { pathPoints, pathPoints3 } from "./curves.ts";
+import { applyMods } from "./mods.ts";
+import { bakedSurface, cageHash, cornerNormals, smoothNormals, surfaceOf, uvHash } from "./subdiv.ts";
 import { faceNormal, shapesOf3Posed, triangulateFace, v3cross, v3dot, v3norm, v3sub, type Xf3 } from "./space3.ts";
 
 export type Axis = "x" | "y" | "z";
@@ -197,7 +198,9 @@ export function boxUV(p: Vec3, normal: Vec3, scale = 1): Vec2 {
 export function meshUVs(sh: Shape3): Vec2[][] {
 	const m = asMesh(sh);
 	const mapping = sh.mapping;
-	if (mapping?.uvs && mapping.uvs.length === m.faces.length) return mapping.uvs;
+	// (a smoothed mesh's explicit coordinates are its surface's: subdivided with the faces, 1.7)
+	const uvs = m.mapping?.uvs ?? mapping?.uvs;
+	if (uvs && uvs.length === m.faces.length) return uvs;
 	const scale = mapping?.scale ?? 1;
 	return m.faces.map((f) => {
 		const n = faceNormal(m.points, f);
@@ -205,17 +208,171 @@ export function meshUVs(sh: Shape3): Vec2[][] {
 	});
 }
 
+/** What shapes a pipe (1.8) besides its path. */
+export interface PipeOptions {
+	/** the section's scale: a round pipe's radius; 1 when absent */
+	radius?: number;
+	/** one factor per path point, multiplying the radius there, linear between */
+	radii?: number[];
+	/** sides of the round section, 8 by default */
+	segments?: number;
+	/** close the ends of an open pipe (the default) */
+	caps?: boolean;
+	/** join the path's last point to its first */
+	closed?: boolean;
+	/** a closed section in place of the circle, either way round */
+	profile?: Vec2[];
+}
+
+/**
+ * A section carried along a path in space: a tube, a horn, a plume, a
+ * strap. The path is a path body with three coordinates, flattened at the
+ * path tolerance. The section keeps its bearing by parallel transport,
+ * so it does not twist; a closed path spreads what twist a circuit leaves
+ * evenly along itself. Faces come out wound outward: the sides ring by
+ * ring, then the cap at the start and the cap at the end. A radius of 0
+ * at an open end is an apex.
+ */
+export function pipe(color: string, path: { points: Vec3[]; in?: Vec3[]; out?: Vec3[] }, opts: PipeOptions = {}): MeshShape {
+	const empty: MeshShape = { kind: "mesh", color, points: [], faces: [] };
+	const closed = !!opts.closed;
+	const flat = pathPoints3(path, closed);
+	// a point that sits on the one before it has no direction to offer
+	const P: Vec3[] = [];
+	const at: number[] = [];
+	const apart = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 1e-9;
+	flat.points.forEach((p, i) => {
+		if (P.length && !apart(p, P[P.length - 1])) return;
+		P.push(p);
+		at.push(flat.at[i]);
+	});
+	if (closed && P.length > 1 && !apart(P[0], P[P.length - 1])) {
+		P.pop();
+		at.pop();
+	}
+	const m = P.length;
+	if (m < (closed ? 3 : 2)) return empty;
+	const n = path.points.length;
+	const radius = opts.radius ?? 1;
+	const radii = opts.radii && opts.radii.length === n ? opts.radii : null;
+	const scaleAt = (t: number): number => {
+		if (!radii) return radius;
+		const i = Math.max(0, Math.min(n - 1, Math.floor(t)));
+		if (!closed && i >= n - 1) return radius * radii[n - 1];
+		const u = t - i;
+		return radius * (radii[i] * (1 - u) + radii[(i + 1) % n] * u);
+	};
+	let section: Vec2[];
+	if (opts.profile && opts.profile.length >= 3) {
+		section = opts.profile.map((p) => [p[0], p[1]]);
+		let area = 0;
+		section.forEach((p, i) => {
+			const q = section[(i + 1) % section.length];
+			area += p[0] * q[1] - q[0] * p[1];
+		});
+		if (area < 0) section.reverse();
+	} else {
+		const sides = Math.max(3, Math.round(opts.segments ?? 8));
+		section = [];
+		for (let k = 0; k < sides; k++) section.push([Math.cos((k / sides) * Math.PI * 2), Math.sin((k / sides) * Math.PI * 2)]);
+	}
+	// tangents: along the one segment at an open end, between the two segments elsewhere
+	const dir = (i: number): Vec3 => v3norm(v3sub(P[(i + 1) % m], P[i]));
+	const T: Vec3[] = [];
+	for (let i = 0; i < m; i++) {
+		if (!closed && i === 0) T.push(dir(0));
+		else if (!closed && i === m - 1) T.push(dir(m - 2));
+		else {
+			const a = dir((i + m - 1) % m);
+			const b = dir(i);
+			const sum: Vec3 = [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+			T.push(Math.hypot(sum[0], sum[1], sum[2]) < 1e-9 ? b : v3norm(sum));
+		}
+	}
+	const square = (nrm: Vec3, t: Vec3): Vec3 => {
+		const d = v3dot(nrm, t);
+		return v3norm([nrm[0] - t[0] * d, nrm[1] - t[1] * d, nrm[2] - t[2] * d]);
+	};
+	/** v turned about the unit axis k */
+	const turn = (v: Vec3, k: Vec3, c: number, sn: number): Vec3 => {
+		const kxv = v3cross(k, v);
+		const kd = v3dot(k, v) * (1 - c);
+		return [v[0] * c + kxv[0] * sn + k[0] * kd, v[1] * c + kxv[1] * sn + k[1] * kd, v[2] * c + kxv[2] * sn + k[2] * kd];
+	};
+	/** a normal carried from tangent a to tangent b by the shortest turn between them */
+	const carry = (nrm: Vec3, a: Vec3, b: Vec3): Vec3 => {
+		const axis = v3cross(a, b);
+		const sn = Math.hypot(axis[0], axis[1], axis[2]);
+		if (sn < 1e-12) return square(nrm, b);
+		return square(turn(nrm, [axis[0] / sn, axis[1] / sn, axis[2] / sn], v3dot(a, b), sn), b);
+	};
+	// the first normal: the axis the path leans on least, squared off against the tangent
+	const t0 = T[0].map(Math.abs);
+	const seed: Vec3 = t0[0] <= t0[1] && t0[0] <= t0[2] ? [1, 0, 0] : t0[1] <= t0[2] ? [0, 1, 0] : [0, 0, 1];
+	const N: Vec3[] = [square(seed, T[0])];
+	for (let i = 1; i < m; i++) N.push(carry(N[i - 1], T[i - 1], T[i]));
+	if (closed) {
+		const back = carry(N[m - 1], T[m - 1], T[0]);
+		const twist = Math.atan2(v3dot(v3cross(back, N[0]), T[0]), v3dot(back, N[0]));
+		for (let i = 1; i < m; i++) {
+			const a = (twist * i) / m;
+			N[i] = square(turn(N[i], T[i], Math.cos(a), Math.sin(a)), T[i]);
+		}
+	}
+	const points: Vec3[] = [];
+	const rings: number[][] = [];
+	for (let i = 0; i < m; i++) {
+		const s = scaleAt(at[i]);
+		if (!closed && (i === 0 || i === m - 1) && s <= 0) {
+			points.push(round(P[i]));
+			rings.push([points.length - 1]);
+			continue;
+		}
+		const B = v3cross(T[i], N[i]);
+		const ring: number[] = [];
+		for (const [x, y] of section) {
+			points.push(round([P[i][0] + s * (x * N[i][0] + y * B[0]), P[i][1] + s * (x * N[i][1] + y * B[1]), P[i][2] + s * (x * N[i][2] + y * B[2])]));
+			ring.push(points.length - 1);
+		}
+		rings.push(ring);
+	}
+	const faces: number[][] = [];
+	const K = section.length;
+	for (let i = 0; i < (closed ? m : m - 1); i++) {
+		const a = rings[i];
+		const b = rings[(i + 1) % m];
+		if (a.length === 1 && b.length === 1) continue;
+		for (let k = 0; k < K; k++) {
+			const k2 = (k + 1) % K;
+			if (a.length === 1) faces.push([a[0], b[k2], b[k]]);
+			else if (b.length === 1) faces.push([a[k], a[k2], b[0]]);
+			else faces.push([a[k], a[k2], b[k2], b[k]]);
+		}
+	}
+	if (!closed && opts.caps !== false) {
+		if (rings[0].length > 1) faces.push([...rings[0]].reverse());
+		if (rings[m - 1].length > 1) faces.push([...rings[m - 1]]);
+	}
+	return { kind: "mesh", color, points, faces };
+}
+
 const sweeps = new WeakMap<object, { key: string; mesh: MeshShape }>();
 
-/** The mesh a sweep (1.7) generates: its profile flattened, then lathed or extruded. The cage, before any smoothing. */
+/** The mesh a sweep (1.7) generates: its profile flattened, then lathed or extruded, or (1.8) carried along a path. The cage, before any mods or smoothing. */
 export function sweepMesh(sh: SweepShape): MeshShape {
-	const key = JSON.stringify([sh.op, sh.axis, sh.profile, sh.segments, sh.from, sh.to]);
+	const key = JSON.stringify([sh.op, sh.axis, sh.profile, sh.segments, sh.from, sh.to, sh.path, sh.radius, sh.radii, sh.caps, sh.closed]);
 	const hit = sweeps.get(sh);
 	if (hit && hit.key === key) return withLook(hit.mesh, sh);
-	const profile = pathPoints({ ...sh.profile, closed: sh.op === "extrude" ? true : !!sh.profile.closed });
-	let mesh: MeshShape;
-	if (sh.op === "lathe") mesh = lathe(sh.color ?? "", profile, sh.axis, Math.max(3, Math.round(sh.segments ?? 12)));
-	else mesh = profile.length >= 3 ? extrude(sh.color ?? "", profile, sh.axis, sh.from ?? 0, sh.to ?? 1) : { kind: "mesh", color: sh.color, points: [], faces: [] };
+	const none: MeshShape = { kind: "mesh", color: sh.color, points: [], faces: [] };
+	let mesh: MeshShape = none;
+	if (sh.op === "pipe") {
+		const section = sh.profile ? pathPoints({ ...sh.profile, closed: true }) : undefined;
+		if (sh.path && Array.isArray(sh.path.points)) mesh = pipe(sh.color ?? "", sh.path, { radius: sh.radius, radii: sh.radii, segments: sh.segments, caps: sh.caps, closed: sh.closed, profile: section });
+	} else if (sh.profile) {
+		const profile = pathPoints({ ...sh.profile, closed: sh.op === "extrude" ? true : !!sh.profile.closed });
+		if (sh.op === "lathe") mesh = lathe(sh.color ?? "", profile, sh.axis ?? "y", Math.max(3, Math.round(sh.segments ?? 12)));
+		else if (profile.length >= 3) mesh = extrude(sh.color ?? "", profile, sh.axis ?? "z", sh.from ?? 0, sh.to ?? 1);
+	}
 	sweeps.set(sh, { key, mesh });
 	return withLook(mesh, sh);
 }
@@ -228,6 +385,10 @@ function withLook(mesh: MeshShape, sh: SweepShape): MeshShape {
 	if (sh.normals) out.normals = sh.normals;
 	if (sh.angle !== undefined) out.angle = sh.angle;
 	if (sh.smooth) out.smooth = sh.smooth;
+	if (sh.creases) out.creases = sh.creases;
+	if (sh.colors) out.colors = sh.colors;
+	if (sh.paint) out.paint = sh.paint;
+	if (sh.mods) out.mods = sh.mods;
 	if (sh.bake) out.bake = sh.bake;
 	return out;
 }
@@ -239,10 +400,60 @@ export function cageOf(sh: Shape3): MeshShape {
 	return sh.kind === "ball" ? ballMesh(sh) : rodMesh(sh);
 }
 
-/** A shape as the mesh a renderer draws: its cage, subdivided when it is smooth (1.7). */
+/** A shape's cage with its mods applied (1.8): what `smooth` refines, what collision and the hull read. Without mods, the cage. */
+export function builtOf(sh: Shape3): MeshShape {
+	return applyMods(cageOf(sh));
+}
+
+/** A shape as the mesh a renderer draws: its cage, its mods applied (1.8), subdivided when it is smooth (1.7). */
 export function asMesh(sh: Shape3): MeshShape {
 	const cage = cageOf(sh);
-	return surfaceOf(cage);
+	if (!cage.mods?.length) return surfaceOf(cage);
+	// a bake of this very cage, mods and all, stands in for the work
+	const baked = bakedSurface(cage, cageHash(cage));
+	if (baked) return baked;
+	return surfaceOf(applyMods(cage));
+}
+
+/** Is this shape one whose drawn mesh is made, not written: smoothed, modified, or swept? */
+function generated(sh: Shape3): sh is MeshShape | SweepShape {
+	if (sh.kind === "sweep") return true;
+	return sh.kind === "mesh" && ((sh.smooth ?? 0) > 0 || !!sh.mods?.length);
+}
+
+/**
+ * Write the mesh each generated shape draws into its `bake`: smooth
+ * meshes (1.7), shapes with mods and sweeps of every op (1.8), for a
+ * reader that will not generate. `of` is the cage's hash; the bake holds
+ * paint for its own faces and shades for its own points when the shape
+ * has them. Returns how many it wrote.
+ */
+export function bakeSurfaces(doc: { parts?: { shapes?: unknown[] }[] }): number {
+	let count = 0;
+	for (const part of doc.parts ?? []) {
+		for (const sh of (part.shapes ?? []) as Shape3[]) {
+			if (!sh || !generated(sh)) continue;
+			const { bake: _old, ...bare } = cageOf(sh);
+			void _old;
+			const cage = bare as MeshShape;
+			if (cage.points.length < 3 || !cage.faces.length) continue;
+			const m = surfaceOf(applyMods(cage));
+			const tris: number[] = [];
+			for (const f of m.faces) tris.push(...triangulateFace(m.points, f));
+			const bake: NonNullable<MeshShape["bake"]> = { points: m.points, faces: m.faces, tris, of: cageHash(cage) };
+			const cageUV = cage.mapping?.uvs;
+			const fits = (uvs: Vec2[][] | undefined, faces: number[][]) => !!uvs && uvs.length === faces.length && uvs.every((f, i) => Array.isArray(f) && f.length === faces[i].length);
+			if (fits(cageUV, cage.faces) && fits(m.mapping?.uvs, m.faces)) {
+				bake.uvs = m.mapping!.uvs;
+				bake.uvOf = uvHash(cageUV!);
+			}
+			if (m.paint && m.paint.length === m.faces.length) bake.paint = m.paint;
+			if (m.shades && m.shades.length === m.points.length) bake.shades = m.shades;
+			sh.bake = bake;
+			count++;
+		}
+	}
+	return count;
 }
 
 /** What a renderer uploads: flat triangles with one normal per face, and the token and shade to paint them. */
@@ -258,6 +469,10 @@ export interface TriMesh {
 	/** 1.5: the texture's name, and pattern coordinates per vertex (u, v), when the shape has one */
 	texture?: string;
 	uvs?: Float32Array;
+	/** 1.8: the token each triangle paints, one per triangle, when the shape is painted; absent, every triangle is `color` */
+	colors?: string[];
+	/** 1.8: the shade at each vertex (three per triangle), when the shape has `shades`; it multiplies `shade` */
+	shades?: Float32Array;
 }
 
 /** Flatten one shape. Meshes use their baked tris when they have them. */
@@ -268,7 +483,7 @@ export function triMesh(sh: Shape3): TriMesh {
 	const positions = new Float32Array(count * 9);
 	const normals = new Float32Array(count * 9);
 	// smooth shading (1.7): a normal per face corner, averaged around the vertex up to sharp edges
-	const cage = cageOf(sh);
+	const cage = builtOf(sh);
 	const smooth = smoothNormals(cage);
 	const cn = smooth ? cornerNormals(m.points, m.faces, { angle: cage.angle, creases: (cage.smooth ?? 0) > 0 ? undefined : cage.creases }) : null;
 	const cornerOf = new Map<number, Vec3>();
@@ -282,21 +497,27 @@ export function triMesh(sh: Shape3): TriMesh {
 		cornerUV = new Map();
 		m.faces.forEach((f, fi) => f.forEach((idx, ci) => cornerUV!.set(fi * 1e6 + idx, perFace[fi][ci])));
 	}
-	// which face each triangle came from: baked tris lose that, so fall back to the box of the triangle itself
-	const faceOfTri = (t: number): number => {
-		let acc = 0;
-		for (let fi = 0; fi < m.faces.length; fi++) {
-			acc += m.faces[fi].length - 2;
-			if (t < acc) return fi;
-		}
-		return -1;
-	};
+	// paint (1.8): the token of each triangle's face; shades: the value at each corner's point
+	const painted = !!m.paint && m.paint.length === m.faces.length && m.paint.some((p) => p > 0) && !!m.colors?.length;
+	const colors: string[] | undefined = painted ? [] : undefined;
+	const shades = m.shades && m.shades.length === m.points.length ? new Float32Array(count * 3) : undefined;
+	// which face each triangle came from: triangles run in face order, a face of n corners giving n − 2
+	const faceOf: number[] = [];
+	if (cn || cornerUV || painted) m.faces.forEach((f, fi) => {
+		for (let i = 0; i < f.length - 2; i++) faceOf.push(fi);
+	});
+	const faceOfTri = (t: number): number => faceOf[t] ?? -1;
 	for (let t = 0; t < count; t++) {
 		const a = m.points[tris[t * 3]];
 		const b = m.points[tris[t * 3 + 1]];
 		const c = m.points[tris[t * 3 + 2]];
 		const n = v3norm(v3cross(v3sub(b, a), v3sub(c, a)));
-		const fiOf = cn || (uvs && cornerUV) ? faceOfTri(t) : -1;
+		const fiOf = cn || (uvs && cornerUV) || painted ? faceOfTri(t) : -1;
+		if (colors) {
+			const p = fiOf >= 0 ? m.paint![fiOf] : 0;
+			colors.push((p > 0 ? m.colors![p - 1] : undefined) ?? sh.color ?? "");
+		}
+		if (shades) for (let k = 0; k < 3; k++) shades[t * 3 + k] = m.shades![tris[t * 3 + k]];
 		[a, b, c].forEach((p, k) => {
 			positions.set(p, t * 9 + k * 3);
 			normals.set(cn ? (cornerOf.get(fiOf * 1e6 + tris[t * 3 + k]) ?? n) : n, t * 9 + k * 3);
@@ -312,6 +533,8 @@ export function triMesh(sh: Shape3): TriMesh {
 		out.texture = sh.texture;
 		out.uvs = uvs;
 	}
+	if (colors) out.colors = colors;
+	if (shades) out.shades = shades;
 	return out;
 }
 

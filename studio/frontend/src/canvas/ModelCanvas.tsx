@@ -12,11 +12,33 @@ import { view, toWorld } from "./view.ts";
 import { render3, renderGround, onDown, onMove, onUp, cancelGesture, ix3, orbitDrag, orbitStart } from "./model3.ts";
 import { wheelNav } from "./orbit.ts";
 import { gizmoCancel, modal3, useGizmo, modelGizmo } from "./gizmo3.ts";
-import { drawSolids } from "./gl3.ts";
-import { md, frameParts } from "../state/model.ts";
+import { viewXf3, type Vec3 } from "@fastart/core";
+import { drawLayers, poseParts, type SolidLayer } from "./gl3.ts";
+import { meshCancel, meshModal } from "./meshtool3.ts";
+import { md, frameParts, mannequinPoses } from "../state/model.ts";
+import { work, refRev, shading } from "../state/workspace.ts";
+import { canvasColors } from "../state/theme.ts";
 import { theme } from "../state/theme.ts";
 import { openContextMenu } from "../state/menu.ts";
 import { run, keysFor } from "../state/commands.ts";
+
+// the canvas's colour as numbers, for washing a mannequin toward it: whatever CSS spells it as, a pixel of it says
+let bgSeen = "";
+let bgRgb: Vec3 = [1, 1, 1];
+function canvasRgb(): Vec3 {
+	const css = canvasColors().bg;
+	if (css === bgSeen) return bgRgb;
+	bgSeen = css;
+	const c = document.createElement("canvas");
+	c.width = c.height = 1;
+	const x = c.getContext("2d");
+	if (!x) return bgRgb;
+	x.fillStyle = css;
+	x.fillRect(0, 0, 1, 1);
+	const d = x.getImageData(0, 0, 1, 1).data;
+	bgRgb = [d[0] / 255, d[1] / 255, d[2] / 255];
+	return bgRgb;
+}
 
 export function ModelCanvas() {
 	const ref = useRef<HTMLCanvasElement>(null);
@@ -48,7 +70,12 @@ export function ModelCanvas() {
 			raf = 0;
 			if (!W || !H) return;
 			renderGround(gctx, W, H, dpr);
-			const solid = drawSolids(glCanvas, md.doc.value, frameParts(), md.tokens.value, md.light.value, md.ambient.value, { W, H, dpr, pan: view.pan.value, zoom: view.zoom.value }, md.patterns.value);
+			// the mannequin first, dimmed, in the same space and the same depth buffer: the model is fitted to it
+			const layers: SolidLayer[] = [];
+			const man = md.mannequin.value;
+			if (man) layers.push({ fps: poseParts(man.doc, mannequinPoses(), viewXf3(md.turn.value), man.compiled), tokens: man.tokens, dim: 0.6 });
+			layers.push({ fps: frameParts(), tokens: md.tokens.value, patterns: md.patterns.value });
+			const solid = drawLayers(glCanvas, layers, md.light.value, md.ambient.value, { W, H, dpr, pan: view.pan.value, zoom: view.zoom.value }, { clay: shading.value === "clay", bg: canvasRgb() });
 			render3(ctx, W, H, dpr, !solid);
 		};
 		const request = () => {
@@ -76,6 +103,21 @@ export function ModelCanvas() {
 			void md.collide.value;
 			void md.patterns.value;
 			void md.pending.value;
+			void md.pick.value;
+			void md.verts.value;
+			void md.edges.value;
+			void md.faces.value;
+			void md.mannequin.value;
+			void md.painting.value;
+			void md.paintTok.value;
+			void md.pipePts.value;
+			void md.pipePt.value;
+			void md.onSurface.value;
+			void md.lift.value;
+			void work.value;
+			void refRev.value;
+			void shading.value;
+			void meshModal.value;
 			void view.pan.value;
 			void modal3.value;
 			void view.zoom.value;
@@ -110,7 +152,7 @@ export function ModelCanvas() {
 			canvas.setPointerCapture(e.pointerId);
 			const s = local(e);
 			// a right click puts a transform under way back, before it is a menu
-			if (e.button === 2) return gizmoCancel() ? (e.preventDefault(), request()) : menu(e);
+			if (e.button === 2) return meshCancel() || gizmoCancel() ? (e.preventDefault(), request()) : menu(e);
 			// the middle button orbits, with ⇧ it pans; Space-drag pans as on the 2D canvas
 			if ((e.button === 1 && e.shiftKey) || (e.button === 0 && md.space)) {
 				panning = true;

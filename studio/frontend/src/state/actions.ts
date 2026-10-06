@@ -11,7 +11,8 @@ import { sidebar, toggleSidebar, toggleInspector, popToAssets, pushAsset, openAs
 import { openPalette, renaming, openMenuBelow, type MenuItem } from "./menu.ts";
 import { createProjectSheet, cloneSheet, newAssetSheet, newBranchSheet } from "../ui/Sheets.tsx";
 import { assetMenu, stateMenu } from "../ui/ProjectBar.tsx";
-import { logActivity } from "./activity.ts";
+import { logActivity, busy } from "./activity.ts";
+import { buildSidecars } from "./sidecar.ts";
 import { CATEGORIES, openHelp, helpSheet, helpSearch, keysSheet } from "./help.ts";
 import { toggleAppearance } from "./theme.ts";
 import { canBack, canForward } from "./nav.ts";
@@ -20,8 +21,11 @@ import { shell } from "../shell/shell.ts";
 import { checkForUpdates } from "./update.ts";
 import { docBounds } from "@fastart/core";
 import * as M from "./model.ts";
-import { escape as escape3, polyEnter as polyEnter3, nudgeView, frameBounds, chosenBounds, orbitDrag } from "../canvas/model3.ts";
+import { escape as escape3, polyEnter as polyEnter3, nudgeView, frameBounds, chosenBounds, orbitDrag, ix3 } from "../canvas/model3.ts";
+import { meshOp } from "../canvas/meshtool3.ts";
+import { shading, setShading, mirrorOn, setMirror } from "./workspace.ts";
 import { askProject } from "../screens/Model.tsx";
+import { importGltfCommand } from "../ui/ImportGltf.tsx";
 import * as S from "../state/scene.ts";
 import { askInstance, addGroupNow } from "../screens/Scene.tsx";
 import { nudgeSel as nudgeScene, frameBounds as sceneBounds, orbitDrag as sceneOrbit, chosenBounds as sceneChosen } from "../canvas/scene3.ts";
@@ -33,6 +37,30 @@ const inAny = () => inEditor() || inModel() || inScene();
 const inProject = () => inWorkspace();
 const native = () => shell.kind === "wails";
 const setup = () => (inEditor() && ed.curClip.value < 0 && !ed.isPalette.value) || (inModel() && M.md.curClip.value < 0);
+
+/** A mesh is the one thing selected in the model screen, in a state: its corners, edges and faces can be edited. */
+const meshSel = () => inModel() && M.md.curClip.value < 0 && M.selShape()?.kind === "mesh" && !M.md.also.value.length;
+
+/** A mesh or a sweep is the one thing selected in the model screen, in a state: it can carry modifiers. */
+const surfSel = () => {
+	const k = M.selShape()?.kind;
+	return inModel() && M.md.curClip.value < 0 && (k === "mesh" || k === "sweep") && !M.md.also.value.length;
+};
+/** What an action did, into the activity log. */
+const noted = (what: string | null) => {
+	if (what) logActivity(what, "check");
+};
+/** Every 3D model of the project gets its compiled sidecar, the fresh ones left alone. */
+async function buildAll() {
+	const root = project.root.value;
+	if (root === null) return;
+	const files = project.files.value.filter((f) => project.kinds.value[f] === "3D");
+	const done = await busy("Building compiled sidecars", () => buildSidecars(root, files));
+	const built = done.filter((d) => d.did === "built").length;
+	const failed = done.filter((d) => d.did === "failed");
+	logActivity(`Built ${built} sidecar${built === 1 ? "" : "s"}, ${done.filter((d) => d.did === "fresh").length} already fresh`, "check");
+	if (failed.length) project.error.value = `Could not build ${failed.map((f) => f.path).join(", ")}: ${failed[0].why ?? ""}`;
+}
 
 /** The quick switchers drop from their segment of the path bar (the last one, when theirs is not there). */
 function openSwitcher(which: "asset" | "state", items: MenuItem[]) {
@@ -63,12 +91,21 @@ function nudge(dx: number, dy: number) {
 	nudgeTimer = window.setTimeout(inScene() ? S.endGesture : inModel() ? M.endGesture : endGesture, 600);
 }
 
-function tool(t: Tool) {
+function tool(t: Tool | "pipe") {
 	if (inModel()) {
 		M.md.tool.value = t;
 		M.md.polyPts.value = [];
+		M.md.pipePts.value = [];
+		if (t !== "select") M.md.painting.value = false;
+		// a pipe drawn over a mesh that is mirrored (by a modifier, or by the working symmetry) gets its twin
+		if (t === "pipe") {
+			const s = M.md.sel.value;
+			const sh = M.selShape();
+			if (s && sh) M.md.pipeTwin.value = M.mirrorModOn(sh) || M.symOn(s);
+		}
 		return;
 	}
+	if (t === "pipe") return;
 	ed.tool.value = t;
 	ed.polyPts.value = [];
 }
@@ -82,6 +119,9 @@ export function initCommands() {
 		{ id: "tool.circle", title: "Circle tool", group: "Tools", when: setup, run: () => tool("circle") },
 		{ id: "tool.line", title: "Line tool", group: "Tools", when: setup, run: () => tool("line") },
 		{ id: "tool.poly", title: "Poly tool", group: "Tools", when: setup, run: () => tool("poly") },
+		{ id: "tool.pipe", title: "Pipe tool", group: "Tools", when: () => inModel() && setup(), run: () => tool("pipe") },
+		{ id: "model.onSurface", title: "On surface: pipe points land on the mesh under the pointer", group: "Tools", when: () => inModel() && setup(), run: () => (M.md.onSurface.value = !M.md.onSurface.value) },
+		{ id: "model.pipeTwin", title: "Pipe symmetry: a mirrored twin across x", group: "Tools", when: () => inModel() && setup(), run: () => (M.md.pipeTwin.value = !M.md.pipeTwin.value) },
 
 		{ id: "chat.toggle", title: "Ask Claude", group: "File", when: () => shell.chat && inProject(), run: toggleChat },
 		{ id: "file.save", title: "Save (checkpoint)", group: "File", when: inAny, run: either(() => saved(save), () => saved(M.save), () => saved(S.save)) },
@@ -93,6 +133,7 @@ export function initCommands() {
 		{ id: "file.new", title: "New asset…", group: "File", when: inProject, run: () => void newAssetSheet("2D") },
 		{ id: "file.newModel", title: "New 3D asset…", group: "File", when: inProject, run: () => void newAssetSheet("3D") },
 		{ id: "file.newPalette", title: "New palette…", group: "File", when: inProject, run: () => void newAssetSheet("Palette") },
+		{ id: "file.importGltf", title: "Import glTF…", group: "File", when: inProject, run: () => void importGltfCommand() },
 		{ id: "model.project", title: "Project to 2D views…", group: "File", when: inModel, run: () => void askProject() },
 		{ id: "file.browse", title: "Close the asset (show the browser)", group: "File", when: inAny, run: () => void goBrowse() },
 		{ id: "file.newProject", title: "New project…", group: "File", when: native, run: createProjectSheet },
@@ -112,7 +153,55 @@ export function initCommands() {
 		{ id: "edit.duplicate", title: "Duplicate", group: "Edit", when: inAny, run: either(dupSel, M.dupSel, () => S.selectNodes(S.selectedRoots().map((p) => S.duplicateNode(p)).filter((p): p is string => !!p))) },
 		{ id: "model.mirror", title: "Mirror across x", group: "Edit", when: () => inModel() && !!M.md.sel.value, run: M.mirrorSel },
 		{ id: "edit.delete", title: "Delete", group: "Edit", when: inAny, run: either(deleteSel, M.deleteSel, () => S.selectedRoots().forEach((p) => S.deleteNode(p))) },
-		{ id: "edit.selectAll", title: "Select all", group: "Edit", when: () => setup() && inEditor(), run: selectAll },
+		{ id: "edit.selectAll", title: "Select all", group: "Edit", when: () => (setup() && inEditor()) || meshSel(), run: either(selectAll, M.chooseAll) },
+
+		{ id: "mesh.corners", title: "Choose corners", group: "Mesh", when: meshSel, run: () => M.setPick("corner") },
+		{ id: "mesh.edges", title: "Choose edges", group: "Mesh", when: meshSel, run: () => M.setPick("edge") },
+		{ id: "mesh.faces", title: "Choose faces", group: "Mesh", when: meshSel, run: () => M.setPick("face") },
+		{ id: "mesh.extrude", title: "Extrude faces or open edges", group: "Mesh", when: meshSel, run: () => void meshOp("extrude", ix3.cursor) },
+		{ id: "mesh.inset", title: "Inset faces", group: "Mesh", when: meshSel, run: () => void meshOp("inset", ix3.cursor) },
+		{ id: "mesh.loopCut", title: "Loop cut", group: "Mesh", when: meshSel, run: () => void meshOp("loopcut", ix3.cursor) },
+		{ id: "mesh.merge", title: "Merge corners by distance", group: "Mesh", when: meshSel, run: () => void meshOp("merge", null) },
+		{ id: "mesh.creaseAngle", title: "Crease by angle", group: "Mesh", when: meshSel, run: () => void meshOp("creaseAngle", null) },
+		{ id: "mesh.rim", title: "Choose the whole rim", group: "Mesh", when: meshSel, run: () => void M.meshAct("rim") },
+		{ id: "mesh.bridge", title: "Bridge two rims", group: "Mesh", when: meshSel, run: () => void M.meshAct("bridge") },
+		{ id: "mesh.fill", title: "Fill a rim", group: "Mesh", when: meshSel, run: () => void M.meshAct("fill") },
+		{ id: "mesh.flip", title: "Flip faces", group: "Mesh", when: meshSel, run: () => void M.meshAct("flip") },
+		{ id: "mesh.wind", title: "Wind outward", group: "Mesh", when: meshSel, run: () => void M.meshAct("wind") },
+		{ id: "mesh.paint", title: "Paint faces by brush", group: "Mesh", when: meshSel, run: () => M.setPainting(!M.md.painting.value) },
+		{ id: "mesh.paintChosen", title: "Paint the chosen faces", group: "Mesh", when: () => meshSel() && M.md.faces.value.length > 0, run: () => void M.paintChosen() },
+		{ id: "mesh.shade", title: "Shade corners", group: "Mesh", when: meshSel, run: () => noted(M.shadeAct("shade")) },
+		{ id: "mesh.clearShades", title: "Clear shades", group: "Mesh", when: meshSel, run: () => noted(M.shadeAct("clear")) },
+		{ id: "mesh.addMirror", title: "Add modifier: mirror", group: "Mesh", when: surfSel, run: () => void M.addMod(M.md.sel.value!, "mirror") },
+		{ id: "mesh.addSolidify", title: "Add modifier: solidify", group: "Mesh", when: surfSel, run: () => void M.addMod(M.md.sel.value!, "solidify") },
+		{ id: "mesh.addCrease", title: "Add modifier: crease", group: "Mesh", when: surfSel, run: () => void M.addMod(M.md.sel.value!, "crease") },
+		{
+			id: "mesh.applyMods",
+			title: "Apply every modifier",
+			group: "Mesh",
+			when: () => surfSel() && M.modsOf(M.selShape()).length > 0,
+			run: () => {
+				try {
+					noted(M.applyMod(M.md.sel.value!, M.modsOf(M.selShape()).length - 1));
+				} catch (e) {
+					project.error.value = e instanceof Error ? e.message : String(e);
+				}
+			},
+		},
+		{ id: "file.buildSidecars", title: "Build compiled sidecars for the project", group: "File", when: inProject, run: () => void buildAll() },
+		{
+			id: "mesh.symmetry",
+			title: "Symmetry: mirror edits across x",
+			group: "Mesh",
+			when: meshSel,
+			run: () => {
+				const s = M.md.sel.value!;
+				const name = M.parts()[s.part]?.name ?? "";
+				// a Mirror modifier across x already does it: the two would double every edit
+				if (M.mirrorModOn(M.selShape()!)) project.error.value = "This mesh has a Mirror modifier across x, so the file mirrors it already: edit the half that is there.";
+				else setMirror(name, s.shape, !mirrorOn(name, s.shape));
+			},
+		},
 		{ id: "edit.raise", title: "Raise", group: "Edit", when: () => inEditor() || inScene(), run: either(() => selOrder(true), () => {}, () => { if (S.sc.sel.value) S.moveNode(S.sc.sel.value, true); }) },
 		{ id: "edit.lower", title: "Lower", group: "Edit", when: () => inEditor() || inScene(), run: either(() => selOrder(false), () => {}, () => { if (S.sc.sel.value) S.moveNode(S.sc.sel.value, false); }) },
 		{ id: "edit.escape", title: "Deselect / cancel", group: "Edit", when: inAny, run: either(escape, escape3, () => (S.sc.sel.value = null)) },
@@ -127,7 +216,8 @@ export function initCommands() {
 					else if (curPart()) renaming.value = { kind: "part", index: ed.curPart.value };
 				},
 				() => {
-					if (M.md.polyPts.value.length >= 3) polyEnter3();
+					if (M.md.polyPts.value.length >= 3 || (M.md.tool.value === "pipe" && M.md.pipePts.value.length >= 2)) polyEnter3();
+					else if (M.md.tool.value === "pipe") project.error.value = "A pipe needs two points or more: click them, then press Return.";
 					else if (M.curPart()) renaming.value = { kind: "part", index: M.md.curPart.value };
 				},
 				() => {},
@@ -167,6 +257,7 @@ export function initCommands() {
 			},
 		},
 		{ id: "model.outline", title: "Silhouettes", group: "View", when: inModel, run: () => (M.md.outline.value = !M.md.outline.value) },
+		{ id: "view.clay", title: "Clay shading", group: "View", when: inModel, run: () => setShading(shading.value === "clay" ? "plain" : "clay") },
 		{ id: "edit.deform", title: "Deform: reshape the part in this state", group: "Tools", when: () => (inModel() && M.md.curClip.value < 0) || (inEditor() && ed.curClip.value < 0 && !ed.isPalette.value), run: either(() => (ed.deform.value = !ed.deform.value), () => (M.md.deform.value = !M.md.deform.value)) },
 		{
 			id: "view.fit",

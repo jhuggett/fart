@@ -40,7 +40,26 @@ import {
 	selected,
 	sameSel,
 	selectShapes,
+	chooseVerts,
+	chooseEdges,
+	chooseFaces,
+	chosenPoints,
+	moveChosenView,
+	symmetryOf,
+	isPipe,
+	pipeTwin,
+	addPipe,
+	setPipePoint,
+	movePipePointView,
+	brushFace,
+	paintToken,
 } from "../state/model.ts";
+import { surfaceUnder, surfaceBelow } from "./surface3.ts";
+import { project as proj } from "../state/project.ts";
+import { MeshError } from "../state/meshops.ts";
+import { meshActive, meshDown, meshMove, meshCancel } from "./meshtool3.ts";
+import { work, refImage, refViewOf } from "../state/workspace.ts";
+import { project } from "../state/project.ts";
 
 export interface Mods {
 	shift: boolean;
@@ -56,6 +75,11 @@ export const ix3 = {
 	dragging: false,
 	dragLast: [0, 0] as Vec2,
 	vertex: null as number | null,
+	/** the chosen edges or faces are what a drag moves */
+	elem: false,
+	/** the edge or face of the selected mesh a click would choose */
+	hoverEdge: null as [number, number] | null,
+	hoverFace: null as number | null,
 	poseDrag: false,
 	poseRot: false,
 	poseAng0: 0,
@@ -63,6 +87,10 @@ export const ix3 = {
 	orbitLast: [0, 0] as Vec2,
 	marquee: false,
 	marqueeA: [0, 0] as Vec2,
+	/** a paint stroke is under way: faces the pointer crosses take the colour */
+	brushing: false,
+	/** the point of the selected pipe's path a drag is moving */
+	pipeDrag: null as number | null,
 	mods: { shift: false, alt: false, cmd: false } as Mods,
 };
 
@@ -84,6 +112,65 @@ export function vertexHandles(): { i: number; at: Vec2 }[] {
 	if (!fp) return [];
 	return sh.points.map((p, i) => ({ i, at: viewPoint(fp, p) }));
 }
+
+/** The selected mesh as the canvas shows it: its corners in view space (x, y on the canvas, z away). */
+function meshView(): { points: Vec3[]; faces: number[][]; flip: boolean } | null {
+	const s = md.sel.value;
+	const sh = selShapePosed();
+	const fp = s ? framePartOf(s.part) : undefined;
+	if (!s || !sh || sh.kind !== "mesh" || !fp || fp.part.like) return null;
+	return { points: sh.points.map((p) => xf3Apply(fp.F, p)), faces: sh.faces, flip: xf3Det(fp.F) < 0 };
+}
+function segDist(p: Vec2, a: Vec3, b: Vec3): number {
+	const ab: Vec2 = [b[0] - a[0], b[1] - a[1]];
+	const l2 = ab[0] * ab[0] + ab[1] * ab[1] || 1;
+	const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / l2));
+	return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t);
+}
+/** The edge of the selected mesh under a point: the nearest to the viewer of those the pointer is on. */
+export function hitEdge(wm: Vec2): [number, number] | null {
+	const mv = meshView();
+	if (!mv) return null;
+	const tol = px(6);
+	const found: { e: [number, number]; d: number; z: number }[] = [];
+	for (const f of mv.faces) {
+		for (let i = 0; i < f.length; i++) {
+			const a = f[i];
+			const b = f[(i + 1) % f.length];
+			const d = segDist(wm, mv.points[a], mv.points[b]);
+			if (d <= tol) found.push({ e: [a, b], d, z: (mv.points[a][2] + mv.points[b][2]) / 2 });
+		}
+	}
+	if (!found.length) return null;
+	// two edges one behind the other in a straight-on view: of those as close as the closest, the nearer is meant
+	const dmin = Math.min(...found.map((c) => c.d));
+	return found.filter((c) => c.d <= dmin + px(2)).reduce((p, c) => (c.z < p.z ? c : p)).e;
+}
+/** The face of the selected mesh under a point: one that faces the viewer before one that faces away, the nearest first. */
+export function hitFace(wm: Vec2): number | null {
+	const mv = meshView();
+	if (!mv) return null;
+	let best: { f: number; front: boolean; z: number } | null = null;
+	mv.faces.forEach((f, fi) => {
+		let inside = false;
+		let nz = 0;
+		let z = 0;
+		for (let i = 0, j = f.length - 1; i < f.length; j = i++) {
+			const a = mv.points[f[i]];
+			const b = mv.points[f[j]];
+			if (a[1] > wm[1] !== b[1] > wm[1] && wm[0] < ((b[0] - a[0]) * (wm[1] - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+			nz += (b[0] - a[0]) * (b[1] + a[1]);
+			z += a[2];
+		}
+		if (!inside) return;
+		z /= f.length;
+		// the outline's turn on the canvas says which way the face looks (a mirrored part turns it over)
+		const front = nz < 0 !== mv.flip;
+		if (!best || (front && !best.front) || (front === best.front && z < best.z)) best = { f: fi, front, z };
+	});
+	return best ? (best as { f: number }).f : null;
+}
+const sameEdge = (a: readonly [number, number], b: readonly [number, number]) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
 
 /** The topmost shape under a world point: the nearest face that is under it. */
 export function pick(wm: Vec2): Sel3 | null {
@@ -200,14 +287,209 @@ export function orbitDrag(dxPx: number, dyPx: number, free = false) {
 	view.pan.value = [px + after[0] - before[0], py + after[1] - before[1]];
 }
 
+// ------------------------------------------------------------- pipes
+
+/** The points of the selected pipe's path, projected: its handles. */
+export function pipeHandles(): { i: number; at: Vec2 }[] {
+	const s = md.sel.value;
+	const sh = selShape();
+	const fp = s ? framePartOf(s.part) : undefined;
+	if (!s || !fp || fp.part.like || !isPipe(sh)) return [];
+	return (sh.path?.points ?? []).map((p, i) => ({ i, at: viewPoint(fp, p) }));
+}
+
+/**
+ * Where a click of the pipe tool lands, in the current part's rest
+ * space: on the surface under the pointer, lifted along its normal,
+ * when "on surface" is on and something is there; else on the view
+ * plane through the part's origin (through the last point, once there
+ * is one).
+ */
+export function pipePointAt(wm: Vec2, skip: Sel3[] = [], depth?: number): Vec3 {
+	const i = md.sel.value && skip.length ? md.sel.value.part : md.curPart.value;
+	if (md.onSurface.value) {
+		const hit = surfaceUnder(wm, skip);
+		if (hit) {
+			const k = md.lift.value;
+			return viewToRest(i, [hit.at[0] + hit.n[0] * k, hit.at[1] + hit.n[1] * k, hit.at[2] + hit.n[2] * k]);
+		}
+	}
+	return viewToRest(i, [wm[0], wm[1], depth ?? originDepth(i)]);
+}
+/** How deep a part's own origin (its pivot) lies under the view: the plane a pipe's first point lands on. */
+function originDepth(partIndex: number): number {
+	const fp = framePartOf(partIndex);
+	return fp ? xf3Apply(fp.F, fp.part.pivot ?? [0, 0, 0])[2] : 0;
+}
+// the surface's normal (in view space) where each point of the pipe being clicked landed; null for one on the view plane
+let pipeNormals: (Vec3 | null)[] = [];
+
+/**
+ * Between two clicks on a surface a straight run would cut through a
+ * curved one (or float off it). So each run is looked at in its middle:
+ * where the surface there is, lifted as the clicks were; a point is put
+ * in when the pipe would otherwise miss it by more than a little. Twice
+ * over, so a long run over a dome gets up to three.
+ */
+function hugSurface(pts: Vec3[], normals: (Vec3 | null)[], partIndex: number): Vec3[] {
+	const fp = framePartOf(partIndex);
+	if (!fp) return pts;
+	let P = pts.map((p) => xf3Apply(fp.F, p));
+	let N = [...normals];
+	const lift = md.lift.value;
+	for (let pass = 0; pass < 2 && P.length < 24; pass++) {
+		const nextP: Vec3[] = [];
+		const nextN: (Vec3 | null)[] = [];
+		for (let i = 0; i < P.length; i++) {
+			nextP.push(P[i]);
+			nextN.push(N[i]);
+			const a = P[i];
+			const b = P[i + 1];
+			const na = N[i];
+			const nb = N[i + 1];
+			if (!b || !na || !nb) continue;
+			const mid: Vec3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+			const out = [na[0] + nb[0], na[1] + nb[1], na[2] + nb[2]];
+			const l = Math.hypot(out[0], out[1], out[2]);
+			const run = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+			if (l < 1e-6 || run < 1e-6) continue;
+			const hit = surfaceBelow(mid, [out[0] / l, out[1] / l, out[2] / l], run * 2);
+			if (!hit) continue;
+			const q: Vec3 = [hit.at[0] + hit.n[0] * lift, hit.at[1] + hit.n[1] * lift, hit.at[2] + hit.n[2] * lift];
+			// the run already lies along the surface there: no point is needed
+			if (Math.hypot(q[0] - mid[0], q[1] - mid[1], q[2] - mid[2]) < Math.max(0.04, run * 0.05)) continue;
+			nextP.push(q);
+			nextN.push(hit.n);
+		}
+		if (nextP.length === P.length) break;
+		P = nextP;
+		N = nextN;
+	}
+	return P.map((p) => viewToRest(partIndex, p));
+}
+
+/** The depth the pipe being clicked is at: its last point's, on the canvas. */
+function pipeDepth(): number | undefined {
+	const pts = md.pipePts.value;
+	const fp = framePartOf(md.curPart.value);
+	return pts.length && fp ? xf3Apply(fp.F, pts[pts.length - 1])[2] : undefined;
+}
+/** Finish the pipe being clicked: a sweep along its points, as wide as half the depth field (a rod's width). */
+export function pipeClose() {
+	const clicked = md.pipePts.value;
+	md.pipePts.value = [];
+	if (clicked.length < 2) return;
+	// drawn on a surface, it follows the surface between the clicks too
+	const pts = md.onSurface.value && pipeNormals.length === clicked.length ? hugSurface(clicked, pipeNormals, md.curPart.value) : clicked;
+	pipeNormals = [];
+	try {
+		addPipe(md.curPart.value, pts, { radius: Math.max(0.05, md.thick.value / 4), round: pts.length >= 3, twin: md.pipeTwin.value });
+		md.tool.value = "select";
+	} catch (e) {
+		proj.error.value = e instanceof MeshError ? e.message : String(e);
+	}
+}
+
 // ------------------------------------------------------------- pointer
+
+/**
+ * A press on the selected mesh, by what clicks choose: a corner, an edge
+ * or a face under the pointer is chosen (Shift adds it, or takes it
+ * out), and with `drag` the press goes on to move what is chosen. False
+ * when nothing of the mesh is there.
+ */
+function elementDown(wm: Vec2, mods: Mods, drag: boolean): boolean {
+	const mode = md.pick.value;
+	ix3.elem = false;
+	if (mode === "corner") {
+		// of the corners under the pointer, the one nearest the viewer
+		const mv = meshView();
+		let got: number | null = null;
+		for (const h of vertexHandles()) {
+			if (dist(wm, h.at) >= px(7)) continue;
+			if (got === null || (mv && mv.points[h.i][2] < mv.points[got][2])) got = h.i;
+		}
+		if (got !== null) {
+			const prev = md.vert.value;
+			const chosen = md.verts.value;
+			if (mods.shift) {
+				// Shift adds a corner to what is chosen, or takes it out; a neighbour of the last one chooses the edge between them too (for its crease)
+				if (chosen.includes(got)) {
+					chooseVerts(chosen.filter((v) => v !== got));
+					md.edge.value = null;
+				} else {
+					chooseVerts([...chosen, got]);
+					md.edge.value = prev !== null && md.sel.value && isEdge(selShape()!, prev, got) ? [prev, got] : null;
+				}
+				return true;
+			}
+			// a plain click on one of several keeps them all, to drag together
+			if (!chosen.includes(got)) {
+				md.edge.value = null;
+				chooseVerts([got]);
+			} else md.vert.value = got;
+			if (drag) {
+				ix3.vertex = got;
+				ix3.dragging = true;
+				ix3.dragLast = wm;
+			}
+			return true;
+		}
+	}
+	if (mode === "edge") {
+		const e = hitEdge(wm);
+		if (e) {
+			const chosen = md.edges.value;
+			const member = chosen.some((x) => sameEdge(x, e));
+			if (mods.shift) {
+				chooseEdges(member ? chosen.filter((x) => !sameEdge(x, e)) : [...chosen, e]);
+				return true;
+			}
+			if (!member) chooseEdges([e]);
+			if (drag) {
+				ix3.elem = true;
+				ix3.dragging = true;
+				ix3.vertex = null;
+				ix3.dragLast = wm;
+			}
+			return true;
+		}
+	}
+	if (mode === "face") {
+		const f = hitFace(wm);
+		if (f !== null) {
+			const chosen = md.faces.value;
+			const member = chosen.includes(f);
+			if (mods.shift) {
+				chooseFaces(member ? chosen.filter((x) => x !== f) : [...chosen, f]);
+				return true;
+			}
+			if (!member) chooseFaces([f]);
+			if (drag) {
+				ix3.elem = true;
+				ix3.dragging = true;
+				ix3.vertex = null;
+				ix3.dragLast = wm;
+			}
+			return true;
+		}
+	}
+	return false;
+}
 
 export function onDown(wm: Vec2, mods: Mods) {
 	ix3.down = true;
 	ix3.mods = mods;
 	ix3.cursor = wm;
+	// a mesh operation following the pointer is kept by the click
+	if (meshDown()) {
+		ix3.down = false;
+		return;
+	}
 	// a handle grabbed, or a keyed transform kept by the click
-	if (md.pending.value === "none" && gizmoDown(wm)) return;
+	// (the handles stand aside for the pipe tool and the brush, which click on the mesh they sit over)
+	const busyTool = md.tool.value === "pipe" || md.painting.value;
+	if (md.pending.value === "none" && !busyTool && gizmoDown(wm)) return;
 	if (md.pending.value === "pivot") {
 		const i = md.curPart.value;
 		const fp = framePartOf(i);
@@ -218,6 +500,17 @@ export function onDown(wm: Vec2, mods: Mods) {
 	}
 	const preview = !!curClip();
 	const tool = md.tool.value;
+	if (tool === "pipe" && !preview) {
+		// a click adds a point to the path; a click on the last one finishes it
+		const pts = md.pipePts.value;
+		const fp = framePartOf(md.curPart.value);
+		if (pts.length >= 2 && fp && dist(wm, viewPoint(fp, pts[pts.length - 1])) < px(9)) return pipeClose();
+		if (pipeNormals.length !== pts.length) pipeNormals = pts.map(() => null);
+		pipeNormals.push(md.onSurface.value ? (surfaceUnder(wm)?.n ?? null) : null);
+		md.pipePts.value = [...pts, pipePointAt(md.onSurface.value ? wm : snapPt(wm), [], pipeDepth())];
+		ix3.down = false;
+		return;
+	}
 	if (tool !== "select" && !preview) {
 		const p = snapPt(wm);
 		if (tool === "poly") {
@@ -244,26 +537,25 @@ export function onDown(wm: Vec2, mods: Mods) {
 			return;
 		}
 	}
-	// a corner of the selected mesh
-	if (!preview) {
-		for (const h of vertexHandles()) {
-			if (dist(wm, h.at) < px(7)) {
-				// Shift with a corner already chosen: the edge between them (1.7, for its crease)
-				const prev = md.vert.value;
-				if (mods.shift && prev !== null && prev !== h.i && md.sel.value && isEdge(selShape()!, prev, h.i)) {
-					md.edge.value = [prev, h.i];
-					md.vert.value = h.i;
-					return;
-				}
-				md.edge.value = null;
-				md.vert.value = h.i;
-				ix3.vertex = h.i;
-				ix3.dragging = true;
-				ix3.dragLast = wm;
-				return;
-			}
+	// painting by brush: the face under the pointer takes the colour, and so does every face the drag crosses
+	if (!preview && md.painting.value && md.sel.value && selShape()?.kind === "mesh") {
+		ix3.brushing = true;
+		const f = hitFace(wm);
+		if (f !== null) brushFace(md.sel.value, f);
+		return;
+	}
+	// a point of the selected pipe's path: chosen, and dragged
+	if (!preview && md.sel.value) {
+		const got = pipeHandles().find((h) => dist(wm, h.at) < px(8));
+		if (got) {
+			md.pipePt.value = got.i;
+			ix3.pipeDrag = got.i;
+			ix3.dragLast = wm;
+			return;
 		}
 	}
+	// a corner, an edge or a face of the selected mesh, by what clicks choose
+	if (!preview && elementDown(wm, mods, true)) return;
 	const hit = pick(wm);
 	if (hit) {
 		const all = selected();
@@ -312,15 +604,46 @@ function shapesIn(lo: Vec2, hi: Vec2): Sel3[] {
 export function onMove(wm: Vec2, mods: Mods) {
 	ix3.mods = mods;
 	ix3.cursor = wm;
+	if (meshActive()) {
+		meshMove(wm, mods.shift);
+		return;
+	}
 	if (gizmoActive()) {
 		gizmoMove(wm, mods.shift);
 		return;
 	}
 	if (!ix3.down) {
 		gizmoHover(wm);
+		// what a click would choose on the selected mesh
+		const select = md.tool.value === "select" && !curClip();
+		ix3.hoverEdge = select && md.pick.value === "edge" ? hitEdge(wm) : null;
+		ix3.hoverFace = select && (md.pick.value === "face" || md.painting.value) ? hitFace(wm) : null;
 		const h = md.tool.value === "select" ? pick(wm) : null;
 		const cur = md.hover.value;
 		if ((h?.part !== cur?.part || h?.shape !== cur?.shape) && !(h === null && cur === null)) md.hover.value = h;
+		return;
+	}
+	if (ix3.brushing) {
+		const f = md.sel.value ? hitFace(wm) : null;
+		ix3.hoverFace = f;
+		if (f !== null && md.sel.value) brushFace(md.sel.value, f);
+		return;
+	}
+	if (ix3.pipeDrag !== null && md.sel.value) {
+		const s = md.sel.value;
+		if (md.onSurface.value) {
+			// it stays on the surface: wherever the pointer is over one (the pipe itself and its twin are not surfaces to land on)
+			const twin = pipeTwin(s);
+			const hit = surfaceUnder(wm, twin ? [s, twin] : [s]);
+			if (hit) {
+				const k = md.lift.value;
+				setPipePoint(s, ix3.pipeDrag, viewToRest(s.part, [hit.at[0] + hit.n[0] * k, hit.at[1] + hit.n[1] * k, hit.at[2] + hit.n[2] * k]));
+				ix3.dragLast = wm;
+				return;
+			}
+		}
+		movePipePointView(s, ix3.pipeDrag, [wm[0] - ix3.dragLast[0], wm[1] - ix3.dragLast[1], 0]);
+		ix3.dragLast = wm;
 		return;
 	}
 	if (ix3.orbiting) {
@@ -365,6 +688,7 @@ export function onMove(wm: Vec2, mods: Mods) {
 		const d: Vec3 = [wm[0] - ix3.dragLast[0], wm[1] - ix3.dragLast[1], 0];
 		ix3.dragLast = wm;
 		if (ix3.vertex !== null) moveVertexView(md.sel.value, ix3.vertex, d);
+		else if (ix3.elem) moveChosenView(md.sel.value, d);
 		else for (const s of selected()) moveSelView(s, d);
 	}
 }
@@ -374,7 +698,8 @@ export function onUp(wm: Vec2, mods: Mods) {
 	ix3.mods = mods;
 	const g = gizmoUp();
 	if (g === "click") {
-		// a click on a handle, not a drag: the shape under it is what was meant
+		// a click on a handle, not a drag: what lies under it is what was meant, a corner, an edge or a face of the selected mesh first
+		if (!curClip() && md.tool.value === "select" && elementDown(wm, mods, false)) return;
 		const hit = pick(wm);
 		if (hit) {
 			md.sel.value = hit;
@@ -384,6 +709,12 @@ export function onUp(wm: Vec2, mods: Mods) {
 		}
 	}
 	if (g) return;
+	if (ix3.brushing || ix3.pipeDrag !== null) {
+		ix3.brushing = false;
+		ix3.pipeDrag = null;
+		endGesture();
+		return;
+	}
 	if (ix3.marquee) {
 		ix3.marquee = false;
 		const a = ix3.marqueeA;
@@ -410,6 +741,7 @@ export function onUp(wm: Vec2, mods: Mods) {
 		ix3.poseDrag = false;
 		ix3.poseRot = false;
 		ix3.vertex = null;
+		ix3.elem = false;
 		endGesture();
 	}
 }
@@ -422,6 +754,8 @@ export function cancelGesture() {
 	ix3.poseDrag = false;
 	ix3.poseRot = false;
 	ix3.orbiting = false;
+	ix3.brushing = false;
+	ix3.pipeDrag = null;
 	endGesture();
 }
 
@@ -466,12 +800,22 @@ export function polyClose() {
 	if (mesh) addShape(mesh);
 }
 export function polyEnter() {
-	polyClose();
+	if (md.tool.value === "pipe") pipeClose();
+	else polyClose();
 }
 export function escape() {
+	if (meshCancel()) return;
 	if (gizmoCancel()) return;
 	if (md.polyPts.value.length) {
 		md.polyPts.value = [];
+		return;
+	}
+	if (md.pipePts.value.length) {
+		md.pipePts.value = [];
+		return;
+	}
+	if (md.painting.value) {
+		md.painting.value = false;
 		return;
 	}
 	if (md.pending.value !== "none") {
@@ -482,6 +826,17 @@ export function escape() {
 		md.tool.value = "select";
 		return;
 	}
+	if (md.pipePt.value !== null) {
+		md.pipePt.value = null;
+		return;
+	}
+	// the corners, edges and faces chosen on a mesh are let go before the mesh is
+	if (md.sel.value && chosenPoints().length) {
+		chooseVerts([]);
+		chooseEdges([]);
+		chooseFaces([]);
+		return;
+	}
 	if (!md.sel.value) md.partPicked.value = false;
 	md.sel.value = null;
 	md.vert.value = null;
@@ -489,7 +844,8 @@ export function escape() {
 export function nudgeView(d: Vec2) {
 	const s = md.sel.value;
 	if (!s) return;
-	if (md.vert.value !== null) moveVertexView(s, md.vert.value, [d[0], d[1], 0], "nudge");
+	if (md.pipePt.value !== null && isPipe(selShape())) movePipePointView(s, md.pipePt.value, [d[0], d[1], 0], "nudge");
+	else if (chosenPoints().length) moveChosenView(s, [d[0], d[1], 0], "nudge");
 	else for (const t of selected()) moveSelView(t, [d[0], d[1], 0], "nudge");
 }
 
@@ -528,6 +884,18 @@ export function renderGround(ctx: CanvasRenderingContext2D, W: number, H: number
 	ctx.fillStyle = C.bg;
 	ctx.fillRect(0, 0, W, H);
 	drawGrid(ctx, W, H, panx, pany, view.zoom.value, C.grid, C.gridStrong);
+	// a reference image pinned to this view: behind the model, over the grid, in the canvas's own units
+	const rv = refViewOf(md.viewName.value);
+	const ref = rv ? work.value.refs?.[rv] : undefined;
+	const img = ref?.path ? refImage(project.root.value ?? "", ref.path) : null;
+	if (ref && img && img.naturalWidth > 0) {
+		const zoom = view.zoom.value;
+		const w = ref.w * zoom;
+		const h = (w * img.naturalHeight) / img.naturalWidth;
+		ctx.globalAlpha = Math.max(0, Math.min(1, ref.opacity));
+		ctx.drawImage(img, (ref.x - panx) * zoom + W / 2 - w / 2, (ref.y - pany) * zoom + H / 2 - h / 2, w, h);
+		ctx.globalAlpha = 1;
+	}
 }
 
 /**
@@ -567,7 +935,8 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 		const srcIndex = fp.part.like ? -1 : fp.index;
 		// a smooth mesh or a sweep (1.7) has too many faces to outline one by one: its cage wire marks it instead
 		const src = fp.solids[f.src];
-		const quiet = !!src && (src.kind === "sweep" || (src.kind === "mesh" && (src.smooth ?? 0) > 0));
+		// (and so has one with modifiers, 1.8: what is drawn is not the cage the hand edits)
+		const quiet = !!src && (src.kind === "sweep" || (src.kind === "mesh" && ((src.smooth ?? 0) > 0 || !!src.mods?.length)));
 		if (!f.outline && !quiet && chosen.some((t) => t.part === srcIndex && t.shape === f.src)) selShapes.push(f.shape);
 		if (hov && hov.part === srcIndex && hov.shape === f.src && !f.outline && !quiet) hovShapes.push(f.shape);
 	}
@@ -593,52 +962,176 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 	for (const sh of hovShapes) if (!selShapes.includes(sh)) outlineShape(ctx, sh, HOVER, LW, zoom);
 	for (const sh of selShapes) outlineShape(ctx, sh, ACCENT, 1.5 * LW, zoom);
 
-	// a smooth mesh's cage (1.7): the control polygon the corners belong to, drawn as a wire over the surface
+	// the selected mesh, for editing: its wire, what is chosen on it, what a click would choose, its corners
+	const mv = preview ? null : meshView();
 	const selP = selShapePosed();
-	const selFp = md.sel.value ? framePartOf(md.sel.value.part) : undefined;
-	if (!preview && selP && selFp && selP.kind === "mesh" && (selP.smooth ?? 0) > 0) {
-		world();
-		ctx.strokeStyle = C.accentSoft;
-		ctx.lineWidth = LW;
-		ctx.setLineDash([2, 3]);
-		for (const f of selP.faces) {
+	if (mv && selP && selP.kind === "mesh") {
+		const mode = md.pick.value;
+		// a cage that is not what is drawn: subdivided (1.7), or under modifiers (1.8)
+		const smooth = (selP.smooth ?? 0) > 0 || !!selP.mods?.length;
+		const at = mv.points.map((p) => toS([p[0], p[1]]));
+		const line = (a: number, b: number) => {
 			ctx.beginPath();
-			f.forEach((i, k) => {
-				const v = viewPoint(selFp, selP.points[i]);
-				if (k === 0) ctx.moveTo(v[0], v[1]);
-				else ctx.lineTo(v[0], v[1]);
-			});
-			ctx.closePath();
+			ctx.moveTo(at[a][0], at[a][1]);
+			ctx.lineTo(at[b][0], at[b][1]);
 			ctx.stroke();
-		}
-		ctx.setLineDash([]);
-	}
-	// the chosen edge (1.7)
-	const edge = md.edge.value;
-	if (!preview && edge && selP && selFp && selP.kind === "mesh") {
-		world();
-		ctx.strokeStyle = ACCENT;
-		ctx.lineWidth = 2.5 * LW;
-		const a = viewPoint(selFp, selP.points[edge[0]]);
-		const b = viewPoint(selFp, selP.points[edge[1]]);
-		ctx.beginPath();
-		ctx.moveTo(a[0], a[1]);
-		ctx.lineTo(b[0], b[1]);
-		ctx.stroke();
-	}
-	// the selected mesh's corners
-	if (!preview) {
-		const vert = md.vert.value;
+		};
+		const trace = (f: readonly number[]) => {
+			ctx.beginPath();
+			f.forEach((i, k) => (k === 0 ? ctx.moveTo(at[i][0], at[i][1]) : ctx.lineTo(at[i][0], at[i][1])));
+			ctx.closePath();
+		};
 		screen();
-		for (const h of vertexHandles()) {
-			const s = toS(h.at);
-			ctx.fillStyle = h.i === vert ? ACCENT : C.handleFill;
+		ctx.lineJoin = "round";
+		// the cage: the control polygon the corners belong to, drawn over a smooth surface (1.7) and whenever edges or faces are being chosen
+		if (smooth || mode !== "corner") {
+			ctx.strokeStyle = C.accentSoft;
+			ctx.lineWidth = LW;
+			ctx.setLineDash(smooth ? [3, 3] : []);
+			for (const f of mv.faces) {
+				trace(f);
+				ctx.stroke();
+			}
+			ctx.setLineDash([]);
+		}
+		// creased edges read as such while edges are being chosen
+		if (mode === "edge") {
+			ctx.strokeStyle = TEAL;
+			ctx.lineWidth = 2 * LW;
+			for (const cr of selP.creases ?? []) if (cr.length === 3 && at[cr[0]] && at[cr[1]]) line(cr[0], cr[1]);
+		}
+		// under symmetry, the plane the mesh mirrors across: the cage's points that lie on it, joined
+		if (md.sel.value && symmetryOf(md.sel.value)) {
+			const on = selP.points.map((p, i) => (Math.abs(p[0]) < 1e-3 ? i : -1)).filter((i) => i >= 0);
+			ctx.strokeStyle = C.axisX;
+			ctx.lineWidth = LW;
+			ctx.setLineDash([6, 4]);
+			for (const f of mv.faces) {
+				f.forEach((a, k) => {
+					const b = f[(k + 1) % f.length];
+					if (a < b && on.includes(a) && on.includes(b)) line(a, b);
+				});
+			}
+			ctx.setLineDash([]);
+		}
+		if (mode === "face") {
+			const hf = ix3.hoverFace;
+			if (hf !== null && mv.faces[hf] && !md.faces.value.includes(hf)) {
+				trace(mv.faces[hf]);
+				if (md.painting.value) {
+					// the brush shows what it would lay down
+					ctx.globalAlpha = 0.45;
+					ctx.fillStyle = cssColor(colorOf(tokens, paintToken()));
+					ctx.fill();
+					ctx.globalAlpha = 1;
+				}
+				ctx.strokeStyle = HOVER;
+				ctx.lineWidth = 1.5 * LW;
+				ctx.stroke();
+			}
+			for (const fi of md.faces.value) {
+				const f = mv.faces[fi];
+				if (!f) continue;
+				trace(f);
+				ctx.fillStyle = C.marquee;
+				ctx.fill();
+				ctx.strokeStyle = ACCENT;
+				ctx.lineWidth = 2 * LW;
+				ctx.stroke();
+			}
+		}
+		// the chosen edges (in corner mode, the one Shift-click chose for its crease)
+		const he = ix3.hoverEdge;
+		if (mode === "edge" && he && at[he[0]] && at[he[1]]) {
+			ctx.strokeStyle = HOVER;
+			ctx.lineWidth = 2.5 * LW;
+			line(he[0], he[1]);
+		}
+		ctx.strokeStyle = ACCENT;
+		ctx.lineWidth = 3 * LW;
+		ctx.lineCap = "round";
+		for (const e of md.edges.value) if (at[e[0]] && at[e[1]]) line(e[0], e[1]);
+		ctx.lineCap = "butt";
+		// the corners: handles to drag, filled when chosen
+		const chosenCorners = new Set(mode === "corner" ? md.verts.value : []);
+		const quiet = mode !== "corner";
+		for (let i = 0; i < at.length; i++) {
+			const p = at[i];
+			const r = quiet ? 2 : 3.5;
+			ctx.fillStyle = chosenCorners.has(i) ? ACCENT : C.handleFill;
 			ctx.strokeStyle = ACCENT;
 			ctx.lineWidth = LW;
 			ctx.beginPath();
-			ctx.rect(s[0] - 3.5, s[1] - 3.5, 7, 7);
+			ctx.rect(p[0] - r, p[1] - r, r * 2, r * 2);
 			ctx.fill();
 			ctx.stroke();
+		}
+	}
+
+	// the selected pipe (1.8): its path through its points, each a handle to drag
+	const ph = preview ? [] : pipeHandles();
+	if (ph.length) {
+		screen();
+		const at = ph.map((h) => toS(h.at));
+		ctx.strokeStyle = C.accentSoft;
+		ctx.lineWidth = LW;
+		ctx.setLineDash([3, 3]);
+		ctx.beginPath();
+		at.forEach((p, k) => (k === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
+		if (isPipe(selP) && selP.closed) ctx.closePath();
+		ctx.stroke();
+		ctx.setLineDash([]);
+		for (const h of ph) {
+			const p = toS(h.at);
+			ctx.fillStyle = md.pipePt.value === h.i ? ACCENT : C.handleFill;
+			ctx.strokeStyle = ACCENT;
+			ctx.lineWidth = LW;
+			ctx.beginPath();
+			ctx.rect(p[0] - 4, p[1] - 4, 8, 8);
+			ctx.fill();
+			ctx.stroke();
+		}
+	}
+	// a pipe being clicked: its points so far, and where the next would land
+	const pipePts = md.pipePts.value;
+	if (md.tool.value === "pipe" && !preview) {
+		const fp = framePartOf(md.curPart.value);
+		if (fp) {
+			screen();
+			const at = pipePts.map((p) => toS(viewPoint(fp, p)));
+			const next = ix3.cursor ? toS(viewPoint(fp, pipePointAt(ix3.cursor, [], pipePts.length ? xf3Apply(fp.F, pipePts[pipePts.length - 1])[2] : undefined))) : null;
+			const all = next ? [...at, next] : at;
+			if (all.length > 1) {
+				ctx.strokeStyle = cssColor(colorOf(tokens, curTokName()));
+				ctx.lineWidth = Math.max(2, (md.thick.value / 2) * zoom);
+				ctx.lineCap = "round";
+				ctx.lineJoin = "round";
+				ctx.globalAlpha = 0.55;
+				ctx.beginPath();
+				all.forEach((p, k) => (k === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
+				ctx.stroke();
+				ctx.globalAlpha = 1;
+				ctx.lineCap = "butt";
+			}
+			for (const p of at) {
+				ctx.fillStyle = C.handleFill;
+				ctx.strokeStyle = ACCENT;
+				ctx.lineWidth = LW;
+				ctx.beginPath();
+				ctx.rect(p[0] - 3.5, p[1] - 3.5, 7, 7);
+				ctx.fill();
+				ctx.stroke();
+			}
+			if (next) {
+				// on a surface the landing point wears a ring; on the view plane, a plain dot
+				ctx.strokeStyle = ACCENT;
+				ctx.fillStyle = ACCENT;
+				ctx.lineWidth = 1.5 * LW;
+				ctx.beginPath();
+				ctx.arc(next[0], next[1], md.onSurface.value && ix3.cursor && surfaceUnder(ix3.cursor) ? 6 : 2.5, 0, Math.PI * 2);
+				if (md.onSurface.value && ix3.cursor && surfaceUnder(ix3.cursor)) ctx.stroke();
+				else ctx.fill();
+			}
 		}
 	}
 
@@ -717,7 +1210,7 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 	}
 
 	// the axis handles of what is chosen: arrows to move, rings to turn
-	if (!preview) {
+	if (!preview && md.tool.value !== "pipe" && !md.painting.value) {
 		screen();
 		drawGizmo(ctx, toS);
 	}

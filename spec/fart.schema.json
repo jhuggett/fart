@@ -730,6 +730,65 @@
                 },
                 "description": "Since 1.7: [a, b, c] the edge a\u2013b with crease c in 0\u20131 (1 is sharp; c \u00d7 10 is OpenSubdiv sharpness), or [a, c] a corner."
               },
+              "colors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/name"
+                },
+                "description": "Since 1.8: further palette tokens the faces may wear."
+              },
+              "paint": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Since 1.8: one index per face: 0 is color, n is colors[n-1]. The validator checks the count and the range (error paint)."
+              },
+              "mods": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/mod"
+                },
+                "description": "Since 1.8: modifiers applied to the cage in order."
+              },
+              "shades": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "description": "Since 1.8: one number per point, multiplying shade there. The validator checks the count (error shades)."
+              },
+              "skin": {
+                "type": "object",
+                "required": ["joints", "weights"],
+                "properties": {
+                  "host": {
+                    "type": "boolean",
+                    "description": "The joints are parts of the host: the document this one is drawn on."
+                  },
+                  "joints": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "The parts the points follow."
+                  },
+                  "weights": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "description": "One entry per point: pairs of [index into joints, weight], one to four pairs adding up to 1."
+                  }
+                },
+                "description": "Since 1.9: the mesh gives at its joints: each point placed by several parts' world maps, weighted. The validator checks the joints, the count and the entries (error skin)."
+              },
               "bake": {
                 "type": "object",
                 "required": [
@@ -763,9 +822,39 @@
                   },
                   "of": {
                     "type": "string"
+                  },
+                  "uvs": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/vec2"
+                      }
+                    },
+                    "description": "The cage's explicit pattern coordinates on the surface: one list per face of the bake, one pair per corner."
+                  },
+                  "uvOf": {
+                    "type": "string",
+                    "description": "A hash of the cage's mapping.uvs the bake's uvs came from."
+                  },
+                  "paint": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "description": "Since 1.8: the paint of the bake's own faces."
+                  },
+                  "shades": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "description": "Since 1.8: the shade of the bake's own points."
                   }
                 },
-                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
+                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage (since 1.8 with its mods, paint and shades)."
               }
             }
           }
@@ -780,15 +869,14 @@
           },
           "then": {
             "required": [
-              "op",
-              "axis",
-              "profile"
+              "op"
             ],
             "properties": {
               "op": {
                 "enum": [
                   "lathe",
-                  "extrude"
+                  "extrude",
+                  "pipe"
                 ]
               },
               "axis": {
@@ -821,18 +909,61 @@
                     "type": "boolean"
                   }
                 },
-                "description": "A path body: [radius, along] pairs for a lathe; a closed outline in the plane's other two axes for an extrude."
+                "description": "A path body: [radius, along] pairs for a lathe; a closed outline in the plane's other two axes for an extrude; for a pipe (1.8), an optional closed section in place of the circle."
               },
               "segments": {
                 "type": "integer",
                 "minimum": 3,
-                "description": "Steps around the axis for a lathe; 12 by default."
+                "description": "Steps around the axis for a lathe, 12 by default; sides of a round pipe's section, 8 by default."
               },
               "from": {
                 "type": "number"
               },
               "to": {
                 "type": "number"
+              },
+              "path": {
+                "type": "object",
+                "required": [
+                  "points"
+                ],
+                "properties": {
+                  "points": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    }
+                  },
+                  "in": {
+                    "$ref": "#/$defs/handles3"
+                  },
+                  "out": {
+                    "$ref": "#/$defs/handles3"
+                  }
+                },
+                "description": "Since 1.8, a pipe's spine: a path body with three coordinates."
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Since 1.8: the section's scale (a round pipe's radius); 1 by default."
+              },
+              "radii": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "description": "Since 1.8: one factor per path point, multiplying radius there, linear between. The validator checks the count (error pipe)."
+              },
+              "caps": {
+                "type": "boolean",
+                "description": "Since 1.8: close the ends of an open pipe; true by default."
+              },
+              "closed": {
+                "type": "boolean",
+                "description": "Since 1.8: the pipe's path joins its last point to its first."
               },
               "normals": {
                 "enum": [
@@ -862,6 +993,28 @@
                   "maxItems": 3
                 },
                 "description": "Since 1.7: [a, b, c] the edge a\u2013b with crease c in 0\u20131 (1 is sharp; c \u00d7 10 is OpenSubdiv sharpness), or [a, c] a corner."
+              },
+              "colors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/name"
+                },
+                "description": "Since 1.8: further palette tokens the faces may wear."
+              },
+              "paint": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "description": "Since 1.8: one index per face: 0 is color, n is colors[n-1]. The validator checks the count and the range (error paint)."
+              },
+              "mods": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/mod"
+                },
+                "description": "Since 1.8: modifiers applied to the cage in order."
               },
               "bake": {
                 "type": "object",
@@ -896,12 +1049,74 @@
                   },
                   "of": {
                     "type": "string"
+                  },
+                  "uvs": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/vec2"
+                      }
+                    },
+                    "description": "The cage's explicit pattern coordinates on the surface: one list per face of the bake, one pair per corner."
+                  },
+                  "uvOf": {
+                    "type": "string",
+                    "description": "A hash of the cage's mapping.uvs the bake's uvs came from."
+                  },
+                  "paint": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "description": "Since 1.8: the paint of the bake's own faces."
+                  },
+                  "shades": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "description": "Since 1.8: the shade of the bake's own points."
                   }
                 },
-                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
+                "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage (since 1.8 with its mods, paint and shades)."
               }
             },
-            "description": "Since 1.7: a solid generated from a profile, kept as the profile. Never in collision."
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "op": {
+                      "const": "pipe"
+                    }
+                  },
+                  "required": [
+                    "op"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "path"
+                  ],
+                  "properties": {
+                    "path": true
+                  }
+                },
+                "else": {
+                  "required": [
+                    "axis",
+                    "profile"
+                  ],
+                  "properties": {
+                    "axis": true,
+                    "profile": true
+                  }
+                }
+              }
+            ],
+            "description": "Since 1.7: a solid generated from a profile, kept as the profile; since 1.8 also op pipe, a section carried along a path. Never in collision."
           }
         }
       ]
@@ -1628,11 +1843,136 @@
             },
             "of": {
               "type": "string"
+            },
+            "paint": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "description": "Since 1.8: the paint of the bake's own faces."
+            },
+            "shades": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "description": "Since 1.8: the shade of the bake's own points."
             }
           },
           "description": "Since 1.7: the subdivided (or generated) surface, written by fart bake --smooth; of hashes the cage."
         }
       }
+    },
+    "handles3": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/vec3"
+      },
+      "description": "Since 1.8: one tangent handle per point of a path in space, relative to it; [0,0,0] or absent is a corner."
+    },
+    "mod": {
+      "type": "object",
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "description": "mirror, solidify or crease. The validator refuses any other (error mod)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "mirror"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "axis"
+            ],
+            "properties": {
+              "axis": {
+                "enum": [
+                  "x",
+                  "y",
+                  "z"
+                ]
+              },
+              "merge": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Points this near the plane weld and are pinned to it; 0.001 by default."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "solidify"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "thick"
+            ],
+            "properties": {
+              "thick": {
+                "type": "number",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1,
+                "description": "-1 (the default): the wall grows inward from the cage; 1: outward; between, in proportion."
+              },
+              "inner": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "A paint index for the inner faces; absent, each wears its source face's."
+              },
+              "rim": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "A paint index for the rim; absent, each quad wears the paint of the face its edge belongs to."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "crease"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "angle": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 180,
+                "description": "Degrees, 30 by default: edges whose faces meet at more than this are creased."
+              },
+              "value": {
+                "type": "number",
+                "description": "The crease, 0\u20131 (error crease outside it); 1 by default."
+              }
+            }
+          }
+        }
+      ],
+      "description": "Since 1.8: one modifier of a cage, applied in list order after a morph and before smooth."
     }
   },
   "if": {

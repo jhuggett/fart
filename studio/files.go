@@ -52,12 +52,16 @@ func freshPath(path string) string {
 }
 
 // removeFile takes a file out of the project: into the Trash on macOS,
-// gone elsewhere. Its checkpoint (name~) goes with it. Returns how.
+// gone elsewhere. Its checkpoint (name~) goes with it, and so does its
+// compiled sidecar (name.fart.glb), which is nothing without it. Returns how.
 func removeFile(full string) (string, error) {
 	if _, err := os.Stat(full); err != nil {
 		return "", err
 	}
 	_ = os.Remove(full + "~")
+	if strings.HasSuffix(full, ".fart") {
+		_ = os.Remove(full + ".glb")
+	}
 	if runtime.GOOS == "darwin" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -94,6 +98,12 @@ func renameFile(from, to string) error {
 	}
 	if _, err := os.Stat(from + "~"); err == nil {
 		_ = os.Rename(from+"~", to+"~")
+	}
+	// the sidecar is of the same bytes under the new name: it follows
+	if strings.HasSuffix(from, ".fart") && strings.HasSuffix(to, ".fart") {
+		if _, err := os.Stat(from + ".glb"); err == nil {
+			_ = os.Rename(from+".glb", to+".glb")
+		}
 	}
 	return nil
 }

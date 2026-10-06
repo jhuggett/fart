@@ -3,19 +3,21 @@
 //
 //   fart validate <file|dir>...   check documents (exit 1 if any fail)
 //   fart bake <file>...           write tris into every poly (or mesh) and bakes into every path, in place
-//   fart bake --smooth <file>...  also the subdivided surface of every smooth mesh (1.7), for readers that do not subdivide
+//   fart bake --smooth <file>...  also the mesh every generated shape draws (smooth meshes 1.7; mods and sweeps 1.8), for readers that do not generate
 //   fart project <3d.fart> [--view v]... [-o out]   a 2D view of a 3D document (1.3)
 //   fart gltf <3d.fart> [-o out.glb] [--fps n]      the model as a binary glTF (1.3)
+//   fart build <file|dir>... [--force] [--check] [--clean]   the compiled sidecar name.fart.glb of every 3D document (1.8)
 //   fart hull <3d.fart> [--part name]...           convex hulls of parts, into collision (1.4)
 //   fart bake --textures <dir> [--px n] <file>     every texture map as a PNG, for a build (1.5)
 //   fart flatten <scene.shart> [--t s]             a scene's instances with their world maps (shart 1.0)
+//   fart import <model.glb|.gltf> [-o out.fart]    a glTF as a 3D .fart (see importCmd.ts for the flags)
 //
 // validate takes .shart files too: a scene is checked with its files in hand.
 //
 // Directories are walked for .fart files; palette_refs are read relative
 // to each file so shared tokens get checked too.
 
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseDoc } from "./parse.ts";
 import { resolvePalettes, tokenNames } from "./palette.ts";
@@ -23,13 +25,14 @@ import { bakeTris } from "./geometry.ts";
 import { stringifyDoc } from "./parse.ts";
 import { as3d, type Doc, type Vec3 } from "./types.ts";
 import { bakeTris3 } from "./space3.ts";
-import { bakeSmooth } from "./subdiv.ts";
+import { bakeSurfaces } from "./solids.ts";
 import { DEFAULT_AMBIENT, DEFAULT_FPS, DEFAULT_LIGHT, VIEWS, projectDoc } from "./project.ts";
-import { toGlb } from "./gltf.ts";
+import { buildSidecar, sidecarFresh, sidecarPath, toGlb } from "./gltf.ts";
 import { setHull } from "./collision.ts";
 import { resolveTextures, rasterizeMap, type ResolvedTexture } from "./textures.ts";
 import { flattenScene, loadScene, parseScene, refInfo, sceneFiles } from "./scene.ts";
 import { toPng } from "./png.ts";
+import { IMPORT_USAGE, importCmd } from "./importCmd.ts";
 
 async function collect(paths: string[]): Promise<string[]> {
 	const out: string[] = [];
@@ -165,7 +168,7 @@ async function bakeCmd(args: string[]): Promise<number> {
 		const d3 = as3d(doc);
 		if (d3) {
 			bakeTris3(d3);
-			if (smooth) bakeSmooth(d3);
+			if (smooth) bakeSurfaces(d3);
 		} else bakeTris(doc);
 		await writeFile(file, stringifyDoc(doc));
 		console.log(`baked ${file}`);
@@ -174,11 +177,15 @@ async function bakeCmd(args: string[]): Promise<number> {
 }
 
 const USAGE = `usage: fart validate <file|dir>...
-       fart bake [--smooth] <file>...             tris into every poly or mesh and bakes into every path; --smooth: subdivided surfaces too
+       fart bake [--smooth] <file>...             tris into every poly or mesh and bakes into every path; --smooth: the surfaces of smooth, modified and swept shapes too
        fart bake --textures <dir> [--px n] <file>...   every texture map as a PNG
        fart gltf <3d.fart> [-o out.glb] [--fps n]
+       fart build <file|dir>... [--force] [--check] [--clean] [--fps n]
+         the compiled sidecar name.fart.glb beside every 3D document; one whose source has not changed is left alone (--force: rebuilt);
+         --check: write nothing, exit 1 if any is missing or stale; --clean: remove them
        fart hull <3d.fart> [--part name]...     (no --part: every part) hulls into collision, in place
        fart flatten <scene.shart> [--t s]       a scene's instances, placed
+       ${IMPORT_USAGE}
        fart project <3d.fart> [--view name|x,y,z(deg)]... [--light x,y,z] [--ambient a] [--fps n] [--outline token[:w]] [-o out.fart]
          views: ${Object.keys(VIEWS).join(", ")}; several --view flags write several files (out gets -<view>)`;
 
@@ -318,6 +325,101 @@ async function gltfCmd(args: string[]): Promise<number> {
 	return 0;
 }
 
+/**
+ * fart build: the compiled sidecar (1.8) of every 3D document given, or
+ * found under a directory given: `name.fart.glb` beside `name.fart`. A
+ * sidecar that already holds its source's hash is left alone. A 2D
+ * document, a palette file and a scene have none.
+ */
+async function buildCmd(args: string[]): Promise<number> {
+	let force = false;
+	let checkOnly = false;
+	let clean = false;
+	let fps: number | undefined;
+	const paths: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--force") force = true;
+		else if (a === "--check") checkOnly = true;
+		else if (a === "--clean") clean = true;
+		else if (a === "--fps") fps = Number(args[++i]);
+		else if (a.startsWith("-")) throw new Error(`unknown flag ${a}`);
+		else paths.push(a);
+	}
+	if (!paths.length) throw new Error("build takes files or directories");
+	if (clean) {
+		// every sidecar under the directories given, with or without its source, and the one beside each file given
+		const found: string[] = [];
+		const walk = async (p: string) => {
+			const s = await stat(p);
+			if (s.isDirectory()) {
+				for (const name of (await readdir(p)).sort()) {
+					if (name.startsWith(".") || name === "node_modules") continue;
+					await walk(join(p, name));
+				}
+			} else if (p.endsWith(".fart.glb")) found.push(p);
+			else if (p.endsWith(".fart") && paths.includes(p)) found.push(sidecarPath(p));
+		};
+		for (const p of paths) await walk(p);
+		let removed = 0;
+		for (const target of new Set(found)) {
+			try {
+				await rm(target);
+				console.log(`removed ${target}`);
+				removed++;
+			} catch {
+				// not there: nothing to remove
+			}
+		}
+		console.log(`${removed} sidecar${removed === 1 ? "" : "s"} removed`);
+		return 0;
+	}
+	const files = (await collect(paths)).filter((p) => p.endsWith(".fart"));
+	let bad = 0;
+	let wrote = 0;
+	let kept = 0;
+	let stale = 0;
+	for (const file of files) {
+		const { ok, doc, lines } = await check(file);
+		if (!ok || !doc) {
+			console.log(`skip ${file}: not valid`);
+			for (const l of lines) console.log(l);
+			bad++;
+			continue;
+		}
+		const src = as3d(doc);
+		if (!src) continue;
+		const source = new Uint8Array(await readFile(file));
+		const target = sidecarPath(file);
+		let existing: Uint8Array | null = null;
+		try {
+			existing = new Uint8Array(await readFile(target));
+		} catch {
+			existing = null;
+		}
+		const fresh = sidecarFresh(existing, source);
+		if (checkOnly) {
+			if (!fresh) {
+				console.log(`${existing ? "stale  " : "missing"} ${target}`);
+				stale++;
+			} else kept++;
+			continue;
+		}
+		if (fresh && !force) {
+			kept++;
+			continue;
+		}
+		const { tokens } = await resolvePalettes(doc, (rel) => readRef(file, rel));
+		const glb = buildSidecar(src, source, { tokens, fps });
+		await writeFile(target, glb);
+		console.log(`built ${target}  (${(glb.length / 1024).toFixed(1)} KB)`);
+		wrote++;
+	}
+	if (checkOnly) console.log(`${kept} up to date, ${stale} missing or stale${bad ? `, ${bad} not valid` : ""}`);
+	else console.log(`${wrote} built, ${kept} up to date${bad ? `, ${bad} not valid` : ""}`);
+	return bad || stale ? 1 : 0;
+}
+
 /** fart hull: a convex hull per part (every part, or the named ones) into the file's collision, in place. */
 async function hullCmd(args: string[]): Promise<number> {
 	const names: string[] = [];
@@ -369,11 +471,17 @@ try {
 		case "gltf":
 			code = await gltfCmd(rest);
 			break;
+		case "build":
+			code = await buildCmd(rest);
+			break;
 		case "hull":
 			code = await hullCmd(rest);
 			break;
 		case "flatten":
 			code = await flattenCmd(rest);
+			break;
+		case "import":
+			code = await importCmd(rest);
 			break;
 		default:
 			console.log(USAGE);

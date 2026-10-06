@@ -56,6 +56,7 @@ tris index the points) is checked by the validator in `packages/core`:
     npx fart bake --textures out/ --px 64 crate.fart      # every texture map as a PNG (1.5); textures are drawings, tiled
     npx fart validate camp.shart                          # a scene, checked with its files in hand
     npx fart flatten camp.shart --t 0.5                   # a scene's instances, placed: what a renderer draws
+    npx fart build art/                                   # the compiled sidecar name.fart.glb of every 3D file (1.8)
 
 `spec/examples/manifest.json` is the conformance corpus: files that must
 load, files that must be refused, and the error code each refusal
@@ -77,6 +78,31 @@ loads the model itself: `loaders/odin/examples/raylib_spin` is the whole
 loop in Odin and raylib (flatten each part to triangles once, draw them
 through `Y_UP * world_xf_3d` every frame, chains solved live), and `fart
 gltf` writes a `.glb` for any other engine.
+
+Since 1.8 a mesh may be painted face by face (`colors`, `paint`),
+shaded point by point (`shades`), and built from a cage by modifiers
+(`mods`: `mirror`, `solidify`, `crease`); a `pipe` sweep carries a
+section along a path. `examples/helm` is all of it in one file.
+
+A 3D file full of cages and modifiers is quick to write and slow to turn
+into triangles, so a build may compile it: `fart build art/` writes
+`name.fart.glb` beside each 3D `name.fart`, a binary glTF with everything
+generated and each triangle's token kept by name. The sidecar is a build
+artifact, never the source: a loader uses it only while its hash matches
+the `.fart`, and nothing edits it. Keep it out of version control and
+make it in the build:
+
+    # .gitignore
+    *.fart.glb
+
+    # Makefile
+    art:
+    	npx fart build art/
+    check-art:
+    	npx fart build --check art/     # CI: fails when a sidecar is missing or stale
+
+`fart build --clean art/` removes them. `spec/FORMAT.md` ("The compiled
+sidecar") has the layout.
 
 ## Scenes
 

@@ -6,6 +6,7 @@ import { signal, batch } from "@preact/signals";
 import { parseScene, loadScene, flattenScene, stringifyDoc, type Doc } from "@fastart/core";
 import type { ThumbJob, ThumbResult } from "./thumbWorker.ts";
 import { drawSceneThumb } from "../canvas/scene3.ts";
+import { sidecars, keepSidecar } from "./sidecar.ts";
 import { shell, initShell, type ServeInfo, type Caps, type GitChange, type FileInfo } from "../shell/shell.ts";
 import { openFile, leaveFile, save, ed } from "./editor.ts";
 import { openModel, leaveModel, md } from "./model.ts";
@@ -470,7 +471,12 @@ async function loadThumb(root: string, rel: string, mtime: number): Promise<Thum
 		const t = await shell.readFile(root, joinRel(dir, m[1]));
 		if (t !== null) refs[m[1]] = t;
 	}
-	const r = await inWorker({ text, refs, px: THUMB_PX });
+	// a 3D file's picture is painted from its compiled sidecar (1.8): read when fresh, built by the worker when not
+	const use = sidecars.on.value && project.kinds.value[rel] === "3D";
+	const glb = use ? await shell.readSidecar(root, rel).catch(() => null) : null;
+	const r = await inWorker({ text, refs, px: THUMB_PX, glb, sidecar: use });
+	if (r.built) void keepSidecar(root, rel, r.built);
+	if (r.how) thumbHow.set(rel, r.how);
 	if (!r.index) return null;
 	return { doc: r.index, image: r.image ? URL.createObjectURL(r.image) : "", mtime, ...(r.space3d ? { space3d: true } : {}) };
 }
@@ -486,6 +492,8 @@ let thumbQueue: string[] = [];
 let thumbUrgent: string[] = [];
 let thumbsWanted = false;
 let reading = false;
+/** how each 3D file's picture was last made, for scripts and the console */
+export const thumbHow = new Map<string, string>();
 /** how long each file took to read and draw, for scripts and the console */
 export const thumbLog: { rel: string; ms: number }[] = [];
 const breathe = (ms: number) => new Promise((r) => setTimeout(r, ms));

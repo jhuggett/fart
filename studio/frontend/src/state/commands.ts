@@ -76,6 +76,12 @@ export const KEYMAP: Record<string, string> = {
 	"5": "tool.rect",
 	c: "view.collision",
 	d: "edit.deform",
+	e: "mesh.extrude",
+	i: "mesh.inset",
+	k: "mesh.loopCut",
+	m: "mesh.merge",
+	b: "mesh.paint",
+	u: "tool.pipe",
 	"cmd+j": "chat.toggle",
 	"cmd+s": "file.save",
 	"cmd+n": "file.new",
@@ -125,6 +131,7 @@ export const KEYMAP: Record<string, string> = {
 	"cmd+shift+p": "asset.switch",
 	"cmd+shift+s": "state.switch",
 	"cmd+shift+n": "file.newProject",
+	"cmd+i": "file.importGltf",
 	"cmd+w": "file.browse",
 	"cmd+k": "app.palette",
 	"cmd+/": "help.keys",
@@ -194,6 +201,6 @@ export function shortcutsNow(in3d: boolean): { group: string; rows: KeyRow[] }[]
 		if (!c || (c.when && !c.when())) continue;
 		groups.set(c.group, [...(groups.get(c.group) ?? []), { keys, title: c.title.replace(/…$/, "") }]);
 	}
-	const order = ["Tools", "Edit", "View", "Clip", "Scene", "File", "App"];
+	const order = ["Tools", "Edit", "Mesh", "View", "Clip", "Scene", "File", "App"];
 	return [...groups].sort((a, b) => (order.indexOf(a[0]) + 99) % 99 - ((order.indexOf(b[0]) + 99) % 99)).map(([group, rows]) => ({ group, rows }));
 }
