@@ -1,13 +1,17 @@
 // The model canvas element: sizes itself, routes the pointer into
 // model3.ts, and redraws when the store or the view moves. Middle drag
-// (or Space) pans, a wheel pans, Cmd/Ctrl+wheel zooms; a left drag on
-// nothing, or Alt+drag anywhere, orbits the model.
+// orbits (⇧ pans, and so does Space), a mouse wheel zooms at the cursor,
+// two fingers turn the view (⇧ pans) and a pinch zooms; Alt+drag anywhere
+// orbits too. A left drag on nothing is a marquee. The orbit is a turntable
+// about what is chosen; ⌘ held tumbles freely.
 
 import { useEffect, useRef } from "preact/hooks";
 import { effect } from "@preact/signals";
 import type { Vec2 } from "@fastart/core";
-import { view, toWorld, zoomAt } from "./view.ts";
-import { render3, renderGround, onDown, onMove, onUp, cancelGesture, ix3, orbitDrag } from "./model3.ts";
+import { view, toWorld } from "./view.ts";
+import { render3, renderGround, onDown, onMove, onUp, cancelGesture, ix3, orbitDrag, orbitStart } from "./model3.ts";
+import { wheelNav } from "./orbit.ts";
+import { gizmoCancel, modal3, useGizmo, modelGizmo } from "./gizmo3.ts";
 import { drawSolids } from "./gl3.ts";
 import { md, frameParts } from "../state/model.ts";
 import { theme } from "../state/theme.ts";
@@ -18,6 +22,7 @@ export function ModelCanvas() {
 	const ref = useRef<HTMLCanvasElement>(null);
 	const groundRef = useRef<HTMLCanvasElement>(null);
 	const glRef = useRef<HTMLCanvasElement>(null);
+	useGizmo(modelGizmo);
 	useEffect(() => {
 		const canvas = ref.current!;
 		const ground = groundRef.current!;
@@ -55,6 +60,7 @@ export function ModelCanvas() {
 		const stop = effect(() => {
 			void md.rev.value;
 			void md.sel.value;
+			void md.also.value;
 			void md.vert.value;
 			void md.hover.value;
 			void md.curPart.value;
@@ -71,6 +77,7 @@ export function ModelCanvas() {
 			void md.patterns.value;
 			void md.pending.value;
 			void view.pan.value;
+			void modal3.value;
 			void view.zoom.value;
 			void view.snapGrid.value;
 			void theme.rev.value;
@@ -102,19 +109,23 @@ export function ModelCanvas() {
 		const down = (e: PointerEvent) => {
 			canvas.setPointerCapture(e.pointerId);
 			const s = local(e);
-			if (e.button === 2) return menu(e);
-			if (e.button === 1 || (e.button === 0 && md.space)) {
+			// a right click puts a transform under way back, before it is a menu
+			if (e.button === 2) return gizmoCancel() ? (e.preventDefault(), request()) : menu(e);
+			// the middle button orbits, with ⇧ it pans; Space-drag pans as on the 2D canvas
+			if ((e.button === 1 && e.shiftKey) || (e.button === 0 && md.space)) {
 				panning = true;
 				panLast = s;
 				canvas.classList.add("grab");
 				return;
 			}
-			if (e.button !== 0) return;
-			if (e.altKey) {
+			if (e.button === 1 || (e.button === 0 && e.altKey)) {
 				orbiting = true;
 				orbitLast = s;
+				orbitStart();
+				canvas.classList.add("grab");
 				return;
 			}
+			if (e.button !== 0) return;
 			onDown(toWorld(s, W, H), mods(e));
 			request();
 		};
@@ -128,7 +139,7 @@ export function ModelCanvas() {
 				return;
 			}
 			if (orbiting) {
-				orbitDrag(s[0] - orbitLast[0], s[1] - orbitLast[1]);
+				orbitDrag(s[0] - orbitLast[0], s[1] - orbitLast[1], e.metaKey || e.ctrlKey);
 				orbitLast = s;
 				return;
 			}
@@ -144,6 +155,7 @@ export function ModelCanvas() {
 			}
 			if (orbiting) {
 				orbiting = false;
+				canvas.classList.remove("grab");
 				return;
 			}
 			if (ix3.down) onUp(toWorld(s, W, H), mods(e));
@@ -158,12 +170,7 @@ export function ModelCanvas() {
 			e.preventDefault();
 			const r = canvas.getBoundingClientRect();
 			const s: Vec2 = [e.clientX - r.left, e.clientY - r.top];
-			if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), s, W, H);
-			else {
-				const z = view.zoom.value;
-				const [px, py] = view.pan.value;
-				view.pan.value = [px + e.deltaX / z, py + e.deltaY / z];
-			}
+			wheelNav(e, s, W, H, orbitDrag);
 		};
 		const ctxmenu = (e: Event) => e.preventDefault();
 		canvas.addEventListener("pointerdown", down);

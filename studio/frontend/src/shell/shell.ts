@@ -15,6 +15,35 @@ export interface Caps {
 	trash: boolean;
 	/** the file browser's name ("Finder"), "" where none can be opened */
 	reveal: string;
+	/** "darwin" in the app on a Mac: the traffic lights sit inline, the page leaves them room */
+	os: string;
+}
+
+/** What is known of a file before it is read: its kind, and the palette files it draws from. */
+export interface FileInfo {
+	kind: string;
+	refs: string[];
+}
+
+/** A row of a native menu: the page keeps what it does, by id. */
+export interface PopupItem {
+	id: string;
+	label: string;
+	separator: boolean;
+	disabled: boolean;
+	checked: boolean;
+	keys: string;
+	items: PopupItem[];
+}
+/** One uncommitted file: M, A, D or R, and its path from the project's root. */
+export interface GitChange {
+	status: string;
+	path: string;
+}
+export interface GitProgress {
+	message: string;
+	/** 0..1, -1 when git did not say */
+	done: number;
 }
 
 /** One thing Claude did or said, relayed as it happens. */
@@ -55,6 +84,8 @@ export interface Shell {
 	home(): Promise<string>;
 	defaultRoot(): Promise<string>;
 	listFiles(root: string): Promise<string[]>;
+	/** what each file is ("2D", "3D", "palette", "scene", "3D scene"), sniffed without parsing */
+	kinds(root: string): Promise<Record<string, FileInfo>>;
 	readFile(root: string, rel: string): Promise<string | null>;
 	writeFile(root: string, rel: string, text: string): Promise<void>;
 	/** when a file was last written (ms since the epoch), null when it is not there */
@@ -94,6 +125,25 @@ export interface Shell {
 	branch(dir: string): Promise<string>;
 	branches(dir: string): Promise<string[]>;
 	switchBranch(dir: string, name: string): Promise<void>;
+	newBranch(dir: string, name: string): Promise<void>;
+	/** make the folder a repository, if it is not one */
+	gitInit(dir: string): Promise<void>;
+	gitStatus(dir: string): Promise<GitChange[]>;
+	/** stage everything under the project and commit it */
+	gitCommit(dir: string, message: string): Promise<void>;
+	/** clone into <parent>/<the repository's name>; resolves with the new folder */
+	gitClone(url: string, parent: string): Promise<string>;
+	onGit(cb: (p: GitProgress) => void): void;
+	/** the platform's own menu at a point of the page; a choice comes back by id on onPopup */
+	popupMenu(items: PopupItem[], x: number, y: number): Promise<void>;
+	onPopup(cb: (id: string) => void): void;
+	/** the platform's open dialog, inside the project: a path from its root, null when cancelled */
+	pickFile(root: string, dir: string, title: string, button: string, exts: string[]): Promise<string | null>;
+	/** the platform's folder dialog, with its own words */
+	pickFolderAt(title: string, button: string): Promise<string | null>;
+	fullscreen(): Promise<boolean>;
+	onFullscreen(cb: (on: boolean) => void): void;
+	closeWindow(): Promise<void>;
 	/** the window sized for the launcher, or for work */
 	windowLauncher(): Promise<void>;
 	windowWork(): Promise<void>;
@@ -167,6 +217,29 @@ class HttpShell implements Shell {
 		return [];
 	}
 	async switchBranch() {}
+	async newBranch() {}
+	async gitInit() {}
+	async gitStatus(): Promise<GitChange[]> {
+		return [];
+	}
+	async gitCommit() {}
+	async gitClone(): Promise<string> {
+		throw new Error("a served studio cannot clone");
+	}
+	onGit() {}
+	async popupMenu() {}
+	onPopup() {}
+	async pickFile() {
+		return null;
+	}
+	async pickFolderAt() {
+		return null;
+	}
+	async fullscreen() {
+		return false;
+	}
+	onFullscreen() {}
+	async closeWindow() {}
 	async windowLauncher() {}
 	async windowWork() {}
 	async isDir() {
@@ -183,6 +256,10 @@ class HttpShell implements Shell {
 	async listFiles() {
 		const r = await fetch("api/list");
 		return r.ok ? ((await r.json()) as string[]) : [];
+	}
+	async kinds() {
+		const r = await fetch("api/kinds");
+		return r.ok ? ((await r.json()) as Record<string, FileInfo>) : {};
 	}
 	async readFile(_root: string, rel: string) {
 		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`);
@@ -201,7 +278,7 @@ class HttpShell implements Shell {
 	async caps() {
 		const r = await fetch("api/info");
 		const info = r.ok ? ((await r.json()) as { trash?: boolean }) : {};
-		return { trash: !!info.trash, reveal: "" };
+		return { trash: !!info.trash, reveal: "", os: "" };
 	}
 	async removeFile(_root: string, rel: string) {
 		const r = await fetch(`api/file?path=${encodeURIComponent(rel)}`, { method: "DELETE" });

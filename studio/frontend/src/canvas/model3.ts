@@ -8,6 +8,7 @@
 
 import { cssColor, colorOf, collisionWorld3, shadeColor, shapeDistance, viewXf3, xf3Apply, xf3ApplyDir, xf3Invert, xf3Det, dist, type Shape, type Vec2, type Vec3, type FramePart } from "@fastart/core";
 import { view } from "./view.ts";
+import { gizmoDown, gizmoMove, gizmoUp, gizmoCancel, gizmoActive, gizmoHover, drawGizmo } from "./gizmo3.ts";
 import { fillShape, outlineShape, tracePoly } from "./draw.ts";
 import { drawGrid } from "./render.ts";
 import { canvasColors } from "../state/theme.ts";
@@ -36,6 +37,9 @@ import {
 	orbit,
 	endGesture,
 	type Sel3,
+	selected,
+	sameSel,
+	selectShapes,
 } from "../state/model.ts";
 
 export interface Mods {
@@ -57,6 +61,8 @@ export const ix3 = {
 	poseAng0: 0,
 	orbiting: false,
 	orbitLast: [0, 0] as Vec2,
+	marquee: false,
+	marqueeA: [0, 0] as Vec2,
 	mods: { shift: false, alt: false, cmd: false } as Mods,
 };
 
@@ -130,9 +136,68 @@ function viewAxisInParent(): { axis: Vec3; sign: number } | null {
 function viewOnly() {
 	return viewXf3(md.turn.value);
 }
-/** Orbit by a pointer movement in pixels: yaw and pitch, grabbing the surface. */
-export function orbitDrag(dxPx: number, dyPx: number) {
-	orbit(-dxPx * 0.008, dyPx * 0.008);
+/** The canvas bounds of what is chosen (a picked part, or the part of the chosen shape); of everything when nothing is. */
+export function chosenBounds(): { lo: Vec2; hi: Vec2; depth: number } | null {
+	const only = md.sel.value ? md.sel.value.part : md.partPicked.value ? md.curPart.value : -1;
+	const of = (index: number) => {
+		let lo: Vec2 = [Infinity, Infinity];
+		let hi: Vec2 = [-Infinity, -Infinity];
+		let depth = 0;
+		let n = 0;
+		const take = (p: Vec2) => {
+			lo = [Math.min(lo[0], p[0]), Math.min(lo[1], p[1])];
+			hi = [Math.max(hi[0], p[0]), Math.max(hi[1], p[1])];
+		};
+		for (const fp of frameParts()) {
+			if (index >= 0 && fp.index !== index) continue;
+			for (const f of fp.shapes) {
+				const sh = f.shape;
+				if (sh.kind === "poly") sh.points.forEach(take);
+				else if (sh.kind === "circle") {
+					take([sh.at[0] - sh.r, sh.at[1] - sh.r]);
+					take([sh.at[0] + sh.r, sh.at[1] + sh.r]);
+				} else if (sh.kind === "line") {
+					take(sh.a);
+					take(sh.b);
+				}
+				depth += f.depth;
+				n++;
+			}
+		}
+		return n && Number.isFinite(lo[0]) ? { lo, hi, depth: depth / n } : null;
+	};
+	return (only >= 0 ? of(only) : null) ?? of(-1);
+}
+
+// what the view turns about: the middle of what is chosen, fixed in the
+// world for as long as one orbit lasts (a drag, or a run of wheel events)
+let pivot: Vec3 | null = null;
+let pivotAt = 0;
+function orbitPivot(): Vec3 {
+	const now = performance.now();
+	if (!pivot || now - pivotAt > 350) {
+		const b = chosenBounds();
+		pivot = b ? xf3Apply(xf3Invert(viewOnly()), [(b.lo[0] + b.hi[0]) / 2, (b.lo[1] + b.hi[1]) / 2, b.depth]) : [0, 0, 0];
+	}
+	pivotAt = now;
+	return pivot;
+}
+/** A new orbit starts: its pivot is taken afresh. */
+export function orbitStart() {
+	pivot = null;
+}
+
+/**
+ * Orbit by a pointer movement in pixels. The view turns about the middle
+ * of what is chosen, which stays where it is on the canvas.
+ */
+export function orbitDrag(dxPx: number, dyPx: number, free = false) {
+	const p = orbitPivot();
+	const before = xf3Apply(viewOnly(), p);
+	orbit(-dxPx * 0.008, dyPx * 0.008, free);
+	const after = xf3Apply(viewOnly(), p);
+	const [px, py] = view.pan.value;
+	view.pan.value = [px + after[0] - before[0], py + after[1] - before[1]];
 }
 
 // ------------------------------------------------------------- pointer
@@ -141,6 +206,8 @@ export function onDown(wm: Vec2, mods: Mods) {
 	ix3.down = true;
 	ix3.mods = mods;
 	ix3.cursor = wm;
+	// a handle grabbed, or a keyed transform kept by the click
+	if (md.pending.value === "none" && gizmoDown(wm)) return;
 	if (md.pending.value === "pivot") {
 		const i = md.curPart.value;
 		const fp = framePartOf(i);
@@ -199,10 +266,13 @@ export function onDown(wm: Vec2, mods: Mods) {
 	}
 	const hit = pick(wm);
 	if (hit) {
-		md.sel.value = hit;
-		md.vert.value = null;
-		md.curPart.value = hit.part;
-		md.partPicked.value = true;
+		const all = selected();
+		const member = all.some((t) => sameSel(t, hit));
+		// ⇧ adds a shape to what is chosen, or takes it out; a plain click on one of several keeps them all, to drag together
+		if (mods.shift && all.length) selectShapes(member ? all.filter((t) => !sameSel(t, hit)) : [hit, ...all]);
+		else if (member) selectShapes([hit, ...all.filter((t) => !sameSel(t, hit))]);
+		else selectShapes([hit]);
+		if (mods.shift && member) return;
 		if (!preview) {
 			ix3.dragging = true;
 			ix3.vertex = null;
@@ -216,22 +286,49 @@ export function onDown(wm: Vec2, mods: Mods) {
 		md.vert.value = null;
 		md.partPicked.value = false;
 	}
-	ix3.orbiting = true;
-	ix3.orbitLast = wm;
+	// a drag on nothing is a marquee (the middle button, two fingers or Alt-drag orbit)
+	ix3.marquee = true;
+	ix3.marqueeA = wm;
+}
+
+/** Every shape whose outline on the canvas touches a rectangle. */
+function shapesIn(lo: Vec2, hi: Vec2): Sel3[] {
+	const out: Sel3[] = [];
+	for (const fp of frameParts()) {
+		if (fp.part.like) continue; // a part drawn like another: edit the source
+		for (const f of fp.shapes) {
+			if (f.outline || out.some((t) => t.part === fp.index && t.shape === f.src)) continue;
+			const sh = f.shape;
+			const pts: Vec2[] = sh.kind === "poly" ? sh.points : sh.kind === "circle" ? [[sh.at[0] - sh.r, sh.at[1] - sh.r], [sh.at[0] + sh.r, sh.at[1] + sh.r]] : sh.kind === "line" ? [sh.a, sh.b] : [];
+			if (!pts.length) continue;
+			const blo: Vec2 = [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))];
+			const bhi: Vec2 = [Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
+			if (blo[0] <= hi[0] && bhi[0] >= lo[0] && blo[1] <= hi[1] && bhi[1] >= lo[1]) out.push({ part: fp.index, shape: f.src });
+		}
+	}
+	return out;
 }
 
 export function onMove(wm: Vec2, mods: Mods) {
 	ix3.mods = mods;
 	ix3.cursor = wm;
+	if (gizmoActive()) {
+		gizmoMove(wm, mods.shift);
+		return;
+	}
 	if (!ix3.down) {
+		gizmoHover(wm);
 		const h = md.tool.value === "select" ? pick(wm) : null;
 		const cur = md.hover.value;
 		if ((h?.part !== cur?.part || h?.shape !== cur?.shape) && !(h === null && cur === null)) md.hover.value = h;
 		return;
 	}
 	if (ix3.orbiting) {
-		orbitDrag((wm[0] - ix3.orbitLast[0]) * z(), (wm[1] - ix3.orbitLast[1]) * z());
-		ix3.orbitLast = wm;
+		// the pan moves under an orbit that keeps its pivot still: measure on the screen, not in the world
+		const pan0 = view.pan.value;
+		orbitDrag((wm[0] - ix3.orbitLast[0]) * z(), (wm[1] - ix3.orbitLast[1]) * z(), !!mods.cmd);
+		// the pointer has not moved on the screen, but the world slid under it with the pan
+		ix3.orbitLast = [wm[0] + view.pan.value[0] - pan0[0], wm[1] + view.pan.value[1] - pan0[1]];
 		return;
 	}
 	if (ix3.poseRot) {
@@ -268,15 +365,37 @@ export function onMove(wm: Vec2, mods: Mods) {
 		const d: Vec3 = [wm[0] - ix3.dragLast[0], wm[1] - ix3.dragLast[1], 0];
 		ix3.dragLast = wm;
 		if (ix3.vertex !== null) moveVertexView(md.sel.value, ix3.vertex, d);
-		else moveSelView(md.sel.value, d);
+		else for (const s of selected()) moveSelView(s, d);
 	}
 }
 
 export function onUp(wm: Vec2, mods: Mods) {
 	ix3.down = false;
 	ix3.mods = mods;
+	const g = gizmoUp();
+	if (g === "click") {
+		// a click on a handle, not a drag: the shape under it is what was meant
+		const hit = pick(wm);
+		if (hit) {
+			md.sel.value = hit;
+			md.vert.value = null;
+			md.curPart.value = hit.part;
+			md.partPicked.value = true;
+		}
+	}
+	if (g) return;
+	if (ix3.marquee) {
+		ix3.marquee = false;
+		const a = ix3.marqueeA;
+		// a press that went nowhere was a click on nothing: it has already let go of everything
+		if (Math.hypot(wm[0] - a[0], wm[1] - a[1]) * z() < 3) return;
+		const found = shapesIn([Math.min(a[0], wm[0]), Math.min(a[1], wm[1])], [Math.max(a[0], wm[0]), Math.max(a[1], wm[1])]);
+		selectShapes(mods.shift ? [...selected(), ...found] : found);
+		return;
+	}
 	if (ix3.orbiting) {
 		ix3.orbiting = false;
+	ix3.marquee = false;
 		return;
 	}
 	if (ix3.drawing) {
@@ -297,6 +416,7 @@ export function onUp(wm: Vec2, mods: Mods) {
 
 export function cancelGesture() {
 	ix3.down = false;
+	ix3.marquee = false;
 	ix3.drawing = false;
 	ix3.dragging = false;
 	ix3.poseDrag = false;
@@ -349,6 +469,7 @@ export function polyEnter() {
 	polyClose();
 }
 export function escape() {
+	if (gizmoCancel()) return;
 	if (md.polyPts.value.length) {
 		md.polyPts.value = [];
 		return;
@@ -369,7 +490,7 @@ export function nudgeView(d: Vec2) {
 	const s = md.sel.value;
 	if (!s) return;
 	if (md.vert.value !== null) moveVertexView(s, md.vert.value, [d[0], d[1], 0], "nudge");
-	else moveSelView(s, [d[0], d[1], 0], "nudge");
+	else for (const t of selected()) moveSelView(t, [d[0], d[1], 0], "nudge");
 }
 
 /** The frame's extents on the canvas, for zoom to fit. */
@@ -431,7 +552,7 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 
 	const tokens = md.tokens.value;
 	const fps = frameParts();
-	const sel = md.sel.value;
+	const chosen = selected();
 	const hov = md.hover.value;
 	const preview = !!curClip();
 
@@ -447,7 +568,7 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 		// a smooth mesh or a sweep (1.7) has too many faces to outline one by one: its cage wire marks it instead
 		const src = fp.solids[f.src];
 		const quiet = !!src && (src.kind === "sweep" || (src.kind === "mesh" && (src.smooth ?? 0) > 0));
-		if (sel && sel.part === srcIndex && sel.shape === f.src && !f.outline && !quiet) selShapes.push(f.shape);
+		if (!f.outline && !quiet && chosen.some((t) => t.part === srcIndex && t.shape === f.src)) selShapes.push(f.shape);
 		if (hov && hov.part === srcIndex && hov.shape === f.src && !f.outline && !quiet) hovShapes.push(f.shape);
 	}
 	// the rig: a bone from each child's pivot to its parent's
@@ -579,6 +700,26 @@ export function render3(ctx: CanvasRenderingContext2D, W: number, H: number, dpr
 			ctx.setLineDash([]);
 			ctx.fillText(`${c.layer}${c.part ? " · " + c.part : ""}`, label[0], label[1]);
 		}
+	}
+
+	// the marquee: every shape it touches is chosen
+	if (ix3.marquee && ix3.cursor) {
+		screen();
+		const a = toS(ix3.marqueeA);
+		const b = toS(ix3.cursor);
+		ctx.fillStyle = C.marquee;
+		ctx.strokeStyle = ACCENT;
+		ctx.lineWidth = LW;
+		ctx.beginPath();
+		ctx.rect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+		ctx.fill();
+		ctx.stroke();
+	}
+
+	// the axis handles of what is chosen: arrows to move, rings to turn
+	if (!preview) {
+		screen();
+		drawGizmo(ctx, toS);
 	}
 
 	// the current part's pivot and lever

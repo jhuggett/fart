@@ -1,34 +1,30 @@
 // Right-click on a file or a folder, the same wherever it shows: the
-// shelf's tiles, the explorer's rows. Every item is a project operation.
+// browser's tiles, the navigator's rows. Every item is a project operation.
 
-import { ask } from "../state/prompt.ts";
-import { project, openDoc, newFile, newPalette, refreshFiles, deleteFile, renameFile, duplicateFile, revealFile } from "../state/project.ts";
-import { ed } from "../state/editor.ts";
+import { project, openDoc, refreshFiles, deleteFile, renameFile, duplicateFile, revealFile, goFolder } from "../state/project.ts";
+import { openDocNow } from "../state/doc.ts";
 import type { MenuItem } from "../state/menu.ts";
+import { newAssetSheet } from "./Sheets.tsx";
 
 export function askNewFile(folder: string) {
-	void ask(folder ? `Name the new file in ${folder}/` : "Name the new file").then((n) => {
-		if (n) void newFile(folder ? `${folder}/${n}` : n);
-	});
+	void newAssetSheet("2D", folder);
 }
 
 /** A palette file, asked by name; at the root it lands in palettes/. */
 export function askNewPalette(folder: string, open = true): Promise<string | null> {
-	return ask(folder ? `Name the new palette in ${folder}/` : "Name the new palette (it lands in palettes/)").then((n) =>
-		n ? newPalette(folder ? `${folder}/${n}` : n, open) : null,
-	);
+	return newAssetSheet("Palette", folder, open);
 }
 
 export function fileMenu(rel: string): MenuItem[] {
 	const caps = project.caps.value;
-	const isOpen = ed.path.value === rel;
+	const isOpen = openDocNow()?.path === rel;
 	const items: MenuItem[] = [
 		{ label: "Open", disabled: isOpen, run: () => void openDoc(rel) },
 		{ label: "Rename…", run: () => void renameFile(rel) },
 		{ label: "Duplicate", run: () => void duplicateFile(rel) },
 	];
 	if (caps.reveal) items.push({ label: `Reveal in ${caps.reveal}`, run: () => void revealFile(rel) });
-	items.push({ label: caps.trash ? "Move to Trash" : "Delete", danger: true, sep: true, run: () => void deleteFile(rel) });
+	items.push({ label: caps.trash ? "Move to Trash…" : "Delete…", danger: true, sep: true, run: () => void deleteFile(rel) });
 	return items;
 }
 
@@ -36,8 +32,9 @@ export function fileMenu(rel: string): MenuItem[] {
 export function folderMenu(path: string): MenuItem[] {
 	const caps = project.caps.value;
 	const items: MenuItem[] = [
-		{ label: "New file…", run: () => askNewFile(path) },
+		{ label: "New asset…", run: () => askNewFile(path) },
 		{ label: "New palette…", run: () => void askNewPalette(path) },
+		{ label: "Show in the browser", sep: true, run: () => void goFolder(path) },
 	];
 	if (caps.reveal) items.push({ label: `Reveal in ${caps.reveal}`, run: () => void revealFile(path) });
 	if (!path) items.push({ label: "Refresh", sep: true, run: () => void refreshFiles() });

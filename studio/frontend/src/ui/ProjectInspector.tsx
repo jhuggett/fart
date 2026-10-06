@@ -1,50 +1,118 @@
-// The inspector with nothing open: the project itself.
+// The inspector in the asset browser: the picked asset (rename it, open
+// it, take it out), then the project itself.
 
-import { project } from "../state/project.ts";
-import { pretty } from "../state/paths.ts";
+import { useEffect, useState } from "preact/hooks";
+import { project, openDoc, deleteFile, duplicateFile, revealFile, renameTo, renameProblem } from "../state/project.ts";
+import { nav, remember } from "../state/nav.ts";
+import { basename, dirname, pretty, stripExt } from "../state/paths.ts";
 import { shell } from "../shell/shell.ts";
+import { kindOf } from "./kinds.ts";
+import { Button, Checkbox, InspectorSection, Property, SegmentedControl, TextField, middleTruncate } from "./ur.tsx";
+
+function AssetSection({ rel }: { rel: string }) {
+	const stem = stripExt(basename(rel));
+	const [name, setName] = useState(stem);
+	useEffect(() => setName(stem), [rel]);
+	const t = project.thumbs.value.get(rel);
+	const caps = project.caps.value;
+	const bad = name.trim() && name.trim() !== stem ? renameProblem(rel, name.trim()) : null;
+	const commit = () => {
+		const n = name.trim();
+		if (!n || n === stem || bad) return setName(stem);
+		void renameTo(rel, n);
+	};
+	const d = t?.doc;
+	return (
+		<InspectorSection title="Asset">
+			<Property label="Name">
+				<TextField value={name} mono invalid={!!bad} hint={bad ?? undefined} onChange={setName} onSubmit={commit} onBlur={commit} />
+			</Property>
+			<Property label="Kind">
+				<span class="ur-prop-val">{kindOf(rel, t)}</span>
+			</Property>
+			<Property label="Folder">
+				<span class="ur-prop-val">{dirname(rel) || "the project's root"}</span>
+			</Property>
+			{d && !t?.scene && (d.parts?.length ?? 0) > 0 && (
+				<Property label="Inside">
+					<span class="ur-prop-val">
+						{d.parts?.length ?? 0} part{d.parts?.length === 1 ? "" : "s"} · {d.states?.length ?? 0} state{d.states?.length === 1 ? "" : "s"} · {d.clips?.length ?? 0} clip{d.clips?.length === 1 ? "" : "s"}
+					</span>
+				</Property>
+			)}
+			{t?.scene && (
+				<Property label="Inside">
+					<span class="ur-prop-val">
+						{t.scene.instances} instance{t.scene.instances === 1 ? "" : "s"}
+					</span>
+				</Property>
+			)}
+			<div class="insp-actions">
+				<Button onClick={() => void openDoc(rel)}>Open</Button>
+				<Button onClick={() => void duplicateFile(rel)}>Duplicate</Button>
+				{caps.reveal && <Button onClick={() => void revealFile(rel)}>Reveal</Button>}
+				<Button variant="danger" onClick={() => void deleteFile(rel)}>
+					{caps.trash ? "Move to Trash…" : "Delete…"}
+				</Button>
+			</div>
+		</InspectorSection>
+	);
+}
 
 export function ProjectInspector() {
 	const files = project.files.value;
 	const scenes = files.filter((f) => f.endsWith(".shart")).length;
 	const native = shell.kind === "wails";
+	const sel = nav.selected.value;
 	return (
-		<div class="panel right inspector">
-			<div class="hdr" title="the folder that is the project">
-				Project
-			</div>
-			<div class="line">
-				<span class="k">name</span>
-				<span class="name">{project.name.value}</span>
-			</div>
-			{native && (
-				<div class="line" title={project.root.value ?? ""}>
-					<span class="k">folder</span>
-					<span class="name sub">{pretty(project.root.value ?? "", project.home.value)}</span>
-				</div>
-			)}
-			{project.branch.value && (
-				<div class="line">
-					<span class="k">branch</span>
-					<span class="name">{project.branch.value}</span>
-				</div>
-			)}
-			<div class="line">
-				<span class="k">assets</span>
-				<span class="name">
-					{files.length - scenes} file{files.length - scenes === 1 ? "" : "s"}
-					{scenes ? ` · ${scenes} scene${scenes === 1 ? "" : "s"}` : ""}
-				</span>
-			</div>
-			{project.hasAssets.value && (
-				<div class="line">
-					<span class="k">new assets</span>
-					<span class="name sub">land in assets/</span>
-				</div>
-			)}
-			<div class="empty" style="margin-top:14px">
-				click an asset to open it · the inspector then shows what is selected on the canvas, or the asset itself
-			</div>
+		<div class="inspector">
+			{sel && files.includes(sel) && <AssetSection rel={sel} />}
+			<InspectorSection title="Project" hint="the folder that is the project">
+				<Property label="Name">
+					<span class="ur-prop-val">{project.name.value}</span>
+				</Property>
+				{native && (
+					<Property label="Folder" title={project.root.value ?? ""}>
+						<span class="ur-prop-val ur-mono">{middleTruncate(pretty(project.root.value ?? "", project.home.value), 30)}</span>
+					</Property>
+				)}
+				{project.branch.value && (
+					<Property label="Branch">
+						<span class="ur-prop-val">{project.branch.value}</span>
+					</Property>
+				)}
+				<Property label="Assets">
+					<span class="ur-prop-val">
+						{files.length - scenes} file{files.length - scenes === 1 ? "" : "s"}
+						{scenes ? ` · ${scenes} scene${scenes === 1 ? "" : "s"}` : ""}
+					</span>
+				</Property>
+				{project.hasAssets.value && (
+					<Property label="New assets">
+						<span class="ur-prop-val">land in assets/</span>
+					</Property>
+				)}
+			</InspectorSection>
+			{!sel && <div class="insp-hint">Click an asset to pick it · double-click to open it</div>}
+		</div>
+	);
+}
+
+/** The View tab in the browser: how the tiles are laid out. */
+export function BrowserView() {
+	return (
+		<div class="inspector">
+			<InspectorSection title="Tiles">
+				<Property label="Size">
+					<SegmentedControl options={["S", "M", "L"]} value={nav.size.value} onChange={(v) => ((nav.size.value = v), remember("size", v))} label="Tile size" />
+				</Property>
+				<Property label="Sort by">
+					<SegmentedControl options={["Name", "Kind"]} value={nav.sort.value} onChange={(v) => ((nav.sort.value = v), remember("sort", v))} label="Sort by" />
+				</Property>
+				<Property label="">
+					<Checkbox checked={nav.subfolders.value} label="Include subfolders" onChange={(v) => ((nav.subfolders.value = v), remember("subfolders", v ? "on" : "off"))} />
+				</Property>
+			</InspectorSection>
 		</div>
 	);
 }

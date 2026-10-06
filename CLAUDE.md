@@ -24,15 +24,32 @@ follow the spec, never the other way round.
   `make check-ui` (`studio/test/workspace.mjs`) is the standing tour of
   the workspace; run it after touching the frame. The Chrome extension
   is unreliable here.
-- The studio's frame: the launcher (`screens/Welcome.tsx`, small window)
-  then the workspace (`screens/Workspace.tsx`): the sidebar stack
-  (`state/sidebar.ts`, `ui/Sidebar.tsx`: assets, then the open asset),
-  the project bar over the canvas (`ui/ProjectBar.tsx`: project, branch,
-  asset and state switchers), the floating tools (`ui/Tools.tsx`), the
-  inspector. Each asset screen (`Editor.tsx`, `Model.tsx`, `Scene.tsx`)
-  only exports its parts. Git and window sizing live in `workspace.go`.
+- The studio's look is a design system: `frontend/src/tokens.css` (every
+  colour, Light and Dark, type, space), `ur.css` + `ui/ur.tsx` (the `Ur`
+  components: PaneHeader, PathBar, StatusBar, SidebarRow, InspectorSection,
+  Property, NumberField, Sheet, …). Tokens only: no hex, size or font
+  stack outside them. `app.css` is the frame's layout, `styles/*.css` each
+  screen's own, `theme.css` the older widgets (its names alias tokens).
+  Icons: add a Lucide name to `scripts/icons.mjs`, run it.
+- The studio's frame: the launcher (`screens/Welcome.tsx`, a small fixed
+  window) then the workspace (`screens/Workspace.tsx`), three columns
+  each with its own header: the navigator (`ui/Sidebar.tsx`,
+  `state/sidebar.ts`: assets, outline, search, source control), the
+  content (`ui/ProjectBar.tsx`: the header with project picker and
+  activity view, the path bar with history `state/nav.ts`; the asset
+  browser `ui/Shelf.tsx`; the status bar), the inspector
+  (`ui/InspectorPane.tsx`: selection, view, history, Ask). Nothing floats
+  over the canvas. Each asset screen (`Editor.tsx`, `Model.tsx`,
+  `Scene.tsx`) only exports its parts (outline, tools, canvas, status,
+  inspector, view). Sheets: `state/prompt.ts` + `ui/Sheets.tsx`. Menus:
+  `state/menu.ts` (a right click is the platform's menu, via
+  `native.go`'s `PopupMenu`; file and folder choices are the platform's
+  dialogs). The window is frameless on macOS with inline traffic lights
+  (`main.go`; `inlineLights()` in `state/project.ts` leaves them room,
+  not in full screen). Git and window sizing live in `workspace.go`.
   Regenerate bindings after changing the Go service: `cd studio && wails3
-  generate bindings -ts -i -clean=true`.
+  generate bindings -ts -i -clean=true`. `node studio/test/look.mjs <dir>`
+  shoots the workspace in both appearances.
 - The file on disk is the document: edits land in it at once (atomic
   write), ⌘S makes the checkpoint (`name.fart~`), nothing reverts on its
   own. `make check-save` proves it end to end in a headless browser; run

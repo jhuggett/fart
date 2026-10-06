@@ -19,6 +19,11 @@ export interface Caps {
      * the file browser's name, "" if there is none to open
      */
     "reveal": string;
+
+    /**
+     * runtime.GOOS: the page leaves room for macOS's inline traffic lights
+     */
+    "os": string;
 }
 
 /**
@@ -65,6 +70,59 @@ export interface ChatInfo {
      */
     "plan": string;
     "org": string;
+}
+
+/**
+ * FileInfo is what the browser knows of a file before anyone opens it.
+ */
+export interface FileInfo {
+    /**
+     * "2D", "3D", "palette", "scene" or "3D scene"
+     */
+    "kind": string;
+
+    /**
+     * the palette files it draws from, as it names them
+     */
+    "refs": string[] | null;
+}
+
+/**
+ * GitChange is one line of `git status`: what happened to a file, and
+ * its path from the project's root.
+ */
+export interface GitChange {
+    /**
+     * M, A, D, R or ? (untracked)
+     */
+    "status": string;
+    "path": string;
+}
+
+/**
+ * GitProgress is a line of a clone as it runs.
+ */
+export interface GitProgress {
+    "message": string;
+
+    /**
+     * 0..1, -1 when git did not say
+     */
+    "done": number;
+}
+
+/**
+ * PopupItem is one row of a native menu the page describes. The page keeps
+ * what each row does; a click comes back as the row's id on "popup".
+ */
+export interface PopupItem {
+    "id": string;
+    "label": string;
+    "separator": boolean;
+    "disabled": boolean;
+    "checked": boolean;
+    "keys": string;
+    "items": PopupItem[] | null;
 }
 
 export interface ServeInfo {

@@ -22,14 +22,23 @@ import (
 const recentMax = 12
 
 type ProjectService struct {
-	app    *application.App
-	win    application.Window
-	server *Server
-	chat   *Chat
-	mu     sync.Mutex
-	queue  []string // paths the OS asked us to open, drained by the frontend
-	workW  int      // the window's working size, kept while the launcher is up
-	workH  int
+	app     *application.App
+	win     application.Window
+	server  *Server
+	chat    *Chat
+	mu      sync.Mutex
+	queue   []string // paths the OS asked us to open, drained by the frontend
+	workW   int      // the window's working size, kept while the launcher is up
+	workH   int
+	working bool     // the window is sized for work, not the launcher
+	popup   []string // the ids of the native menu that is up, by item
+}
+
+// pendingOpen: the OS (or argv) already handed us something to open.
+func (p *ProjectService) pendingOpen() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.queue) > 0
 }
 
 // rooted joins rel under root, refusing anything that could escape.
@@ -134,6 +143,16 @@ func (p *ProjectService) ListFiles(root string) ([]string, error) {
 		return nil, errors.New("no project open")
 	}
 	return listFiles(root)
+}
+
+// Kinds is every file of the project and what it is ("2D", "3D",
+// "palette", "scene", "3D scene"), without parsing any of them.
+func (p *ProjectService) Kinds(root string) (map[string]FileInfo, error) {
+	files, err := listFiles(root)
+	if err != nil {
+		return nil, err
+	}
+	return kindsOf(root, files), nil
 }
 
 func (p *ProjectService) ReadFile(root, rel string) (string, error) {

@@ -1,52 +1,73 @@
-// The floating tool bar at the bottom of the canvas, and the hint line
-// above it. Each screen fills it; this is the shell around them.
+// What the path bar carries on its right for an editor: the drawing
+// tools and modes (inline, so nothing floats over the canvas) and, while
+// a clip is chosen, its transport. Each screen fills these in.
 
-import type { ComponentChildren } from "preact";
-import type { JSX } from "preact";
 import { run } from "../state/commands.ts";
 import { view } from "../canvas/view.ts";
+import { Button, ToolPalette, type IconName, type ToolItem } from "./ur.tsx";
 
 export interface ToolSpec<T extends string> {
 	tool: T;
 	label: string;
 	key: string;
-	icon: (p: { size?: number }) => JSX.Element;
-	/** a word on what it makes, for the tooltip */
+	icon: IconName;
+	/** a word on what it makes, for the status bar while it is the tool */
 	makes?: string;
 }
 
-/** The tool buttons: icon and key, the label in the tooltip. */
-export function ToolButtons<T extends string>({ tools, current, disabled, why }: { tools: ToolSpec<T>[]; current: T; disabled?: (t: T) => boolean; why?: string }) {
+export interface ModeSpec {
+	id: string;
+	/** the command the toggle runs */
+	command: string;
+	label: string;
+	icon: IconName;
+	key?: string;
+	on: boolean;
+	disabled?: boolean;
+	why?: string;
+}
+
+/** The snap-to-grid toggle every canvas has. */
+export const gridMode = (): ModeSpec => ({ id: "grid", command: "view.snapGrid", label: "Snap to grid", icon: "grid-3x3", key: "⌘'", on: view.snapGrid.value });
+
+/** The tools, a separator, the modes: one inline palette. */
+export function ToolBar<T extends string>({ tools, current, disabled, why, modes }: { tools: ToolSpec<T>[]; current: T; disabled?: (t: T) => boolean; why?: string; modes: ModeSpec[] }) {
+	const items: (ToolItem | "|")[] = tools.map((t) => ({ id: t.tool, icon: t.icon, label: t.label, key: t.key, disabled: disabled?.(t.tool) ?? false, why }));
+	if (tools.length && modes.length) items.push("|");
+	for (const m of modes) items.push({ id: m.id, icon: m.icon, label: m.label, key: m.key, toggle: true, disabled: m.disabled, why: m.why });
 	return (
-		<div class="group">
-			{tools.map((t) => {
-				const off = disabled?.(t.tool) ?? false;
-				return (
-					<button class={`tool ${current === t.tool ? "active" : ""}`} disabled={off} title={off && why ? why : `${t.label}  (${t.key})${t.makes ? ` · ${t.makes}` : ""}`} onClick={() => run(`tool.${t.tool}`)}>
-						<t.icon />
-						<span class="key">{t.key}</span>
-					</button>
-				);
-			})}
+		<ToolPalette
+			inline
+			tools={items}
+			value={current}
+			toggles={Object.fromEntries(modes.map((m) => [m.id, m.on]))}
+			onChange={(id) => run(`tool.${id}`)}
+			onToggle={(id) => {
+				const m = modes.find((x) => x.id === id);
+				if (m) run(m.command);
+			}}
+		/>
+	);
+}
+
+/** A clip's transport: rewind, play or pause, where it is, how far along. */
+export function Transport({ name, playing, onPlay, onRewind, readout, progress }: { name: string; playing: boolean; onPlay: () => void; onRewind: () => void; readout: string; progress: number }) {
+	return (
+		<div class="ur-transport" title={`previewing ${name}`}>
+			<Button variant="toolbar" icon="skip-back" title="Back to the start" class="ur-btn-sm" onClick={onRewind} />
+			<Button variant="toolbar" icon={playing ? "pause" : "play"} title={playing ? "Pause (Space)" : "Play (Space)"} class="ur-btn-sm" active={playing} onClick={onPlay} />
+			<span class="ur-transport-read">{readout}</span>
+			<span class="ur-activity-bar">
+				<i style={{ width: `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%` }} />
+			</span>
 		</div>
 	);
 }
 
-/** Floats over the canvas: the hint, then the bar. `zoom` shows the zoom at the corner. */
-export function Tools({ hint, children, zoom = true }: { hint?: string; children?: ComponentChildren; zoom?: boolean }) {
-	return (
-		<>
-			{(hint || children) && (
-				<div class="tools-wrap">
-					{hint && <div class="hint-line">{hint}</div>}
-					{children && <div class="tools">{children}</div>}
-				</div>
-			)}
-			{zoom && (
-				<div class="zoom-hud" title="zoom · ⌘0 for 100%, ⇧1 to fit">
-					{view.zoom.value.toFixed(1)}×{view.snapGrid.value ? " · grid" : ""}
-				</div>
-			)}
-		</>
-	);
+/** "key 3 / 13" for a clip at a time: the key the playhead has reached. */
+export function keyReadout(keys: { t: number }[], t: number): string {
+	if (!keys.length) return "no keys";
+	let at = 0;
+	for (let i = 0; i < keys.length; i++) if (keys[i].t <= t + 1e-6) at = i;
+	return `key ${at + 1} / ${keys.length}`;
 }

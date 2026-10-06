@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "preact/hooks";
 import { commands, run, keysFor, commandRev } from "../state/commands.ts";
 import { palette, closePalette } from "../state/menu.ts";
+import { Icon, cx } from "./ur.tsx";
 
 export function CommandPalette() {
 	const open = palette.open.value;
@@ -25,33 +26,56 @@ export function CommandPalette() {
 		run(c.id);
 	};
 	return (
-		<div class="modal" onPointerDown={(e) => e.target === e.currentTarget && closePalette()}>
-			<div class="cmdk">
-				<input
-					ref={ref}
-					placeholder="Do what?"
-					value={palette.query.value}
-					onInput={(e) => {
-						palette.query.value = (e.target as HTMLInputElement).value;
-						palette.index.value = 0;
-					}}
-					onKeyDown={(e) => {
-						e.stopPropagation();
-						if (e.key === "Escape") closePalette();
-						else if (e.key === "ArrowDown") palette.index.value = Math.min(idx + 1, list.length - 1);
-						else if (e.key === "ArrowUp") palette.index.value = Math.max(idx - 1, 0);
-						else if (e.key === "Enter") go(idx);
-					}}
-				/>
-				<div class="list">
-					{list.map((c, i) => (
-						<div class={`row ${i === idx ? "active" : ""}`} onPointerEnter={() => (palette.index.value = i)} onClick={() => go(i)}>
-							<span class="chip" style="margin:0 8px 0 0;min-width:52px">{c.group}</span>
-							<span class="name">{c.title}</span>
-							<span class="chip">{keysFor(c.id) ?? c.keys ?? ""}</span>
-						</div>
-					))}
-					{list.length === 0 && <div class="empty">nothing by that name</div>}
+		<div class="cmdk-layer" onPointerDown={(e) => e.target === e.currentTarget && closePalette()}>
+			<div class="cmdk" role="dialog" aria-label="Commands">
+				<div class="ur-tf cmdk-field">
+					<Icon name="search" size={14} />
+					<input
+						ref={ref}
+						placeholder="Do what?"
+						spellcheck={false}
+						autocomplete="off"
+						aria-label="Command"
+						value={palette.query.value}
+						onInput={(e) => {
+							palette.query.value = (e.target as HTMLInputElement).value;
+							palette.index.value = 0;
+						}}
+						onKeyDown={(e) => {
+							e.stopPropagation();
+							if (e.key === "Escape") closePalette();
+							else if (e.key === "ArrowDown") {
+								e.preventDefault();
+								palette.index.value = Math.min(idx + 1, list.length - 1);
+							} else if (e.key === "ArrowUp") {
+								e.preventDefault();
+								palette.index.value = Math.max(idx - 1, 0);
+							} else if (e.key === "Enter") go(idx);
+						}}
+					/>
+				</div>
+				<div class="cmdk-list" role="listbox">
+					{list.map((c, i) => {
+						const keys = keysFor(c.id) ?? c.keys ?? "";
+						return (
+							<div
+								key={c.id}
+								class={cx("ur-menu-item", i === idx && "active")}
+								role="option"
+								aria-selected={i === idx}
+								ref={(el) => {
+									if (el && i === idx) el.scrollIntoView({ block: "nearest" });
+								}}
+								onPointerEnter={() => (palette.index.value = i)}
+								onClick={() => go(i)}
+							>
+								<span class="ur-menu-label">{c.title}</span>
+								<span class="cmdk-group">{c.group}</span>
+								{keys && <span class="ur-menu-key">{keys}</span>}
+							</div>
+						);
+					})}
+					{list.length === 0 && <div class="cmdk-empty">Nothing by that name</div>}
 				</div>
 			</div>
 		</div>

@@ -92,6 +92,15 @@ func (s *Server) Start(root string) (ServeInfo, error) {
 		}
 		writeJSON(w, files)
 	})
+	mux.HandleFunc("/api/kinds", func(w http.ResponseWriter, r *http.Request) {
+		noStore(w)
+		files, err := listFiles(root)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		writeJSON(w, kindsOf(root, files))
+	})
 	mux.HandleFunc("/api/file", func(w http.ResponseWriter, r *http.Request) {
 		noStore(w)
 		full, err := rooted(root, r.URL.Query().Get("path"))

@@ -4,8 +4,12 @@
 import { useEffect, useRef } from "preact/hooks";
 import { effect } from "@preact/signals";
 import type { Vec2 } from "@fastart/core";
-import { view, toWorld, zoomAt } from "./view.ts";
-import { renderScene, renderSceneGround, sceneLayers, onDown, onMove, onUp, cancelGesture, sx } from "./scene3.ts";
+import { viewXf3 } from "@fastart/core";
+import { view, toWorld } from "./view.ts";
+import { wheelNav } from "./orbit.ts";
+import { gizmoCancel, modal3, useGizmo } from "./gizmo3.ts";
+import { sceneGizmo } from "./sceneGizmo.ts";
+import { renderScene, renderSceneGround, sceneLayers, onDown, onMove, onUp, cancelGesture, sx, orbitDrag, orbitStart } from "./scene3.ts";
 import { drawLayers } from "./gl3.ts";
 import { sc, is3d } from "../state/scene.ts";
 import { theme } from "../state/theme.ts";
@@ -16,6 +20,7 @@ export function SceneCanvas() {
 	const ref = useRef<HTMLCanvasElement>(null);
 	const groundRef = useRef<HTMLCanvasElement>(null);
 	const glRef = useRef<HTMLCanvasElement>(null);
+	useGizmo(sceneGizmo);
 	useEffect(() => {
 		const canvas = ref.current!;
 		const ground = groundRef.current!;
@@ -42,7 +47,7 @@ export function SceneCanvas() {
 			if (!W || !H) return;
 			renderSceneGround(gctx, W, H, dpr);
 			let solid = false;
-			if (is3d()) solid = drawLayers(glCanvas, sceneLayers(), sc.light.value, sc.ambient.value, { W, H, dpr, pan: view.pan.value, zoom: view.zoom.value });
+			if (is3d()) solid = drawLayers(glCanvas, sceneLayers(), sc.light.value, sc.ambient.value, { W, H, dpr, pan: view.pan.value, zoom: view.zoom.value, turn: viewXf3(sc.turn.value) });
 			else {
 				const gl = glCanvas.getContext("webgl");
 				gl?.clear(gl.COLOR_BUFFER_BIT);
@@ -58,6 +63,8 @@ export function SceneCanvas() {
 		const stop = effect(() => {
 			void sc.rev.value;
 			void sc.sel.value;
+			void sc.also.value;
+			void modal3.value;
 			void sc.hover.value;
 			void sc.time.value;
 			void sc.turn.value;
@@ -70,6 +77,8 @@ export function SceneCanvas() {
 		});
 		let panning = false;
 		let panLast: Vec2 = [0, 0];
+		let orbiting = false;
+		let orbitLast: Vec2 = [0, 0];
 		const local = (e: PointerEvent): Vec2 => {
 			const r = canvas.getBoundingClientRect();
 			return [e.clientX - r.left, e.clientY - r.top];
@@ -89,7 +98,16 @@ export function SceneCanvas() {
 		const down = (e: PointerEvent) => {
 			canvas.setPointerCapture(e.pointerId);
 			const s = local(e);
-			if (e.button === 2) return menu(e);
+			// a right click puts a transform under way back, before it is a menu
+			if (e.button === 2) return gizmoCancel() ? (e.preventDefault(), request()) : menu(e);
+			// in a 3D scene the middle button orbits (⇧ pans); in a 2D one it pans
+			if (is3d() && ((e.button === 1 && !e.shiftKey) || (e.button === 0 && e.altKey))) {
+				orbiting = true;
+				orbitLast = s;
+				orbitStart();
+				canvas.classList.add("grab");
+				return;
+			}
 			if (e.button === 1 || (e.button === 0 && sc.space)) {
 				panning = true;
 				panLast = s;
@@ -109,16 +127,26 @@ export function SceneCanvas() {
 				panLast = s;
 				return;
 			}
+			if (orbiting) {
+				orbitDrag(s[0] - orbitLast[0], s[1] - orbitLast[1], e.metaKey || e.ctrlKey);
+				orbitLast = s;
+				return;
+			}
 			onMove(toWorld(s, W, H), mods(e));
 			request();
 		};
-		const up = () => {
+		const up = (e: PointerEvent) => {
+			if (orbiting) {
+				orbiting = false;
+				canvas.classList.remove("grab");
+				return;
+			}
 			if (panning) {
 				panning = false;
 				canvas.classList.remove("grab");
 				return;
 			}
-			if (sx.down) onUp();
+			if (sx.down) onUp(toWorld(local(e), W, H), e.shiftKey);
 			request();
 		};
 		const leave = () => {
@@ -130,12 +158,7 @@ export function SceneCanvas() {
 			e.preventDefault();
 			const r = canvas.getBoundingClientRect();
 			const s: Vec2 = [e.clientX - r.left, e.clientY - r.top];
-			if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), s, W, H);
-			else {
-				const z = view.zoom.value;
-				const [px, py] = view.pan.value;
-				view.pan.value = [px + e.deltaX / z, py + e.deltaY / z];
-			}
+			wheelNav(e, s, W, H, is3d() ? orbitDrag : undefined);
 		};
 		const ctxmenu = (e: Event) => e.preventDefault();
 		canvas.addEventListener("pointerdown", down);

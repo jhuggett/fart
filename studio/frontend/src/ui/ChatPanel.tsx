@@ -1,13 +1,15 @@
-// Ask Claude: a drawer on the right. What you type, what it did (through
+// Ask Claude: the inspector's Ask tab. What you type, what it did (through
 // the editor: reads, changes, looks), what it said.
 
 import { useEffect, useRef } from "preact/hooks";
 import { marked } from "marked";
-import { chat, ask, stopChat, newChat, toggleChat, toggleDock, onPlan, planLabel, modelLabel } from "../state/chat.ts";
+import { chat, ask, stopChat, newChat, toggleChat, onPlan, planLabel, modelLabel } from "../state/chat.ts";
 import { shell } from "../shell/shell.ts";
 import { ed } from "../state/editor.ts";
-import { I } from "./Icons.tsx";
-import { Gutter } from "./Gutter.tsx";
+import { Button, Chip } from "./ur.tsx";
+
+import { HelpButton } from "./Help.tsx";
+import { BUTTONS } from "../state/help.ts";
 
 export function ChatPanel() {
 	if (!shell.chat || !chat.open.value) return null;
@@ -23,18 +25,15 @@ export function ChatPanel() {
 		box.current?.focus();
 	}, []);
 	const send = () => void ask(chat.draft.value);
-	const dock = chat.dock.value;
 	return (
-		<div class={`chat ${dock}`}>
-			{dock === "right" ? <Gutter k="chat" edge="left" /> : <Gutter k="chatH" edge="top" />}
+		<div class="chat">
 			<div class="chat-hdr">
-				<span class={`dot ${busy ? "busy" : info.found ? "ok" : "off"}`} />
-				<b>Ask Claude</b>
-				<span class="hint">{ed.path.value ? ed.path.value.replace(/\.fart$/, "") : "the shelf"}</span>
-				<span class="spacer" />
+				<span class={`chat-dot ${busy ? "busy" : info.found ? "ok" : "off"}`} title={busy ? "Claude is working" : info.found ? "Claude Code is ready" : "Claude Code was not found"} />
+				<span class="chat-scope" title="what Claude is looking at">
+					{ed.path.value ? ed.path.value.replace(/\.fart$/, "") : "The project"}
+				</span>
 				{info.found && (
-					<span
-						class="chip"
+					<Chip
 						title={
 							onPlan()
 								? `Signed in as ${info.email || "you"} (${planLabel()}). Turns count against the plan's usage; they are not billed.`
@@ -43,30 +42,23 @@ export function ChatPanel() {
 					>
 						{planLabel()}
 						{chat.model.value ? ` · ${modelLabel()}` : ""}
-					</span>
+					</Chip>
 				)}
 				{chat.cost.value > 0 && (
-					<span
-						class="chip"
+					<Chip
+						mono
 						title={
 							onPlan()
-								? "what these turns would cost at API rates: included in the plan, shown as a gauge of how heavy they were"
-								: "billed to the API key so far, this conversation"
+								? "What these turns would cost at API rates: included in the plan, shown as a gauge of how heavy they were"
+								: "Billed to the API key so far, this conversation"
 						}
 					>
 						{onPlan() ? "≈" : ""}${chat.cost.value.toFixed(2)}
 						{onPlan() ? " incl." : ""}
-					</span>
+					</Chip>
 				)}
-				<button class="btn x" title="new conversation" onClick={() => void newChat()}>
-					<I.plus size={12} />
-				</button>
-				<button class="btn x" title={dock === "right" ? "dock below everything" : "dock to the right"} onClick={toggleDock}>
-					{dock === "right" ? "⬓" : "◨"}
-				</button>
-				<button class="btn x" title="close  (⌘J)" onClick={toggleChat}>
-					×
-				</button>
+				<Button variant="toolbar" class="ur-btn-sm" icon="plus" title="New conversation" onClick={() => void newChat()} />
+				<HelpButton topics={BUTTONS.ask} title="About Ask" />
 			</div>
 			<div class="chat-lines" ref={list}>
 				{!info.found && (
@@ -96,7 +88,7 @@ export function ChatPanel() {
 						</div>
 					),
 				)}
-				{busy && <div class="line tool thinking">thinking…</div>}
+				{busy && <div class="line tool thinking">Thinking…</div>}
 			</div>
 			<div class="chat-input">
 				<textarea
@@ -116,13 +108,13 @@ export function ChatPanel() {
 					}}
 				/>
 				{busy ? (
-					<button class="btn" title="stop this turn" onClick={() => void stopChat()}>
-						stop
-					</button>
+					<Button title="Stop this turn" onClick={() => void stopChat()}>
+						Stop
+					</Button>
 				) : (
-					<button class="btn primary" disabled={!chat.draft.value.trim() || !info.found} onClick={send}>
-						ask
-					</button>
+					<Button variant="primary" disabled={!chat.draft.value.trim() || !info.found} onClick={send}>
+						Ask
+					</Button>
 				)}
 			</div>
 		</div>

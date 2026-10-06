@@ -44,16 +44,7 @@ func (p *ProjectService) NewProject(parent, name string) (string, error) {
 
 // PickParentFolder shows the folder dialog for a new project's home. "" means cancelled.
 func (p *ProjectService) PickParentFolder() (string, error) {
-	dlg := p.app.Dialog.OpenFile().
-		SetTitle("Where should the project live?").
-		SetButtonText("Create Here").
-		CanChooseDirectories(true).
-		CanChooseFiles(false).
-		CanCreateDirectories(true)
-	if p.win != nil {
-		dlg.AttachToWindow(p.win)
-	}
-	return dlg.PromptForSingleSelection()
+	return p.PickFolderAt("Where should the project live?", "Choose")
 }
 
 // ------------------------------------------------------------- git
@@ -107,40 +98,200 @@ func (p *ProjectService) SwitchBranch(dir, name string) error {
 	return err
 }
 
+// NewBranch makes a branch from where the project is and switches to it.
+func (p *ProjectService) NewBranch(dir, name string) error {
+	if dir == "" || gitRoot(dir) == "" {
+		return errors.New("not a repository")
+	}
+	_, err := git(dir, "switch", "-c", strings.TrimSpace(name))
+	return err
+}
+
+// GitInit makes the project a repository, if it is not one already.
+func (p *ProjectService) GitInit(dir string) error {
+	if dir == "" || gitRoot(dir) != "" {
+		return nil
+	}
+	_, err := git(dir, "init")
+	return err
+}
+
+// GitChange is one line of `git status`: what happened to a file, and
+// its path from the project's root.
+type GitChange struct {
+	Status string `json:"status"` // M, A, D, R or ? (untracked)
+	Path   string `json:"path"`
+}
+
+// GitStatus lists what is uncommitted under the project.
+func (p *ProjectService) GitStatus(dir string) []GitChange {
+	out := []GitChange{}
+	if dir == "" || gitRoot(dir) == "" {
+		return out
+	}
+	// paths relative to dir, one per line, nothing quoted
+	cmd := exec.Command("git", "-C", dir, "-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all", "--", ".")
+	raw, err := cmd.Output()
+	if err != nil {
+		return out
+	}
+	prefix, _ := git(dir, "rev-parse", "--show-prefix")
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		code := strings.TrimSpace(line[:2])
+		path := line[3:]
+		if i := strings.Index(path, " -> "); i >= 0 {
+			path = path[i+4:]
+		}
+		path = strings.TrimPrefix(path, prefix)
+		st := "M"
+		switch {
+		case code == "??":
+			st = "A"
+		case strings.Contains(code, "D"):
+			st = "D"
+		case strings.Contains(code, "R"):
+			st = "R"
+		case strings.Contains(code, "A"):
+			st = "A"
+		}
+		out = append(out, GitChange{Status: st, Path: path})
+	}
+	return out
+}
+
+// GitCommit stages everything under the project and commits it.
+func (p *ProjectService) GitCommit(dir, message string) error {
+	if dir == "" || gitRoot(dir) == "" {
+		return errors.New("not a repository")
+	}
+	if strings.TrimSpace(message) == "" {
+		return errors.New("a commit needs a message")
+	}
+	if _, err := git(dir, "add", "-A", "--", "."); err != nil {
+		return err
+	}
+	_, err := git(dir, "commit", "-m", message, "--", ".")
+	return err
+}
+
+// GitProgress is a line of a clone as it runs.
+type GitProgress struct {
+	Message string  `json:"message"`
+	Done    float64 `json:"done"` // 0..1, -1 when git did not say
+}
+
+var cloneName = regexp.MustCompile(`([^/:]+?)(\.git)?/?$`)
+var clonePct = regexp.MustCompile(`(Receiving objects|Resolving deltas|Counting objects|Compressing objects):\s+(\d+)%`)
+
+// GitClone clones url into <parent>/<name of the repository> and answers
+// with the new folder. Git's progress is relayed on "git" as it comes.
+func (p *ProjectService) GitClone(url, parent string) (string, error) {
+	url = strings.TrimSpace(url)
+	if parent == "" || !filepath.IsAbs(parent) {
+		return "", errors.New("choose a folder to clone into")
+	}
+	m := cloneName.FindStringSubmatch(url)
+	if m == nil || m[1] == "" {
+		return "", errors.New("that does not look like a repository")
+	}
+	dest := filepath.Join(parent, m[1])
+	if _, err := os.Stat(dest); err == nil {
+		return "", fmt.Errorf("%s already exists", dest)
+	}
+	cmd := exec.Command("git", "clone", "--progress", "--", url, dest)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", errors.New("git is not installed, or could not start")
+	}
+	var last string
+	buf := make([]byte, 4096)
+	for {
+		n, rerr := stderr.Read(buf)
+		if n > 0 {
+			// git redraws its progress with carriage returns
+			for _, line := range strings.FieldsFunc(string(buf[:n]), func(r rune) bool { return r == '\r' || r == '\n' }) {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				last = line
+				done := -1.0
+				if pm := clonePct.FindStringSubmatch(line); pm != nil {
+					var pct float64
+					fmt.Sscanf(pm[2], "%f", &pct)
+					done = pct / 100
+					if pm[1] != "Receiving objects" && pm[1] != "Resolving deltas" {
+						done = -1
+					}
+					line = pm[1]
+				}
+				if p.app != nil {
+					p.app.Event.Emit("git", GitProgress{Message: line, Done: done})
+				}
+			}
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	if err := cmd.Wait(); err != nil {
+		if last == "" {
+			last = err.Error()
+		}
+		return "", errors.New(last)
+	}
+	return dest, nil
+}
+
 // ------------------------------------------------------------- window
 
+// the launcher is a small fixed window, the way Xcode opens; the workspace
+// is a working window that remembers its size while the launcher is up
 const (
-	launcherW, launcherH = 780, 460
+	launcherW, launcherH = 800, 460
 	workW, workH         = 1360, 860
+	workMinW, workMinH   = 960, 560
 )
 
-// WindowLauncher shrinks the window to the launcher and centres it; the
-// size it had is kept for WindowWork.
+// WindowLauncher makes the window the launcher: small, fixed, centred.
+// The size it had is kept for WindowWork.
 func (p *ProjectService) WindowLauncher() {
 	if p.win == nil {
 		return
 	}
-	w, h := p.win.Size()
-	if w > launcherW || h > launcherH {
-		p.workW, p.workH = w, h
+	if p.working {
+		p.workW, p.workH = p.win.Size()
 	}
+	p.working = false
+	if p.win.IsFullscreen() {
+		p.win.UnFullscreen()
+	}
+	p.win.SetMinSize(launcherW, launcherH)
+	p.win.SetMaxSize(launcherW, launcherH)
 	p.win.SetSize(launcherW, launcherH)
+	p.win.SetResizable(false)
 	p.win.Center()
 }
 
 // WindowWork grows the window back for a project.
 func (p *ProjectService) WindowWork() {
-	if p.win == nil {
+	if p.win == nil || p.working {
 		return
 	}
-	w, h := p.win.Size()
-	if w >= workW-200 && h >= workH-200 {
-		return // already a working size (a maximised window stays put)
-	}
+	p.working = true
 	tw, th := p.workW, p.workH
-	if tw < 900 || th < 600 {
+	if tw < workMinW || th < workMinH {
 		tw, th = workW, workH
 	}
+	p.win.SetResizable(true)
+	p.win.SetMaxSize(0, 0)
+	p.win.SetMinSize(workMinW, workMinH)
 	p.win.SetSize(tw, th)
 	p.win.Center()
 }

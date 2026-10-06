@@ -3,7 +3,7 @@
 
 import * as Project from "../../bindings/studio/projectservice.js";
 import { Events } from "@wailsio/runtime";
-import type { Shell, ChatEvent, ToolCall, UpdateInfo, UpdateProgress } from "./shell.ts";
+import type { Shell, ChatEvent, ToolCall, UpdateInfo, UpdateProgress, PopupItem, GitChange, GitProgress, FileInfo } from "./shell.ts";
 
 export class WailsShell implements Shell {
 	readonly kind = "wails" as const;
@@ -23,6 +23,11 @@ export class WailsShell implements Shell {
 	async listFiles(root: string) {
 		return (await Project.ListFiles(root)) ?? [];
 	}
+	async kinds(root: string) {
+		const out: Record<string, FileInfo> = {};
+		for (const [rel, i] of Object.entries((await Project.Kinds(root)) ?? {})) if (i) out[rel] = { kind: i.kind, refs: i.refs ?? [] };
+		return out;
+	}
 	async readFile(root: string, rel: string) {
 		try {
 			return await Project.ReadFile(root, rel);
@@ -39,7 +44,7 @@ export class WailsShell implements Shell {
 	}
 	async caps() {
 		const c = await Project.Caps();
-		return { trash: !!c.trash, reveal: c.reveal ?? "" };
+		return { trash: !!c.trash, reveal: c.reveal ?? "", os: c.os ?? "" };
 	}
 	removeFile(root: string, rel: string) {
 		return Project.Remove(root, rel);
@@ -108,6 +113,45 @@ export class WailsShell implements Shell {
 	}
 	switchBranch(dir: string, name: string) {
 		return Project.SwitchBranch(dir, name);
+	}
+	newBranch(dir: string, name: string) {
+		return Project.NewBranch(dir, name);
+	}
+	gitInit(dir: string) {
+		return Project.GitInit(dir);
+	}
+	async gitStatus(dir: string): Promise<GitChange[]> {
+		return ((await Project.GitStatus(dir)) ?? []).map((c) => ({ status: c.status, path: c.path }));
+	}
+	gitCommit(dir: string, message: string) {
+		return Project.GitCommit(dir, message);
+	}
+	gitClone(url: string, parent: string) {
+		return Project.GitClone(url, parent);
+	}
+	onGit(cb: (p: GitProgress) => void) {
+		Events.On("git", (ev) => cb(ev.data as unknown as GitProgress));
+	}
+	popupMenu(items: PopupItem[], x: number, y: number) {
+		return Project.PopupMenu(items as never, x, y);
+	}
+	onPopup(cb: (id: string) => void) {
+		Events.On("popup", (ev: { data: string }) => cb(ev.data));
+	}
+	async pickFile(root: string, dir: string, title: string, button: string, exts: string[]) {
+		return (await Project.PickFile(root, dir, title, button, exts)) || null;
+	}
+	async pickFolderAt(title: string, button: string) {
+		return (await Project.PickFolderAt(title, button)) || null;
+	}
+	fullscreen() {
+		return Project.Fullscreen();
+	}
+	onFullscreen(cb: (on: boolean) => void) {
+		Events.On("fullscreen", (ev: { data: boolean }) => cb(!!ev.data));
+	}
+	closeWindow() {
+		return Project.CloseWindow();
 	}
 	windowLauncher() {
 		return Project.WindowLauncher();

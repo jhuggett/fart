@@ -13,8 +13,11 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "chat": main$0.ChatEvent;
+            "fullscreen": boolean;
+            "git": main$0.GitProgress;
             "menu": string;
             "open-files": string;
+            "popup": string;
             "tool": main$0.ToolCall;
             "update": main$0.UpdateProgress;
         }

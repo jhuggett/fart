@@ -1,0 +1,580 @@
+/* The editor screen's own styles. Tokens only (tokens.css); components are ur.css. */
+
+/* ------------------------------------------------------------ inline rename */
+.rename {
+	box-sizing: border-box;
+	flex: 1;
+	width: 100%;
+	min-width: 40px;
+	height: 20px;
+	margin: 0;
+	padding: 0 5px;
+	border: 1px solid var(--control-edge);
+	border-radius: var(--radius-sm);
+	background: var(--bg-control);
+	color: var(--text-primary);
+	font: 400 13px/18px var(--font-sans);
+	outline: none;
+	cursor: text;
+}
+.rename:focus {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 0;
+}
+.ur-tf.ed-name > .rename:focus {
+	outline: none;
+}
+/* the name of the picked thing, as a field of its own */
+.ur-tf.ed-name > .rename {
+	all: unset;
+	flex: 1;
+	min-width: 0;
+	font: 400 13px/20px var(--font-sans);
+	color: var(--text-primary);
+	cursor: text;
+}
+
+/* ------------------------------------------------------------ outline */
+.ed-row-lead {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+}
+.ed-row-btn {
+	all: unset;
+	display: grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--radius-xs);
+	transition: opacity 120ms ease-out;
+}
+.ed-row-btn:hover {
+	color: var(--text-primary);
+}
+.ed-row-btn:focus-visible {
+	opacity: 1;
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -1px;
+}
+.ur-row .ed-row-btn .ur-icon {
+	color: inherit;
+}
+.ur-row.selected:not(.inactive) .ed-row-btn,
+.ur-row.selected:not(.inactive) .ed-row-btn:hover {
+	color: var(--on-accent);
+}
+.ur-row.selected:not(.inactive) .ur-checkbox-box {
+	border-color: var(--on-accent);
+}
+.ur-row .ur-checkbox-box .ur-icon {
+	color: var(--on-accent);
+}
+
+/* ------------------------------------------------------------ inspector */
+.ed-range {
+	flex: 1;
+	min-width: 0;
+	height: var(--control-height);
+	margin: 0;
+	accent-color: var(--accent-fill);
+}
+.ed-range:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+	border-radius: var(--radius-sm);
+}
+.ed-range-val {
+	flex: none;
+	width: 44px;
+	text-align: right;
+	font: 400 12px/16px var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-primary);
+}
+.ed-spacer {
+	flex: 1;
+}
+.inspector .ur-prop-one > .ur-prop-val {
+	flex: 1;
+	min-width: 0;
+}
+.inspector .ur-prop-one > .ur-seg {
+	min-width: 0;
+}
+
+/* a named thing inside a section (an anchor, a chain, a texture) and its rows */
+.ed-block {
+	display: grid;
+	gap: 6px;
+}
+.ed-block + .ed-block {
+	padding-top: var(--space-2);
+	border-top: 1px solid var(--separator);
+}
+.ed-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	height: var(--row-height);
+	margin: 0 -6px;
+	padding: 0 6px;
+	border-radius: var(--radius-md);
+	font: 400 13px/16px var(--font-sans);
+	color: var(--text-primary);
+	cursor: default;
+	transition: background-color 120ms ease-out;
+}
+.ed-item:hover {
+	background: var(--bg-hover);
+}
+.ed-item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+.ed-item > .ur-icon {
+	color: var(--text-secondary);
+}
+.ed-item.dim,
+.ed-item.dim > .ur-icon {
+	color: var(--text-tertiary);
+}
+.ed-item-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ed-item .ur-chip {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 60%;
+	display: inline-block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: 18px;
+}
+.ed-item .ur-chip .ur-icon {
+	margin-right: var(--space-1);
+	vertical-align: -1px;
+}
+.ed-item-btn {
+	all: unset;
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--radius-xs);
+	color: var(--text-tertiary);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+.ed-item:hover .ed-item-btn,
+.ed-item:focus-within .ed-item-btn {
+	opacity: 1;
+}
+.ed-item-btn:hover {
+	color: var(--text-primary);
+}
+.ed-item-btn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -1px;
+}
+.ed-sub {
+	display: flex;
+	align-items: center;
+	min-height: 20px;
+	padding-top: var(--space-1);
+	font: 600 11px/14px var(--font-sans);
+	color: var(--text-secondary);
+	border-radius: var(--radius-xs);
+}
+.ed-sub:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+.ed-map {
+	display: grid;
+	gap: 6px;
+}
+
+/* the fill: a control that drops the colours */
+.ed-fill {
+	flex: 1;
+	min-width: 0;
+}
+.ed-fill-btn {
+	all: unset;
+	box-sizing: border-box;
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: var(--control-height);
+	padding: 0 5px 0 4px;
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--control-edge);
+	background: var(--bg-control);
+	box-shadow: var(--shadow-control);
+	font: 400 12px/20px var(--font-sans);
+	color: var(--text-primary);
+	cursor: default;
+}
+.ed-fill-btn:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 1px;
+}
+.ed-fill-btn > .ur-icon {
+	color: var(--text-secondary);
+}
+.ed-fill-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ed-swatch-none {
+	background: repeating-conic-gradient(var(--separator) 0 25%, var(--bg-control) 0 50%) 0 0 / 8px 8px;
+}
+.ed-fill .ur-popover {
+	padding: var(--space-2);
+}
+.ed-fill-list {
+	display: grid;
+	gap: 1px;
+	max-height: 280px;
+	overflow: auto;
+	padding: 0 6px;
+}
+
+/* colours */
+.ed-colors {
+	display: grid;
+	gap: 1px;
+}
+.ed-colors .ur-color,
+.ed-fill-list .ur-color {
+	min-width: 0;
+	cursor: default;
+}
+.ed-colors .ur-color-name,
+.ed-fill-list .ur-color-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.ed-colors .ur-color.dim,
+.ed-fill-list .ur-color.dim {
+	color: var(--text-secondary);
+}
+.ed-colors .ur-color .ur-swatch {
+	cursor: pointer;
+}
+.ed-colors .ur-color.dim .ur-swatch {
+	cursor: default;
+}
+.ed-colors .ur-color .ur-chip .ur-icon {
+	width: 11px;
+	height: 11px;
+}
+.ed-color-edit {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 0 var(--space-1) 22px;
+}
+.ed-color-edit .ur-tf-wrap {
+	flex: 1;
+}
+
+/* ------------------------------------------------------------ colour picker */
+.ed-pick {
+	position: fixed;
+	z-index: 95;
+	box-sizing: border-box;
+	width: 268px;
+	padding: var(--space-3);
+	border-radius: var(--radius-lg);
+	background: var(--bg-raised);
+	box-shadow: var(--shadow-popover);
+	color: var(--text-primary);
+	font: 400 12px/15px var(--font-sans);
+}
+.ed-pick-sv {
+	position: relative;
+	height: 130px;
+	border-radius: var(--radius-md);
+	cursor: crosshair;
+	touch-action: none;
+}
+.ed-pick-strip {
+	position: relative;
+	height: 12px;
+	margin-top: var(--space-2);
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	touch-action: none;
+}
+.ed-pick-strip.hue {
+	background: linear-gradient(to right, hsl(0 100% 50%), hsl(60 100% 50%), hsl(120 100% 50%), hsl(180 100% 50%), hsl(240 100% 50%), hsl(300 100% 50%), hsl(360 100% 50%));
+}
+.ed-pick-strip.alpha {
+	background: repeating-conic-gradient(var(--separator) 0 25%, var(--bg-control) 0 50%) 0 0 / 8px 8px;
+}
+.ed-pick-fill {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--radius-md);
+}
+.ed-pick-knob {
+	position: absolute;
+	top: 50%;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	border: 2px solid var(--on-accent);
+	box-shadow: 0 0 0 1px var(--control-edge);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+.ed-pick-chan {
+	display: grid;
+	grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+	gap: var(--space-1);
+	margin-top: var(--space-2);
+}
+.ed-pick-chan .ur-tf {
+	padding: 0 5px;
+}
+.ed-pick-chan .ur-field input {
+	padding: 0 3px;
+	text-align: center;
+}
+.ed-pick-glow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: var(--space-2);
+	color: var(--text-secondary);
+}
+.ed-pick-foot {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: var(--space-2);
+}
+
+/* ------------------------------------------------------------ a palette file: its swatches */
+.palette-view {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: var(--space-6) var(--space-6) var(--space-8);
+	background: var(--bg-content);
+}
+.ed-pal-head {
+	margin-bottom: var(--space-4);
+}
+.ed-pal-title {
+	font: 600 15px/20px var(--font-sans);
+	color: var(--text-primary);
+}
+.ed-pal-sub {
+	margin-top: 2px;
+	font: 400 12px/15px var(--font-sans);
+	color: var(--text-tertiary);
+}
+.ed-pal-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, 148px);
+	gap: var(--space-3);
+}
+.ed-pal-tile {
+	position: relative;
+	box-sizing: border-box;
+	height: 132px;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	border-radius: var(--radius-lg);
+	background: var(--bg-raised);
+	box-shadow: var(--shadow-tile), inset 0 0 0 1px var(--separator);
+	cursor: default;
+	transition: box-shadow 120ms ease-out;
+}
+.ed-pal-tile:hover {
+	box-shadow: var(--shadow-tile), inset 0 0 0 1px var(--control-edge);
+}
+.ed-pal-tile.selected {
+	box-shadow: 0 0 0 2px var(--accent-fill);
+}
+.ed-pal-tile:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+.ed-pal-swatch {
+	all: unset;
+	flex: 1;
+	display: block;
+	margin: 6px 6px 0;
+	border-radius: var(--radius-md);
+	box-shadow: inset 0 0 0 1px var(--separator);
+	cursor: pointer;
+}
+.ed-pal-swatch:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+.ed-pal-label {
+	flex: none;
+	height: 44px;
+	padding: 0 10px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 1px;
+	min-width: 0;
+}
+.ed-pal-name {
+	font: 400 13px/16px var(--font-sans);
+	color: var(--text-primary);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.ed-pal-tile.selected .ed-pal-name {
+	font-weight: 600;
+}
+.ed-pal-hex {
+	font: 400 11px/14px var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+.ed-pal-hex .ur-icon {
+	vertical-align: -1px;
+}
+button.ed-pal-tile.add {
+	all: unset;
+	box-sizing: border-box;
+	height: 132px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	border-radius: var(--radius-lg);
+	border: 1px dashed var(--control-edge);
+	font: 400 13px/16px var(--font-sans);
+	color: var(--text-secondary);
+	cursor: default;
+	transition:
+		background-color 120ms ease-out,
+		color 120ms ease-out;
+}
+button.ed-pal-tile.add:hover {
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+button.ed-pal-tile.add:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ the clip's timeline, under the canvas */
+.ed-bottom {
+	flex: none;
+	background: inherit;
+	border-top: 1px solid var(--separator);
+}
+.ed-timeline {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	height: 52px;
+	padding: 0 var(--space-3);
+	border: 0;
+	background: inherit;
+	min-width: 0;
+}
+.ed-timeline > .ur-btn,
+.ed-timeline > .ur-select,
+.ed-timeline > .ur-field {
+	flex: none;
+}
+.ed-tl-time {
+	flex: none;
+	min-width: 88px;
+	font: 400 11px/14px var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+.ed-tl-track {
+	position: relative;
+	flex: 1;
+	min-width: 120px;
+	height: 34px;
+	border-radius: var(--radius-md);
+	border: 1px solid var(--separator);
+	background: var(--bg-control);
+	cursor: pointer;
+	touch-action: none;
+}
+.ed-tl-tick {
+	position: absolute;
+	top: 2px;
+	transform: translateX(-50%);
+	font: 400 10px/12px var(--font-mono);
+	color: var(--text-tertiary);
+	pointer-events: none;
+}
+.ed-tl-key {
+	position: absolute;
+	top: 50%;
+	width: 10px;
+	height: 10px;
+	margin-top: 3px;
+	transform: translate(-50%, -50%) rotate(45deg);
+	border: 1.5px solid var(--accent);
+	border-radius: 2px;
+	background: var(--bg-raised);
+	cursor: grab;
+	touch-action: none;
+}
+.ed-tl-key.selected {
+	background: var(--accent-fill);
+	border-color: var(--accent-fill);
+}
+.ed-tl-key:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+.ed-tl-key.ev::before {
+	content: "";
+	position: absolute;
+	left: -5px;
+	top: -5px;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--pivot);
+}
+.ed-tl-playhead {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	transform: translateX(-1px);
+	background: var(--text-primary);
+	opacity: 0.7;
+	pointer-events: none;
+}
+.ed-tl-events {
+	flex: none;
+	width: 112px;
+}

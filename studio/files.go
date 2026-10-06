@@ -5,12 +5,16 @@ package main
 // renaming, copying, and showing them in the system's file browser.
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Caps says what this machine can do with files, so the menus can say
@@ -18,16 +22,17 @@ import (
 type Caps struct {
 	Trash  bool   `json:"trash"`  // Remove moves to the Trash rather than deleting
 	Reveal string `json:"reveal"` // the file browser's name, "" if there is none to open
+	OS     string `json:"os"`     // runtime.GOOS: the page leaves room for macOS's inline traffic lights
 }
 
 func caps() Caps {
 	switch runtime.GOOS {
 	case "darwin":
-		return Caps{Trash: true, Reveal: "Finder"}
+		return Caps{Trash: true, Reveal: "Finder", OS: "darwin"}
 	case "windows":
-		return Caps{Reveal: "Explorer"}
+		return Caps{Reveal: "Explorer", OS: "windows"}
 	default:
-		return Caps{Reveal: "file manager"}
+		return Caps{Reveal: "file manager", OS: runtime.GOOS}
 	}
 }
 
@@ -132,4 +137,85 @@ func revealPath(full string) error {
 		}
 		return exec.Command("xdg-open", filepath.Dir(full)).Start()
 	}
+}
+
+var space3d = regexp.MustCompile(`"space"\s*:\s*"3d"`)
+
+var paletteRefs = regexp.MustCompile(`"palette_refs"\s*:\s*(\[[^\]]*\])`)
+
+// FileInfo is what the browser knows of a file before anyone opens it.
+type FileInfo struct {
+	Kind string   `json:"kind"` // "2D", "3D", "palette", "scene" or "3D scene"
+	Refs []string `json:"refs"` // the palette files it draws from, as it names them
+}
+
+// infoOfFile says what a file is without parsing it. The space and the
+// palettes are named near the top of a file; parts are looked for
+// anywhere in it (a palette file is colours and no parts).
+func infoOfFile(full string) FileInfo {
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return FileInfo{}
+	}
+	info := FileInfo{Kind: kindOfData(full, data), Refs: []string{}}
+	head := data
+	if len(head) > 65536 {
+		head = head[:65536]
+	}
+	if m := paletteRefs.FindSubmatch(head); m != nil {
+		_ = json.Unmarshal(m[1], &info.Refs)
+	}
+	return info
+}
+
+func kindOfData(full string, data []byte) string {
+	head := data
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	is3d := space3d.Match(head)
+	if strings.HasSuffix(full, ".shart") {
+		if is3d {
+			return "3D scene"
+		}
+		return "scene"
+	}
+	if is3d {
+		return "3D"
+	}
+	if !bytes.Contains(data, []byte(`"parts"`)) && bytes.Contains(data, []byte(`"palette"`)) {
+		return "palette"
+	}
+	return "2D"
+}
+
+// kindsOf is every file of a project and its kind, read a few at a time:
+// the browser tags and filters its tiles by kind long before it has
+// opened any of them.
+func kindsOf(root string, files []string) map[string]FileInfo {
+	out := make(map[string]FileInfo, len(files))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	gate := make(chan struct{}, 8)
+	for _, rel := range files {
+		full, err := rooted(root, rel)
+		if err != nil {
+			continue
+		}
+		wg.Add(1)
+		gate <- struct{}{}
+		go func(rel, full string) {
+			defer wg.Done()
+			k := infoOfFile(full)
+			<-gate
+			if k.Kind == "" {
+				return
+			}
+			mu.Lock()
+			out[rel] = k
+			mu.Unlock()
+		}(rel, full)
+	}
+	wg.Wait()
+	return out
 }

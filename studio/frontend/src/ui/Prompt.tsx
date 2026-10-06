@@ -1,63 +1,42 @@
-import { useEffect, useRef } from "preact/hooks";
-import { prompt, promptCommit, promptCancel, confirmBox, confirmAnswer } from "../state/prompt.ts";
+// The sheets of state/prompt.ts, drawn: the one-field ask, the buttons of
+// confirm and choose, and whichever custom sheet is open.
 
-/** A yes/no: Enter is yes, Esc is no, and the yes button holds focus. */
+import { prompt, promptCommit, promptCancel, confirmBox, confirmAnswer, sheet } from "../state/prompt.ts";
+import { Sheet, TextField } from "./ur.tsx";
+
 export function Confirm() {
 	if (!confirmBox.open.value) return null;
 	return (
-		<div class="modal" onPointerDown={(e) => e.target === e.currentTarget && confirmAnswer(false)}>
-			<div
-				class="dialog"
-				onKeyDown={(e) => {
-					if (e.key === "Enter") confirmAnswer(true);
-					else if (e.key === "Escape") confirmAnswer(false);
-					e.stopPropagation();
-				}}
-			>
-				<div class="t">{confirmBox.title.value}</div>
-				{confirmBox.body.value && <div class="body">{confirmBox.body.value}</div>}
-				<div class="actions">
-					<button class="btn ghost" onClick={() => confirmAnswer(false)}>
-						Cancel
-					</button>
-					<button class={`btn ${confirmBox.danger.value ? "danger" : "primary"}`} ref={(el) => el?.focus()} onClick={() => confirmAnswer(true)}>
-						{confirmBox.ok.value}
-					</button>
-				</div>
-			</div>
-		</div>
+		<Sheet
+			title={confirmBox.title.value}
+			message={confirmBox.body.value || undefined}
+			onClose={() => confirmAnswer("cancel")}
+			actions={confirmBox.choices.value.map((c) => ({ label: c.label, primary: c.primary, danger: c.danger, onClick: () => confirmAnswer(c.id) }))}
+		/>
 	);
 }
 
 export function Prompt() {
-	const ref = useRef<HTMLInputElement>(null);
-	const open = prompt.open.value;
-	useEffect(() => {
-		if (open) {
-			ref.current?.focus();
-			ref.current?.select();
-		}
-	}, [open]);
-	if (!open) return null;
+	if (!prompt.open.value) return null;
+	const o = prompt.opts.value;
+	const v = prompt.value.value;
+	const bad = v.trim() ? (o.validate?.(v.trim()) ?? null) : null;
 	return (
-		<div class="modal" onPointerDown={(e) => e.target === e.currentTarget && promptCancel()}>
-			<div class="dialog">
-				<div class="t">{prompt.title.value}</div>
-				<input
-					ref={(el) => {
-						ref.current = el;
-						el?.focus(); // on mount, before any effect: a fast typist wins
-					}}
-					value={prompt.value.value}
-					onInput={(e) => (prompt.value.value = (e.target as HTMLInputElement).value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter") promptCommit();
-						else if (e.key === "Escape") promptCancel();
-						e.stopPropagation();
-					}}
-				/>
-				<div class="hint">{prompt.hint.value || "Enter confirms · Esc cancels"}</div>
-			</div>
-		</div>
+		<Sheet
+			title={prompt.title.value}
+			message={o.message}
+			onClose={promptCancel}
+			actions={[
+				{ label: "Cancel", onClick: promptCancel },
+				{ label: o.ok ?? "Continue", primary: true, disabled: !v.trim() || !!bad, onClick: promptCommit },
+			]}
+		>
+			<TextField value={v} autoFocus mono={o.mono} invalid={!!bad} hint={bad ?? o.hint} onChange={(t) => (prompt.value.value = t)} />
+		</Sheet>
 	);
+}
+
+export function Sheets() {
+	const s = sheet.value;
+	return s ? <>{s()}</> : null;
 }

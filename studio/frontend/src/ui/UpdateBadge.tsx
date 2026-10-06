@@ -2,6 +2,7 @@
 // a bar while it lands; restart when it has.
 
 import { update, applyUpdate, relaunch, dismissUpdate } from "../state/update.ts";
+import { Button, Icon } from "./ur.tsx";
 
 export function UpdateBadge() {
 	const info = update.info.value;
@@ -13,53 +14,52 @@ export function UpdateBadge() {
 		<div class="update" role="status">
 			{phase === "idle" || phase === "checking" ? (
 				<>
+					<Icon name="download" />
 					<span class="what">
 						Uranus <b>{info.latest}</b> is out
 						<span class="sub"> · this is {info.current}</span>
 					</span>
 					{info.assetUrl ? (
-						<button class="btn small" title={`download ${info.asset} (${mb(info.size)}) and replace this app`} onClick={() => void applyUpdate()}>
+						<Button variant="primary" title={`Download ${info.asset} (${mb(info.size)}) and replace this app`} onClick={() => void applyUpdate()}>
 							Update
-						</button>
+						</Button>
 					) : (
-						<a class="btn small ghost" href={info.url} target="_blank" rel="noreferrer" title="the release has no build for this machine yet; see the release page">
-							see release
+						<a class="ur-btn" href={info.url} target="_blank" rel="noreferrer" title="The release has no build for this machine yet; see the release page">
+							See release
 						</a>
 					)}
-					<button class="btn x plain" title="not now" onClick={dismissUpdate}>
-						×
-					</button>
+					<Button variant="borderless" title="Not now" onClick={dismissUpdate}>
+						Not now
+					</Button>
 				</>
 			) : phase === "done" ? (
 				<>
+					<Icon name="circle-check" class="update-ok" />
 					<span class="what">
 						Uranus <b>{info.latest}</b> is installed
 					</span>
-					<button class="btn small" title="quit and start the new one" onClick={() => void relaunch()}>
+					<Button variant="primary" title="Quit and start the new one" onClick={() => void relaunch()}>
 						Restart
-					</button>
+					</Button>
 				</>
 			) : phase === "error" ? (
 				<>
-					<span class="what" style="color:var(--danger)" title={update.message.value}>
-						update failed
+					<Icon name="triangle-alert" class="ur-danger" />
+					<span class="what" title={update.message.value}>
+						Update failed
 						<span class="sub"> · {update.message.value.slice(0, 80)}</span>
 					</span>
-					<button class="btn small ghost" onClick={() => void applyUpdate()}>
-						retry
-					</button>
-					<a class="btn small ghost" href={info.url} target="_blank" rel="noreferrer">
-						release
+					<Button onClick={() => void applyUpdate()}>Retry</Button>
+					<a class="ur-btn" href={info.url} target="_blank" rel="noreferrer">
+						Release
 					</a>
-					<button class="btn x plain" title="not now" onClick={dismissUpdate}>
-						×
-					</button>
+					<Button variant="borderless" title="Not now" onClick={dismissUpdate}>
+						Not now
+					</Button>
 				</>
 			) : (
 				<>
-					<span class="what">
-						{phase === "download" ? `downloading ${update.total.value ? pct + "%" : mb(update.done.value)}` : phase === "unpack" ? "unpacking" : "installing"}
-					</span>
+					<span class="what">{phase === "download" ? `Downloading ${update.total.value ? pct + "%" : mb(update.done.value)}` : phase === "unpack" ? "Unpacking" : "Installing"}</span>
 					<span class="bar">
 						<span class="fill" style={{ width: `${phase === "download" ? pct : 100}%` }} />
 					</span>

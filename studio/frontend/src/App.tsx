@@ -2,18 +2,23 @@ import { useEffect } from "preact/hooks";
 import { project, leaveDocs, leaveSetup, inWorkspace } from "./state/project.ts";
 import { curClip } from "./state/editor.ts";
 import { ix } from "./canvas/interact.ts";
-import { prompt } from "./state/prompt.ts";
+import { sheetOpen } from "./state/prompt.ts";
 import { palette } from "./state/menu.ts";
-import { KEYMAP, keyOf, run } from "./state/commands.ts";
+import { KEYMAP, KEYMAP_3D, keyOf, run } from "./state/commands.ts";
 import { initCommands } from "./state/actions.ts";
 import { shell } from "./shell/shell.ts";
+import { HelpSheet, HelpSearchSheet, KeysSheet } from "./ui/Help.tsx";
+import { helpSheet, helpSearch, keysSheet } from "./state/help.ts";
+import { gizmoKey, gizmoActive, gizmoNote } from "./canvas/gizmo3.ts";
+import { sx } from "./canvas/scene3.ts";
+import { ix3 as ix3model } from "./canvas/model3.ts";
 import { Welcome } from "./screens/Welcome.tsx";
 import { Workspace } from "./screens/Workspace.tsx";
 import { sc } from "./state/scene.ts";
 import { md, curClip as curClip3 } from "./state/model.ts";
 import { Docs } from "./screens/Docs.tsx";
 import { Setup } from "./screens/Setup.tsx";
-import { Prompt, Confirm } from "./ui/Prompt.tsx";
+import { Prompt, Confirm, Sheets } from "./ui/Prompt.tsx";
 import { ContextMenu } from "./ui/ContextMenu.tsx";
 import { CommandPalette } from "./ui/CommandPalette.tsx";
 import { UpdateBadge } from "./ui/UpdateBadge.tsx";
@@ -21,17 +26,26 @@ import { scheduleUpdateChecks } from "./state/update.ts";
 
 initCommands();
 
+// a transform that could not begin says why, where every other word to the person goes
+gizmoNote.subscribe((why) => {
+	if (!why) return;
+	project.error.value = why;
+	gizmoNote.value = null;
+});
+
 function typing(e: KeyboardEvent): boolean {
 	const t = e.target as HTMLElement | null;
 	return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
 }
 
 function onKey(e: KeyboardEvent) {
-	if (prompt.open.value || palette.open.value) return;
+	if (sheetOpen() || helpSheet.value || helpSearch.value !== null || keysSheet.value || palette.open.value) return;
 	if (typing(e) && e.key !== "Escape") return;
 	const screen = project.screen.value;
 	if (screen === "docs" && e.key === "Escape") return leaveDocs();
 	if (screen === "setup" && e.key === "Escape") return leaveSetup();
+	// a transform in the model view takes its keys first: G T S, then X Y Z and the digits
+	if ((screen === "model" || screen === "scene") && gizmoKey(e, screen === "model" ? ix3model.cursor : sx.cursor)) return e.preventDefault();
 	const k = keyOf(e);
 	// the space bar: play a clip, or hold to pan
 	if (k === "space") {
@@ -44,9 +58,25 @@ function onKey(e: KeyboardEvent) {
 		else if (screen === "scene") run("clip.play");
 		return;
 	}
-	const id = KEYMAP[k];
+	// a 3D view has its own digits (the views), ahead of the tools'
+	const in3d = screen === "model" || (screen === "scene" && sc.scene.value.space === "3d");
+	// (and no digit falls through to a tool: in 3D the digits are all the view's)
+	const id = in3d && (KEYMAP_3D[k] || /^\d$/.test(k)) ? KEYMAP_3D[k] : KEYMAP[k];
 	if (!id) return;
 	if (run(id)) e.preventDefault();
+}
+
+/**
+ * While a transform is under way its keys are its own, wherever the
+ * focus is (a row of the outline would otherwise take Return as a rename
+ * and ⌫ as a delete): caught on the way down, before anything else.
+ */
+function onKeyFirst(e: KeyboardEvent) {
+	if (!gizmoActive() || typing(e)) return;
+	if (gizmoKey(e, project.screen.value === "scene" ? sx.cursor : ix3model.cursor)) {
+		e.preventDefault();
+		e.stopPropagation();
+	}
 }
 
 function onKeyUp(e: KeyboardEvent) {
@@ -59,11 +89,13 @@ function onKeyUp(e: KeyboardEvent) {
 
 export function App() {
 	useEffect(() => {
+		window.addEventListener("keydown", onKeyFirst, true);
 		window.addEventListener("keydown", onKey);
 		window.addEventListener("keyup", onKeyUp);
 		shell.onMenu((id) => void run(id));
 		scheduleUpdateChecks();
 		return () => {
+			window.removeEventListener("keydown", onKeyFirst, true);
 			window.removeEventListener("keydown", onKey);
 			window.removeEventListener("keyup", onKeyUp);
 		};
@@ -78,6 +110,10 @@ export function App() {
 			{screen === "setup" && <Setup />}
 			<Prompt />
 			<Confirm />
+			<Sheets />
+			<HelpSheet />
+			<HelpSearchSheet />
+			<KeysSheet />
 			<ContextMenu />
 			<CommandPalette />
 			<UpdateBadge />

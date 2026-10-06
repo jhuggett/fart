@@ -7,10 +7,10 @@ import { signal } from "@preact/signals";
 export type SizeKey = "left" | "right" | "chat" | "chatH";
 
 const KEY = "fastart.layout";
-const DEFAULTS: Record<SizeKey, number> = { left: 240, right: 248, chat: 380, chatH: 280 };
+const DEFAULTS: Record<SizeKey, number> = { left: 260, right: 280, chat: 380, chatH: 280 };
 const LIMITS: Record<SizeKey, [number, number]> = {
-	left: [180, 480],
-	right: [200, 560],
+	left: [200, 400],
+	right: [240, 420],
 	chat: [280, 760],
 	chatH: [160, 640],
 };

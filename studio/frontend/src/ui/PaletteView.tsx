@@ -3,18 +3,13 @@
 
 import { useState } from "preact/hooks";
 import { cssColor, type Rgba } from "@fastart/core";
-import { I } from "./Icons.tsx";
 import { InlineName } from "./Rename.tsx";
-import { ColorPicker } from "./ColorPicker.tsx";
+import { ColorPicker, hexOf } from "./ColorPicker.tsx";
+import { Icon, cx } from "./ur.tsx";
 import { ed, palette, addToken, deleteToken, renameToken, setTokenColor, setTokenEmissive, freshName } from "../state/editor.ts";
 import { linkedBy } from "../state/project.ts";
-import { renaming, openContextMenu } from "../state/menu.ts";
+import { renaming, menuAt } from "../state/menu.ts";
 import { basename, stripExt } from "../state/paths.ts";
-
-function hex([r, g, b, a]: Rgba): string {
-	const h = (n: number) => n.toString(16).padStart(2, "0");
-	return `#${h(r)}${h(g)}${h(b)}${a < 255 ? h(a) : ""}`;
-}
 
 export function PaletteView() {
 	const toks = palette();
@@ -29,63 +24,70 @@ export function PaletteView() {
 	};
 	return (
 		<div class="palette-view">
-			<div class="pal-head">
-				<div class="pal-title">{stripExt(basename(rel))}</div>
-				<div class="pal-sub">
-					a palette: colour slots other files draw from by name ·{" "}
-					{users.length ? `linked by ${users.map((u) => stripExt(basename(u))).join(", ")}` : "no file links it yet"}
+			<div class="ed-pal-head">
+				<div class="ed-pal-title">{stripExt(basename(rel))}</div>
+				<div class="ed-pal-sub">
+					A palette: colour slots other files draw from by name · {users.length ? `linked by ${users.map((u) => stripExt(basename(u))).join(", ")}` : "no file links it yet"}
 				</div>
 			</div>
-			<div class="pal-grid">
+			<div class="ed-pal-grid" role="listbox" aria-label="Colours">
 				{toks.map((t, k) => (
 					<div
-						class={`pal-tile ${k === cur ? "active" : ""}`}
+						class={cx("ed-pal-tile", k === cur && "selected")}
+						role="option"
+						tabIndex={0}
+						aria-selected={k === cur}
 						onClick={() => (ed.curTok.value = k)}
 						onDblClick={() => (renaming.value = { kind: "token", index: k })}
-						onContextMenu={(e) => {
+						onKeyDown={(e) => {
+							if (e.target !== e.currentTarget) return;
+							if (e.key === "Enter") renaming.value = { kind: "token", index: k };
+							else if (e.key === "Backspace" || e.key === "Delete") deleteToken(k);
+							else if (e.key === " ") ed.curTok.value = k;
+							else return;
 							e.preventDefault();
+							e.stopPropagation();
+						}}
+						onContextMenu={(e) => {
 							ed.curTok.value = k;
-							openContextMenu(e.clientX, e.clientY, [
+							menuAt(e, [
 								{ label: "Rename", keys: "Enter", run: () => (renaming.value = { kind: "token", index: k }) },
 								{ label: "Delete colour", danger: true, sep: true, run: () => deleteToken(k) },
 							]);
 						}}
 					>
 						<button
-							class="pal-swatch"
+							type="button"
+							class="ed-pal-swatch"
 							style={{ background: cssColor(t.rgb) }}
-							title="edit the colour"
+							title="Edit the colour"
+							aria-label={`Edit ${t.name}`}
 							onClick={(e) => {
 								e.stopPropagation();
 								const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 								setPick({ k, x: r.left, y: r.bottom + 6 });
 							}}
 						/>
-						<div class="pal-label">
+						<div class="ed-pal-label">
 							{ren?.kind === "token" && ren.index === k ? (
 								<InlineName value={t.name} onCommit={(n) => (renameToken(k, n), (renaming.value = null))} onCancel={() => (renaming.value = null)} />
 							) : (
-								<span class="name">{t.name}</span>
+								<span class="ed-pal-name">{t.name}</span>
 							)}
-							<span class="hex">
-								{hex(t.rgb)}
-								{(t.emissive ?? 0) > 0 ? ` · ☀ ${t.emissive}` : ""}
+							<span class="ed-pal-hex">
+								{hexOf(t.rgb)}
+								{(t.emissive ?? 0) > 0 && (
+									<span title="Emissive: gives off light in a game that has it">
+										{" · "}
+										<Icon name="sun" size={11} /> {t.emissive}
+									</span>
+								)}
 							</span>
 						</div>
-						<button
-							class="btn x"
-							title="delete colour"
-							onClick={(e) => {
-								e.stopPropagation();
-								deleteToken(k);
-							}}
-						>
-							×
-						</button>
 					</div>
 				))}
-				<button class="pal-tile add" onClick={add} title="a new colour slot">
-					<I.plus size={14} /> colour
+				<button type="button" class="ed-pal-tile add" onClick={add} title="A new colour slot">
+					<Icon name="plus" size={14} /> New colour
 				</button>
 			</div>
 			{pick && toks[pick.k] && (

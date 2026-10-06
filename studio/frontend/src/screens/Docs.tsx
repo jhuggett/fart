@@ -4,7 +4,6 @@
 import { useMemo } from "preact/hooks";
 import { marked } from "marked";
 import { leaveDocs, project } from "../state/project.ts";
-import { ThemeButton } from "../ui/ThemeMenu.tsx";
 import guide from "../docs/guide.md?raw";
 import spec from "../../../../spec/FORMAT.md?raw";
 
@@ -14,26 +13,19 @@ const PAGES = [
 ];
 const page = project.docsPage;
 
+import { Button, PaneHeader, SidebarRow } from "../ui/ur.tsx";
+import { inlineLights } from "../state/project.ts";
+
 export function Docs() {
 	const cur = PAGES.find((p) => p.id === page.value) ?? PAGES[0];
 	const html = useMemo(() => marked.parse(cur.md, { async: false }) as string, [cur]);
 	return (
-		<div class="app">
-			<div class="topbar">
-				<span class="brand">Uranus</span>
-				<span class="sub">docs</span>
-				<div class="spacer" />
-				<ThemeButton label />
-				<button class="btn ghost" onClick={leaveDocs}>
-					Back
-				</button>
-			</div>
+		<div class="ur app">
+			<PaneHeader pane="sidebar" lights={inlineLights()} title="Uranus docs" trailing={<Button onClick={leaveDocs}>Done</Button>} />
 			<div class="docs">
-				<nav>
+				<nav class="ur-tree" aria-label="Pages">
 					{PAGES.map((p) => (
-						<div class={`row ${p.id === cur.id ? "active" : ""}`} onClick={() => (page.value = p.id)}>
-							<span class="name">{p.title}</span>
-						</div>
+						<SidebarRow label={p.title} icon="book-open" selected={p.id === cur.id} onClick={() => (page.value = p.id)} />
 					))}
 				</nav>
 				<article>

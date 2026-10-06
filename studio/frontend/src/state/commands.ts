@@ -54,6 +54,9 @@ export function keyOf(e: KeyboardEvent): string {
 	else if (e.code === "BracketLeft") k = "[";
 	else if (e.code === "BracketRight") k = "]";
 	else if (e.code === "Slash") k = "/";
+	else if (e.code === "Comma") k = ",";
+	else if (e.code === "Period" || e.code === "NumpadDecimal") k = ".";
+	else if (e.code.startsWith("Numpad") && /^Numpad\d$/.test(e.code)) k = e.code.slice(6);
 	else if (e.code === "Space") k = "space";
 	else k = k.toLowerCase();
 	parts.push(k);
@@ -76,8 +79,11 @@ export const KEYMAP: Record<string, string> = {
 	"cmd+j": "chat.toggle",
 	"cmd+s": "file.save",
 	"cmd+n": "file.new",
-	"cmd+o": "file.browse",
+	"cmd+o": "file.openFolder",
 	"cmd+shift+o": "file.openFolder",
+	"cmd+alt+c": "file.clone",
+	"cmd+shift+1": "file.projects",
+	"cmd+,": "app.settings",
 	"cmd+z": "edit.undo",
 	"cmd+shift+z": "edit.redo",
 	"cmd+y": "edit.redo",
@@ -91,6 +97,12 @@ export const KEYMAP: Record<string, string> = {
 	x: "edit.delete",
 	"[": "edit.lower",
 	"]": "edit.raise",
+	"cmd+[": "nav.back",
+	"cmd+]": "nav.forward",
+	"cmd+1": "nav.assets",
+	"cmd+2": "nav.outline",
+	"cmd+3": "nav.search",
+	"cmd+4": "nav.git",
 	arrowleft: "edit.nudgeLeft",
 	arrowright: "edit.nudgeRight",
 	arrowup: "edit.nudgeUp",
@@ -103,7 +115,8 @@ export const KEYMAP: Record<string, string> = {
 	enter: "edit.enter",
 	"cmd+=": "view.zoomIn",
 	"cmd+-": "view.zoomOut",
-	"cmd+0": "view.zoom100",
+	"shift+0": "view.zoom100",
+	"cmd+0": "view.sidebar",
 	"shift+1": "view.fit",
 	"shift+2": "view.fitSelection",
 	"cmd+'": "view.snapGrid",
@@ -114,18 +127,73 @@ export const KEYMAP: Record<string, string> = {
 	"cmd+shift+n": "file.newProject",
 	"cmd+w": "file.browse",
 	"cmd+k": "app.palette",
-	"shift+/": "app.docs",
+	"cmd+/": "help.keys",
+	"cmd+shift+/": "help.search",
+	"shift+/": "help.context",
 	space: "clip.play",
 };
 
+/**
+ * In a 3D view every digit is the view's, the way a numpad is in
+ * Blender: 1 front, 3 right, 7 top, 9 the other side; 4 and 6 turn it a
+ * step, 8 and 2 tilt it; 5 fits everything; F (or .) frames what is
+ * chosen. No digit picks a tool there: the tools are on their letters.
+ */
+export const KEYMAP_3D: Record<string, string> = {
+	"1": "view.front",
+	"3": "view.right",
+	"7": "view.top",
+	"9": "view.flip",
+	"4": "view.turnLeft",
+	"6": "view.turnRight",
+	"8": "view.tiltUp",
+	"2": "view.tiltDown",
+	"5": "view.fit",
+	f: "view.frame",
+	".": "view.frame",
+};
+
+/** A keymap key ("cmd+shift+z") the way a person reads it ("⌘ ⇧ Z"). */
+export function prettyKey(k: string): string {
+	const names: Record<string, string> = { cmd: "⌘", shift: "⇧", alt: "⌥", arrowleft: "←", arrowright: "→", arrowup: "↑", arrowdown: "↓", backspace: "⌫", delete: "⌦", escape: "Esc", enter: "Return", space: "Space" };
+	// a shifted slash is a question mark, and that is how it is known
+	if (k === "shift+/") return "?";
+	return k
+		.split("+")
+		.map((p) => names[p] ?? (p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)))
+		.join(" ");
+}
+
 /** Pretty shortcut for a command id, from the keymap. */
 export function keysFor(id: string): string | undefined {
-	for (const [k, v] of Object.entries(KEYMAP)) {
-		if (v !== id) continue;
-		return k
-			.split("+")
-			.map((p) => (p === "cmd" ? "⌘" : p === "shift" ? "⇧" : p === "alt" ? "⌥" : p.startsWith("arrow") ? { left: "←", right: "→", up: "↑", down: "↓" }[p.slice(5)] : p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1)))
-			.join(" ");
-	}
+	for (const [k, v] of Object.entries(KEYMAP)) if (v === id) return prettyKey(k);
 	return undefined;
+}
+
+export interface KeyRow {
+	keys: string[];
+	title: string;
+}
+/**
+ * Every shortcut that does something right now, by group: the keymap
+ * (and, in a 3D view, the digits that are the view's there), less the
+ * commands that do not apply to this screen.
+ */
+export function shortcutsNow(in3d: boolean): { group: string; rows: KeyRow[] }[] {
+	const byId = new Map<string, string[]>();
+	const take = (k: string, id: string) => byId.set(id, [...(byId.get(id) ?? []), prettyKey(k)]);
+	for (const [k, id] of Object.entries(KEYMAP)) {
+		// in 3D no digit reaches a tool
+		if (in3d && /^\d$/.test(k)) continue;
+		take(k, id);
+	}
+	if (in3d) for (const [k, id] of Object.entries(KEYMAP_3D)) take(k, id);
+	const groups = new Map<string, KeyRow[]>();
+	for (const [id, keys] of byId) {
+		const c = registry.get(id);
+		if (!c || (c.when && !c.when())) continue;
+		groups.set(c.group, [...(groups.get(c.group) ?? []), { keys, title: c.title.replace(/…$/, "") }]);
+	}
+	const order = ["Tools", "Edit", "View", "Clip", "Scene", "File", "App"];
+	return [...groups].sort((a, b) => (order.indexOf(a[0]) + 99) % 99 - ((order.indexOf(b[0]) + 99) % 99)).map(([group, rows]) => ({ group, rows }));
 }
