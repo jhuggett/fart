@@ -8,7 +8,8 @@
 //   fart gltf <3d.fart> [-o out.glb] [--fps n]      the model as a binary glTF (1.3)
 //   fart build <file|dir>... [--force] [--check] [--clean]   the compiled sidecar name.fart.glb of every 3D document (1.8)
 //   fart hull <3d.fart> [--part name]...           convex hulls of parts, into collision (1.4)
-//   fart bake --textures <dir> [--px n] <file>     every texture map as a PNG, for a build (1.5)
+//   fart bake --textures <dir> [--px n] <file>     every texture map as a PNG, for a build (1.5); a normal map and packed scalars too (1.10)
+//   fart unwrap <3d.fart> [--part name]... [--texture name]   uvs for every textured mesh: box-projected islands packed into the cell (1.10)
 //   fart flatten <scene.shart> [--t s]             a scene's instances with their world maps (shart 1.0)
 //   fart import <model.glb|.gltf> [-o out.fart]    a glTF as a 3D .fart (see importCmd.ts for the flags)
 //
@@ -32,10 +33,15 @@ import { dirname as pdirname, resolve as presolve, relative as prelative } from 
 import { DEFAULT_AMBIENT, DEFAULT_FPS, DEFAULT_LIGHT, VIEWS, projectDoc } from "./project.ts";
 import { buildSidecar, sidecarFresh, sidecarPath, toGlb } from "./gltf.ts";
 import { setHull } from "./collision.ts";
-import { resolveTextures, rasterizeMap, type ResolvedTexture } from "./textures.ts";
+import { bakeTexture, imagePx, resolveTextures, type Raster, type ResolvedTexture } from "./textures.ts";
 import { flattenScene, loadScene, parseScene, refInfo, sceneFiles } from "./scene.ts";
 import { toPng } from "./png.ts";
+import { unwrapDoc } from "./unwrap.ts";
 import { IMPORT_USAGE, importCmd } from "./importCmd.ts";
+import { deflateSync } from "node:zlib";
+
+/** PNGs the command line writes are compressed (the library's own writer stores) */
+const ZLIB = { deflate: (raw: Uint8Array) => deflateSync(raw, { level: 9 }) };
 
 async function collect(paths: string[]): Promise<string[]> {
 	const out: string[] = [];
@@ -60,9 +66,18 @@ async function readRef(base: string, rel: string): Promise<string | null> {
 	}
 }
 
-/** A document's textures, read relative to its file (1.5). */
+/** A file's bytes, relative to another file; null when it cannot be read. */
+async function readBytes(base: string, rel: string): Promise<Uint8Array | null> {
+	try {
+		return new Uint8Array(await readFile(resolve(dirname(base), rel)));
+	} catch {
+		return null;
+	}
+}
+
+/** A document's textures, read relative to its file (1.5), pictures too (1.12). */
 async function texturesOf(file: string, doc: Doc): Promise<Map<string, ResolvedTexture>> {
-	return resolveTextures(doc, (rel) => readRef(file, rel), (t) => parseDoc(t).doc);
+	return resolveTextures(doc, (rel) => readRef(file, rel), (t) => parseDoc(t).doc, (rel) => readBytes(file, rel));
 }
 
 /** A scene, checked with everything it names read from beside it. */
@@ -148,7 +163,7 @@ async function flattenCmd(args: string[]): Promise<number> {
 async function bakeCmd(args: string[]): Promise<number> {
 	// --textures <dir>: the maps as PNGs instead of tris into the file
 	let texDir: string | undefined;
-	let px = 64;
+	let px: number | undefined;
 	let smooth = false;
 	const paths: string[] = [];
 	for (let i = 0; i < args.length; i++) {
@@ -373,19 +388,25 @@ const USAGE = `usage: fart validate <file|dir>...
        fart tokens <file|dir>...                  what each file costs to read: as written, lean, outline
        fart lint [dir] [--direction file]         every asset against the project's direction (style.gas at the root), advisory
        fart new <path/name> [--class c] [--3d]     an asset that starts from the direction
-       fart bake --textures <dir> [--px n] <file>...   every texture map as a PNG
-       fart gltf <3d.fart> [-o out.glb] [--fps n]
+       fart bake [--smooth] <file>...             tris into every poly or mesh and bakes into every path; --smooth: the surfaces of smooth, modified and swept shapes too
+       fart bake --textures <dir> [--px n] <file>...   every texture map as a PNG, plus .normal.png (a relief) and .orm.png (ao, rough, metal)
+       fart gltf <3d.fart> [-o out.glb] [--fps n] [--px n]   --px: the width of each texture's images (64; a texture of PNGs keeps theirs)
        fart build <file|dir>... [--force] [--check] [--clean] [--fps n]
          the compiled sidecar name.fart.glb beside every 3D document; one whose source has not changed is left alone (--force: rebuilt);
          --check: write nothing, exit 1 if any is missing or stale; --clean: remove them
        fart hull <3d.fart> [--part name]...     (no --part: every part) hulls into collision, in place
+       fart unwrap <3d.fart> [--part name]... [--texture name] [--margin m]   uvs for textured meshes: box-projected islands packed into the cell, in place
        fart flatten <scene.shart> [--t s]       a scene's instances, placed
        ${IMPORT_USAGE}
        fart project <3d.fart> [--view name|x,y,z(deg)]... [--light x,y,z] [--ambient a] [--fps n] [--outline token[:w]] [-o out.fart]
          views: ${Object.keys(VIEWS).join(", ")}; several --view flags write several files (out gets -<view>)`;
 
-/** fart bake --textures: every map of every texture as <dir>/<texture>.<map>.png, one cell, px wide. */
-async function bakeTextures(paths: string[], dir: string, px: number): Promise<number> {
+/**
+ * fart bake --textures: every map of every texture as <dir>/<texture>.<map>.png, one cell, px wide
+ * (64, or a texture's widest picture, 1.12); a `normal` map is the normal map (1.12);
+ * with a relief (1.10), <texture>.normal.png; with ao, rough or metal maps, <texture>.orm.png.
+ */
+async function bakeTextures(paths: string[], dir: string, px: number | undefined): Promise<number> {
 	const files = await collect(paths);
 	let bad = 0;
 	await mkdir(dir, { recursive: true });
@@ -398,13 +419,15 @@ async function bakeTextures(paths: string[], dir: string, px: number): Promise<n
 			continue;
 		}
 		for (const res of (await texturesOf(file, doc)).values()) {
-			const [cw, ch] = res.texture.cell;
-			const py = Math.max(1, Math.round((px * ch) / cw));
-			for (const [name, map] of Object.entries(res.maps)) {
-				const raster = rasterizeMap(res.texture, map, px, py);
+			const baked = bakeTexture(res, px ?? (imagePx(res) || 64));
+			// the maps as drawn, then what 1.10 derives: the relief's normal map and the packed scalars
+			const out: [string, Raster][] = Object.entries(baked.maps);
+			if (baked.normal) out.push(["normal", baked.normal]);
+			if (baked.orm) out.push(["orm", baked.orm]);
+			for (const [name, raster] of out) {
 				const target = join(dir, `${res.texture.name}.${name}.png`);
-				await writeFile(target, toPng(raster));
-				console.log(`wrote ${target}  (${px}×${py})`);
+				await writeFile(target, toPng(raster, ZLIB));
+				console.log(`wrote ${target}  (${baked.width}×${baked.height})`);
 			}
 			for (const u of res.unresolved) console.log(`  unresolved ${u}`);
 		}
@@ -470,7 +493,8 @@ async function projectCmd(args: string[]): Promise<number> {
 		const rebase = (ref: string) => relative(dirname(resolve(target)), resolve(dirname(file), ref)).split("\\").join("/");
 		if (projected.palette_refs) projected.palette_refs = projected.palette_refs.map(rebase);
 		for (const t of projected.textures ?? []) for (const m of Object.values(t.maps)) {
-			m.ref = rebase(m.ref);
+			if (m.ref !== undefined) m.ref = rebase(m.ref);
+			if (m.image !== undefined) m.image = rebase(m.image);
 			if (m.palette) m.palette = rebase(m.palette);
 		}
 		if (outline && !(projected.palette ?? []).some((t) => t.name === outline.color)) {
@@ -487,11 +511,13 @@ async function projectCmd(args: string[]): Promise<number> {
 async function gltfCmd(args: string[]): Promise<number> {
 	let out: string | undefined;
 	let fps: number | undefined;
+	let px: number | undefined;
 	const files: string[] = [];
 	for (let i = 0; i < args.length; i++) {
 		const a = args[i];
 		if (a === "-o" || a === "--out") out = args[++i];
 		else if (a === "--fps") fps = Number(args[++i]);
+		else if (a === "--px") px = Math.max(1, Number(args[++i]) || 64);
 		else if (a.startsWith("-")) throw new Error(`unknown flag ${a}`);
 		else files.push(a);
 	}
@@ -507,13 +533,16 @@ async function gltfCmd(args: string[]): Promise<number> {
 	if (!src) throw new Error(`${file} is not a 3D document (space: "3d")`);
 	const { tokens } = await resolvePalettes(doc, (rel) => readRef(file, rel));
 	const images: Record<string, Uint8Array> = {};
+	const normals: Record<string, Uint8Array> = {};
+	const orms: Record<string, Uint8Array> = {};
 	for (const res of (await texturesOf(file, doc)).values()) {
-		const color = res.maps.color;
-		if (!color) continue;
-		const [cw, ch] = res.texture.cell;
-		images[res.texture.name] = toPng(rasterizeMap(res.texture, color, 64, Math.max(1, Math.round((64 * ch) / cw))));
+		// a texture of pictures (1.12) keeps their size unless --px says otherwise
+		const baked = bakeTexture(res, px ?? (imagePx(res) || 64));
+		if (baked.maps.color) images[res.texture.name] = toPng(baked.maps.color, ZLIB);
+		if (baked.normal) normals[res.texture.name] = toPng(baked.normal, ZLIB);
+		if (baked.orm) orms[res.texture.name] = toPng(baked.orm, ZLIB);
 	}
-	const glb = toGlb(src, { tokens, fps, images });
+	const glb = toGlb(src, { tokens, fps, images, normals, orms });
 	const target = out ?? file.replace(/\.fart$/, "") + ".glb";
 	await writeFile(target, glb);
 	console.log(`wrote ${target}  (${(glb.length / 1024).toFixed(1)} KB, ${(src.parts ?? []).length} nodes, ${(src.clips ?? []).length} animations)`);
@@ -650,6 +679,36 @@ async function hullCmd(args: string[]): Promise<number> {
 	return 0;
 }
 
+/** fart unwrap: uvs for every textured mesh (of the named parts, of the named texture), in place. */
+async function unwrapCmd(args: string[]): Promise<number> {
+	const names: string[] = [];
+	const files: string[] = [];
+	let texture: string | undefined;
+	let margin: number | undefined;
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === "--part") names.push(args[++i]);
+		else if (a === "--texture") texture = args[++i];
+		else if (a === "--margin") margin = Number(args[++i]);
+		else if (a.startsWith("-")) throw new Error(`unknown flag ${a}`);
+		else files.push(a);
+	}
+	if (files.length !== 1) throw new Error("unwrap takes one 3D source file");
+	const file = files[0];
+	const { ok, doc, lines } = await check(file);
+	if (!ok || !doc) {
+		console.log(`skip ${file}: not valid`);
+		for (const l of lines) console.log(l);
+		return 1;
+	}
+	const src = as3d(doc);
+	if (!src) throw new Error(`${file} is not a 3D document (space: "3d")`);
+	const n = unwrapDoc(src, { parts: names, texture, margin });
+	await writeFile(file, stringifyDoc(src));
+	console.log(`wrote ${file}  (${n} mesh${n === 1 ? "" : "es"} unwrapped)`);
+	return 0;
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 let code = 2;
 try {
@@ -686,6 +745,9 @@ try {
 			break;
 		case "hull":
 			code = await hullCmd(rest);
+			break;
+		case "unwrap":
+			code = await unwrapCmd(rest);
 			break;
 		case "flatten":
 			code = await flattenCmd(rest);

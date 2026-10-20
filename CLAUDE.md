@@ -15,8 +15,11 @@ follow the spec, never the other way round.
 - `studio/`: Uranus, the app ("the reference editor for the Fast Art Format"): Wails 3 (Go shell, thin: dialogs, rooted file IO, recents,
   serve) + Preact frontend. `studio/DESIGN.md` governs the UI language;
   `frontend/src/state/actions.ts` is the one command registry. Every
-  canvas view is a state (there is no separate draw mode); a clip is a
-  preview; a palette file opens as swatches.
+  canvas view is a state (there is no separate draw mode); a clip poses
+  the key under the playhead (`editPose` in `state/editor.ts` and
+  `state/model.ts`: a key naming a state takes its own copy, a change
+  between keys makes one; `make check-keys`); a palette file opens as
+  swatches.
 - Verify studio changes headlessly: build (`npx tsc && npx vite build`
   in `studio/frontend`, `go build -o bin/studio .` in `studio`), run
   `./studio/bin/studio --serve <dir>`, drive it with Playwright, read
@@ -104,6 +107,33 @@ follow the spec, never the other way round.
   `state/textures.ts` for the 2D painter's patterns and WebGL; the Odin
   loader's `flatten_part` + `Y_UP` and `loaders/odin/examples/raylib_spin`
   are the 3D game path.
+- 1.8, 1.9, 1.11 in core: `paint`/`colors`, `shades`, `mods`
+  (`applyMods`, `builtOf`) and the `pipe` and `rail` (1.11) sweeps in
+  `solids.ts`; skins (1.9) in `space3.ts` (`shapesOf3Skinned`,
+  `shapesOf3Worn` for a host's), carried by `gltf.ts` and kept by the
+  import; the Odin loader reads `skin` but draws it rigid. The compiled
+  sidecar (`name.fart.glb`): `gltf.ts` (`buildSidecar`, `sidecarFresh`),
+  `fart build`, `loaders/odin/sidecar.odin`, the studio's
+  `state/sidecar.ts`. glTF import: core's `gltfImport.ts` +
+  `importCmd.ts` (`fart import`), the studio's `state/importGltf.ts`
+  (File › Import glTF…, which leaves textures to the CLI).
+- Relief (1.10): `soften` on a texture's map and `relief` on a texture.
+  Core: `textures.ts` (`mapValues`, `normalRaster`, `ormRaster`,
+  `bakeTexture`; `fart bake --textures` writes `.normal.png` and
+  `.orm.png`), `unwrap.ts` (`unwrapDoc`, `fart unwrap`: a cage's faces
+  as islands packed into the texture's cell), `gltf.ts` (normal and
+  metallic-roughness textures, tangents; `fart gltf --px`). Studio:
+  `state/textures.ts` renders the normal map, `canvas/gl3.ts` lights by
+  it per pixel (the pattern's axes ride in each vertex), the textures
+  panel has Relief and Soften, the model inspector Unwrap and Box map.
+- Images (1.12): a texture map may be `image` (a PNG, stretched over the
+  cell) instead of `ref`; a map named `normal` is a tangent-space normal
+  map. Core reads PNGs itself (`png.ts`: `fromPng` with its own inflate;
+  `textures.ts` samples a picture where it rasterises a drawing);
+  `fart import --map name=file.png` (or a glTF's own PNGs) writes them
+  beside the document with the uvs as `mapping.uvs` (`gltfImport.ts`
+  `textures` option, `gltfImages`); the studio reads them through
+  `shell.readImage`; the Odin loader's `load_map_image` (`Map_Doc.pixels`).
 - Mesh editing in the model screen: `frontend/src/state/meshops.ts` is
   the geometry (pure, no imports: extrude, inset, loop cut, rims, merge,
   flip, wind outward, creases; every result says where each point and

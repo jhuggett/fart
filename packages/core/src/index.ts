@@ -27,3 +27,4 @@ export * from "./verbs.ts";
 export * from "./direction.ts";
 export * from "./mods.ts";
 export * from "./gltfImport.ts";
+export * from "./unwrap.ts";

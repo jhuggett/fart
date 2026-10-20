@@ -43,14 +43,18 @@ export interface TextureFields3 {
 }
 /** Since 1.5: one map of a texture: a drawing, tiled. */
 export interface TextureMap {
-	/** a relative path to a 2D art file */
-	ref: string;
+	/** a relative path to a 2D art file; absent on an image map */
+	ref?: string;
+	/** Since 1.12: a relative path to a PNG stretched over the cell, instead of a drawing */
+	image?: string;
 	/** a relative path to a palette file laid over the drawing's tokens */
 	palette?: string;
 	/** which of the drawing's states to draw; absent: the first, else every part */
 	state?: string;
 	/** paint (default): its colours over the token; mask: the token times its value */
 	mode?: "paint" | "mask";
+	/** Since 1.8: a blur over the map, its radius (a Gaussian's deviation) in pattern units, wrapping at the cell */
+	soften?: number;
 	[extra: string]: unknown;
 }
 export interface Texture {
@@ -59,6 +63,8 @@ export interface Texture {
 	cell: Vec2;
 	/** by name; "color" is what a reader paints, the rest are the engine's */
 	maps: Record<string, TextureMap>;
+	/** Since 1.10: how far the `height` map's value 1 stands proud of 0, in pattern units; absent or 0: no relief */
+	relief?: number;
 	[extra: string]: unknown;
 }
 
@@ -376,8 +382,8 @@ export interface SweepShape extends CollisionFields, TextureFields3, SmoothField
 	color?: string;
 	shade?: number;
 	/** `pipe` since 1.8: a section carried along a 3D `path`. */
-	op: "lathe" | "extrude" | "pipe";
-	/** A lathe's and an extrude's; a pipe has none. */
+	op: "lathe" | "extrude" | "pipe" | "rail";
+	/** A lathe's and an extrude's; a pipe has none. A rail's (1.11) is the way its profile stands, y when absent. */
 	axis?: "x" | "y" | "z";
 	/** A lathe's and an extrude's profile; for a pipe, an optional closed section in place of the circle. */
 	profile?: { points: Vec2[]; in?: Vec2[]; out?: Vec2[]; closed?: boolean; [extra: string]: unknown };
@@ -394,6 +400,8 @@ export interface SweepShape extends CollisionFields, TextureFields3, SmoothField
 	caps?: boolean;
 	/** 1.8: the path joins its last point to its first. */
 	closed?: boolean;
+	/** 1.11, a rail: the radius its path's corners are rounded to. */
+	round?: number;
 	/** 1.8: modifiers on the generated mesh. */
 	mods?: Mod[];
 	[extra: string]: unknown;
